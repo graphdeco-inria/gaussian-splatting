@@ -60,30 +60,24 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 - CUDA-ready GPU with Compute Capability 7.0+
 - 24 GB VRAM to train the largest scenes in our test suite
 
+### Software Requirements
+- C++ Compiler (Visual Studio 2019 for Windows)
+- CUDA 11 Developer SDK
+- Conda (recommended for easy setup)
+
 ### Setup
 
-Our provided install method is based on Conda package and environment management. We suggest 3 options, depending on your available disk space.
-
-#### Option 1 (Plenty of space on system drive)
-
-To produce our exact evaluation environment on a freshly set up machine should be straightforward once Conda is installed (at the expense of considerable disk space):
+Our provided install method is based on Conda package and environment management:
 ```shell
-conda env create --file environment_full.yml # This will take some time
+conda env create --file environment.yml # This will take less time
 conda activate gaussian_splatting
 ```
-#### Option 2 (Little space on system drive)
 
-If you already have a recent C++ compiler and a version of the CUDA **development** kit 11 installed, you can opt to use the lighter-weight environment install instead.
-```shell
-conda env create --file environment_light.yml # This will take less time
-conda activate gaussian_splatting
-```
-#### Option 3 (Even less space on system drive)
-Note that even with the light version, downloading packages and creating a new environment with Conda can require a significant amount of disk space. By default, Conda will use the main system hard drive. You can avoid this by specifying a different package download location and an environment on a different drive:
+Note that downloading packages and creating a new environment with Conda can require a significant amount of disk space. By default, Conda will use the main system hard drive. You can avoid this by specifying a different package download location and an environment on a different drive:
 
 ```shell
 conda config --add pkgs_dirs <Drive>/<pkg_path>
-conda env create --file environment_light.yml --prefix <Drive>/<env_path>/gaussian_splatting
+conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_splatting
 conda activate <Drive>/<env_path>/gaussian_splatting
 ```
 
@@ -126,9 +120,14 @@ The Network Viewer can be used to observe the training process and watch the mod
 - OpenGL 4.5-ready GPU
 - 8 GB VRAM
 
+### Software Requirements
+- C++ Compiler (Visual Studio 2019 for Windows)
+- CUDA 11 Developer SDK
+- CMake (recent version)
+
 ### Setup
 
-If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers_(windows|linux)``` (choose whichever fits your OS). The network viewer runs within the SIBR framework for Image-based Rendering applications. For setup, you will need the CUDA 11 **development** kit, a C++ compiler (use Visual Studio **2019** on Windows) and **CMake**, then follow the steps corresponding to your operating system.
+If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers_(windows|linux)``` (choose whichever fits your OS). The network viewer runs within the SIBR framework for Image-based Rendering applications.
 
 #### Windows
 On Windows, CMake should take care of your dependencies
@@ -172,6 +171,11 @@ The Real-Time Viewer can be used to render trained models with real-time frame r
 - CUDA-ready GPU with Compute Capability 7.0+
 - OpenGL 4.5-ready GPU
 - 8 GB VRAM
+
+### Software Requirements
+- C++ Compiler (Visual Studio 2019 for Windows)
+- CUDA 11 Developer SDK
+- CMake (recent version)
 
 ### Setup
 
