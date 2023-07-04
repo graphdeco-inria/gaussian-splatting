@@ -7,8 +7,8 @@ This repository contains the code associated with the paper "3D Gaussian Splatti
 
 <a href="https://www.inria.fr/"><img height="100" src="assets/logo_inria.png"> </a>
 <a href="https://univ-cotedazur.eu/"><img height="100" src="assets/logo_uca.png"> </a>
-<a href="https://www.mpi-inf.mpg.de"><img height="100" src="assets/logo_mpi.png"> </a>
-<a href="https://team.inria.fr/graphdeco/"> <img style="width:90%; padding-right: 15px;" src="assets/logo_graphdeco.png"></a>
+<a href="https://www.mpi-inf.mpg.de"><img height="100" src="assets/logo_mpi.png"> </a> 
+<a href="https://team.inria.fr/graphdeco/"> <img style="width:100%;" src="assets/logo_graphdeco.png"></a>
 
 Abstract: *Radiance Field methods have recently revolutionized novel-view synthesis of scenes captured with multiple photos or videos. However, achieving high visual quality still requires neural networks that are costly to train and render, while recent faster methods inevitably trade off speed for quality. For unbounded and complete scenes (rather than isolated objects) and 1080p resolution rendering, no current method can achieve real-time display rates. We introduce three key elements that allow us to achieve state-of-the-art visual quality while maintaining competitive training times and importantly allow high-quality real-time (≥ 30 fps) novel-view synthesis at 1080p resolution. First, starting from sparse points produced during camera calibration, we represent the scene with 3D Gaussians that preserve desirable properties of continuous volumetric radiance fields for scene optimization while avoiding unnecessary computation in empty space; Second, we perform interleaved optimization/density control of the 3D Gaussians, notably optimizing anisotropic covariance to achieve an accurate representation of the scene; Third, we develop a fast visibility-aware rendering algorithm that supports anisotropic splatting and both accelerates training and allows realtime rendering. We demonstrate state-of-the-art visual quality and real-time rendering on several established datasets.*
 
@@ -34,11 +34,10 @@ Abstract: *Radiance Field methods have recently revolutionized novel-view synthe
 This research was funded by the ERC Advanced grant FUNGRAPH No 788065. The authors are grateful to Adobe for generous donations, the OPAL infrastructure from Université Côte d’Azur and for the HPC resources from GENCI–IDRIS (Grant 2022-AD011013409). The authors thank the anonymous reviewers for their valuable feedback, P. Hedman and A. Tewari for proofreading earlier drafts also T. Müller, A. Yu and S. Fridovich-Keil for helping with the comparisons.
 
 ## Cloning the Repository
-TODO TODO  Replace link
 
 The repository contains submodules, thus please check it out with
-```
-git clone <repository url> --recursive
+```shell
+git clone https://github.com/graphdeco-inria/gaussian-splatting --recursive
 ```
 
 ## Overview
@@ -62,7 +61,7 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 ### Software Requirements
 - C++ Compiler (Visual Studio 2019 for Windows)
-- CUDA 11 Developer SDK
+- CUDA 11 SDK for PyTorch extensions (we used 11.8)
 - Conda (recommended for easy setup)
 
 ### Setup
