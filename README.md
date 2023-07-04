@@ -71,13 +71,9 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 Our provided install method is based on Conda package and environment management:
 ```shell
+SET DISTUTILS_USE_SDK=1 # Windows only
 conda env create --file environment.yml
 conda activate gaussian_splatting
-```
-Note for Windows: if setup stops and you are prompted to set ```DISTUTILS_USE_SDK=1```, please complete the environment setup with:
-```shell
-SET DISTUTILS_USE_SDK=1
-conda env update --file environment.yml
 ```
 
 Tip: Downloading packages and creating a new environment with Conda can require a significant amount of disk space. By default, Conda will use the main system hard drive. You can avoid this by specifying a different package download location and an environment on a different drive:
