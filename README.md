@@ -3,7 +3,7 @@ Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indi
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) |
 [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr)
 
-[Input Datasets](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt+db.zip) | [Pre-trained Models TODO](TODO)| [Evaluation Renderings TODO](TODO)|  <br>
+[T&T+DB Datasets](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models TODO](TODO)| [Evaluation Renderings TODO](TODO)|  <br>
 ![Teaser image](assets/teaser.png)
 
 This repository contains the code associated with the paper "3D Gaussian Splatting for Real-Time Radiance Field Rendering", which can be found [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). We further provide the reference images used to create the error metrics reported in the paper, as well as recently created, pre-trained models. 
@@ -129,13 +129,14 @@ The Network Viewer can be used to observe the training process and watch the mod
 - C++ Compiler (Visual Studio 2019 for Windows)
 - CUDA 11 Developer SDK (we used 11.8)
 - CMake (recent version, we used 3.24)
+- 7zip (Windows)
 
 ### Setup
 
 If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers_(windows|linux)``` (choose whichever fits your OS). The network viewer runs within the SIBR framework for Image-based Rendering applications.
 
 #### Windows
-On Windows, CMake should take care of your dependencies
+On Windows, CMake should take care of your dependencies.
 ```shell
 cd SIBR_viewers_windows
 cmake -Bbuild .
@@ -181,6 +182,7 @@ The Real-Time Viewer can be used to render trained models with real-time frame r
 - C++ Compiler (Visual Studio 2019 for Windows)
 - CUDA 11 Developer SDK
 - CMake (recent version)
+- 7zip (Windows)
 
 ### Setup
 
