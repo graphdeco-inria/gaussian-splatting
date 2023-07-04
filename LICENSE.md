@@ -1,7 +1,7 @@
 Gaussian-Splatting License  
 ===========================  
 
-**Inria** and **the Max Planck Institut for Informatik** hold all the ownership rights on the *Software* named **gaussian-splatting**.  
+**Inria** and **the Max Planck Institut for Informatik (MPII)** hold all the ownership rights on the *Software* named **gaussian-splatting**.  
 The *Software* is in the process of being registered with the Agence pour la Protection des  
 Programmes (APP).  
 
@@ -15,10 +15,10 @@ the *Software*.
 *Licensee* means any person or entity that uses the *Software* and distributes  
 its *Work*.  
 
-*Licensor* means the owners of the *Software*, i.e Inria and UCA  
+*Licensor* means the owners of the *Software*, i.e Inria and MPII  
 
 *Software* means the original work of authorship made available under this  
-License ie Sibr-core.  
+License ie gaussian-splatting.  
 
 *Work* means the *Software* and any additions to or derivative works of the  
 *Software* that are made available under this License.  
