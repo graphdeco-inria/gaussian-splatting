@@ -121,8 +121,8 @@ The Network Viewer can be used to observe the training process and watch the mod
 
 ### Software Requirements
 - C++ Compiler (Visual Studio 2019 for Windows)
-- CUDA 11 Developer SDK
-- CMake (recent version)
+- CUDA 11 Developer SDK (we used 11.8)
+- CMake (recent version, we used 3.24)
 
 ### Setup
 
@@ -194,7 +194,7 @@ Navigation works exactly as it does in the network viewer. However, you also hav
 
 ## Converting your own Scenes
 
-We provide a converter script ```convert.py```, which uses COLMAP to extract SfM information. Optionally, you can use ImageMagick to resize the input images. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```. If you have COLMAP and ImageMagick on your system path, you can simply run 
+We provide a converter script ```convert.py```, which uses COLMAP to extract SfM information. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```. If you have COLMAP and ImageMagick on your system path, you can simply run 
 ```shell
 python convert.py -s <location> [--resize] #If not resizing, ImageMagick is not needed
 ```
