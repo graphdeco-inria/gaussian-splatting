@@ -111,8 +111,8 @@ python metrics.py -m <path to trained model> # Compute error metrics on renderin
 ```
 
 We further provide the ```full_eval.py``` script. This script specifies the routine used in our evaluation and demonstrates the use of some additional parameters, e.g., ```--images (-i)``` to define alternative image directories within COLMAP data sets. If you have downloaded and extracted all the training data, you can run it like this:
-```
-python full_eval.py --m360 <mipnerf360 folder> --tat <tanks and temples folder> --db <deep blending folder>
+```shell
+python full_eval.py -m360 <mipnerf360 folder> -tat <tanks and temples folder> -db <deep blending folder>
 ```
 In the current version, this process takes about 7h on our reference machine containing an A6000.
 
