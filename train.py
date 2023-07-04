@@ -180,6 +180,8 @@ if __name__ == "__main__":
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(sys.argv[1:])
+    args.save_iterations.append(args.iterations)
+    
     print("Optimizing " + args.model_path)
 
     # Initialize system state (RNG)
