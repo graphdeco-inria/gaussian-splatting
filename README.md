@@ -69,7 +69,7 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 Our provided install method is based on Conda package and environment management:
 ```shell
-conda env create --file environment.yml # This will take less time
+conda env create --file environment.yml
 conda activate gaussian_splatting
 ```
 
