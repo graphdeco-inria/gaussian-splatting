@@ -208,7 +208,7 @@ python metrics.py -m <path to trained model> # Compute error metrics on renderin
 <details>
 <summary><span style="font-weight: bold;">Command Line Arguments for metrics.py</span></summary>
 
-  ### --model_paths / -m 
+  #### --model_paths / -m 
   Space-separated list of model paths for which metrics should be computed.
 </details>
 <br>
