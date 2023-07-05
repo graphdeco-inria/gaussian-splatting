@@ -97,7 +97,7 @@ python train.py -s <path to dataset>
 ```
 
 <details>
-  <summary style="font-size: 16px;">Command Line Arguments for train.py</summary>
+<summary><span style="font-weight: bold;">Command Line Arguments for train.py</span></summary>
 
   ### --source_path / -s
   Path to the source directory containing a COLMAP or Synthetic NeRF data set.
