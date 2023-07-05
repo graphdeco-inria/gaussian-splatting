@@ -99,65 +99,65 @@ python train.py -s <path to dataset>
 <details>
 <summary><span style="font-weight: bold;">Command Line Arguments for train.py</span></summary>
 
-  ### --source_path / -s
+  #### --source_path / -s
   Path to the source directory containing a COLMAP or Synthetic NeRF data set.
-  ### --model_path / -m 
+  #### --model_path / -m 
   Path where the trained model should be stored (```output/<random>``` by default).
-  ### --images / -i
+  #### --images / -i
   Alternative subdirectory for COLMAP images (```images``` by default).
-  ### --eval
+  #### --eval
   Add this flag to use a MipNeRF360-style training/test split for evaluation.
-  ### --resolution / -r
+  #### --resolution / -r
   Changes the resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. ```1``` by default.
-  ### --white_background / -w
+  #### --white_background / -w
   Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
-  ### --sh_degree
+  #### --sh_degree
   Order of spherical harmonics to be used (no larger than 3). ```3``` by default.
-  ### --convert_SHs_python
+  #### --convert_SHs_python
   Flag to make pipeline compute forward and backward of SHs with PyTorch instead of ours.
-  ### --convert_cov3D_python
+  #### --convert_cov3D_python
   Flag to make pipeline compute forward and backward of the 3D covariance with PyTorch instead of ours.
-  ### --iterations
+  #### --iterations
   Number of total iterations to train for, ```30_000``` by default.
-  ### --feature_lr
+  #### --feature_lr
   Spherical harmonics features learning rate, ```0.0025``` by default.
-  ### --opacity_lr
+  #### --opacity_lr
   Opacity learning rate, ```0.05``` by default.
-  ### --scaling_lr
+  #### --scaling_lr
   Scaling learning rate, ```0.001``` by default.
-  ### --rotation_lr
+  #### --rotation_lr
   Rotation learning rate, ```0.001``` by default.
-  ### --position_lr_max_steps
+  #### --position_lr_max_steps
   Number of steps (from 0) where position learning rate goes from ```initial``` to ```final```. ```30_000``` by default.
-  ### --position_lr_init
+  #### --position_lr_init
   Initial 3D position learning rate, ```0.00016``` by default.
-  ### --position_lr_final
+  #### --position_lr_final
   Final 3D position learning rate, ```0.0000016``` by default.
-  ### --position_lr_delay_mult
+  #### --position_lr_delay_mult
   Position learning rate multiplier (cf. Plenoxels), ```0.01``` by default. 
-  ### --densify_from_iter
+  #### --densify_from_iter
   Iteration where densification starts, ```500``` by default. 
-  ### --densify_until_iter
+  #### --densify_until_iter
   Iteration where densification stops, ```15_000``` by default.
-  ### --densify_grad_threshold
+  #### --densify_grad_threshold
   Limit that decides if points should be densified based on 2D position gradient, ```0.0002``` by default.
-  ### --densification_interal
+  #### --densification_interal
   How frequently to densify, ```100``` (every 100 iterations) by default.
-  ### --opacity_reset_interval
+  #### --opacity_reset_interval
   How frequently to reset opacity, ```3_000``` by default. 
-  ### --lambda_dssim
+  #### --lambda_dssim
   Influence of SSIM on total loss from 0 to 1, ```0.2``` by default. 
-  ### --percent_dense
+  #### --percent_dense
   Percentage of scene extent (0--1) a point must exceed to be forcibly densified, ```0.1``` by default.
-  ### --ip
+  #### --ip
   IP to start GUI server on, ```127.0.0.1``` by default.
-  ### --port 
+  #### --port 
   Port to use for GUI server, ```6009``` by default.
-  ### --test_iterations
+  #### --test_iterations
   Space-separated iterations at which the training script computes L1 and PSNR over test set, ```7000 30000``` by default.
-  ### --save_iterations
+  #### --save_iterations
   Space-separated iterations at which the training script saves the Gaussian model, ```7000 30000 <iterations>``` by default.
-  ### --quiet 
+  #### --quiet 
   Flag to omit any text written to standard out pipe. 
 
 </details>
@@ -175,38 +175,38 @@ python metrics.py -m <path to trained model> # Compute error metrics on renderin
 ```
 
 <details>
-  <summary style="font-size: 16px;">Command Line Arguments for render.py</summary>
+<summary><span style="font-weight: bold;">Command Line Arguments for render.py</span></summary>
 
-  ### --model_path / -m 
+  #### --model_path / -m 
   Path where the trained model should be stored (```output/<random>``` by default).
-  ### --skip_train
+  #### --skip_train
   Flag to skip rendering the training set.
-  ### --skip_test
+  #### --skip_test
   Flag to skip rendering the test set.
-  ### --quiet 
+  #### --quiet 
   Flag to omit any text written to standard out pipe. 
 
   **The below parameters will be read automatically from the model path, based on what was used for training. However, you may override them by providing them explicitly on the command line.** 
 
-  ### --source_path / -s
+  #### --source_path / -s
   Path to the source directory containing a COLMAP or Synthetic NeRF data set.
-  ### --images / -i
+  #### --images / -i
   Alternative subdirectory for COLMAP images (```images``` by default).
-  ### --eval
+  #### --eval
   Add this flag to use a MipNeRF360-style training/test split for evaluation.
-  ### --resolution / -r
+  #### --resolution / -r
   Changes the resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. ```1``` by default.
-  ### --white_background / -w
+  #### --white_background / -w
   Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
-  ### --convert_SHs_python
+  #### --convert_SHs_python
   Flag to make pipeline render with computed SHs from PyTorch instead of ours.
-  ### --convert_cov3D_python
+  #### --convert_cov3D_python
   Flag to make pipeline render with computed 3D covariance from PyTorch instead of ours.
 
 </details>
 
 <details>
-  <summary style="font-size: 16px;">Command Line Arguments for metrics.py</summary>
+<summary><span style="font-weight: bold;">Command Line Arguments for metrics.py</span></summary>
 
   ### --model_paths / -m 
   Space-separated list of model paths for which metrics should be computed.
