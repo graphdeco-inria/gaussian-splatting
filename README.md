@@ -3,7 +3,7 @@ Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indi
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) |
 [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr)
 
-[T&T+DB Datasets](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models TODO](TODO)| [Evaluation Renderings TODO](TODO)|  <br>
+[T&T+DB Datasets (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB) ](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip)| [Evaluation Renderings TODO](TODO)|  <br>
 ![Teaser image](assets/teaser.png)
 
 This repository contains the code associated with the paper "3D Gaussian Splatting for Real-Time Radiance Field Rendering", which can be found [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). We further provide the reference images used to create the error metrics reported in the paper, as well as recently created, pre-trained models. 
@@ -83,8 +83,6 @@ conda config --add pkgs_dirs <Drive>/<pkg_path>
 conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_splatting
 conda activate <Drive>/<env_path>/gaussian_splatting
 ```
-
-#### Custom Install
 
 If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make changes, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.8, PyTorch 2.0.0, CUDA 11.8).
 
@@ -174,11 +172,18 @@ python render.py -m <path to trained model> # Generate renderings
 python metrics.py -m <path to trained model> # Compute error metrics on renderings
 ```
 
+If you want to evaluate our pre-trained models, you will have to download the corresponding source data sets and indicate their location to ```render.py``` with an additional ```--source_path/-s``` flag. 
+```shell
+python render.py -m <path to pre-trained model> -s <path to COLMAP dataset>
+python metrics.py -m <path to pre-trained model>
+```
+The pre-trained models were created with the release codebase. This code base has been cleaned up and includes bugfixes, hence the metrics you get from evaluating them will differ from those in the paper.
+
 <details>
 <summary><span style="font-weight: bold;">Command Line Arguments for render.py</span></summary>
 
   #### --model_path / -m 
-  Path where the trained model should be stored (```output/<random>``` by default).
+  Path to the trained model directory you want to create renderings for.
   #### --skip_train
   Flag to skip rendering the training set.
   #### --skip_test
@@ -217,29 +222,50 @@ We further provide the ```full_eval.py``` script. This script specifies the rout
 ```shell
 python full_eval.py -m360 <mipnerf360 folder> -tat <tanks and temples folder> -db <deep blending folder>
 ```
-In the current version, this process takes about 7h on our reference machine containing an A6000.
+In the current version, this process takes about 7h on our reference machine containing an A6000. If you want to do the full evaluation on our pre-trained models, you can specify their download location and skip training. 
+```shell
+python full_eval.py -o <directory with pretrained models> --skip_training -m360 <mipnerf360 folder> -tat <tanks and temples folder> -db <deep blending folder>
+```
 
-## Network Viewer
+<details>
+<summary><span style="font-weight: bold;">Command Line Arguments for full_eval.py</span></summary>
+  
+  #### --skip_training
+  Flag to skip training stage.
+  #### --skip_rendering
+  Flag to skip rendering stage.
+  #### --skip_metrics
+  Flag to skip metrics calculation stage.
+  #### --output_path
+  Directory to put renderings and results in, ```./eval``` by default, set to pre-trained model location if evaluating them.
+  #### --mipnerf360 / -m360
+  Path to MipNeRF360 source datasets, required if training or rendering.
+  #### --tanksandtemples / -tat
+  Path to Tanks&Temples source datasets, required if training or rendering.
+  #### --deepblending / -db
+  Path to Deep Blending source datasets, required if training or rendering.
+</details>
+<br>
 
-The Network Viewer can be used to observe the training process and watch the model as it forms. It is not required for the basic workflow, but it is automatically set up when preparing SIBR for the Real-Time Viewer.  
+## Interactive Viewers
+We provide two interactive iewers for our method: remote and real-time. Our viewing solutions are based on the SIBR framework. The setup is the same for both, the remote viewer (for observing the training) and the real-time viewer (for inspecting finalized models).
 
 ### Hardware Requirements
-
 - OpenGL 4.5-ready GPU
-- 8 GB VRAM
+- CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
+- 4 GB VRAM
 
 ### Software Requirements
 - C++ Compiler (we *recommend* Visual Studio 2019 for Windows)
 - CUDA 11 Developer SDK (we used 11.8)
 - CMake (recent version, we used 3.24)
-- 7zip (Windows)
+- 7zip (only on Windows)
 
 ### Setup
-
 If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers_(windows|linux)``` (choose whichever fits your OS). The network viewer runs within the SIBR framework for Image-based Rendering applications.
 
 #### Windows
-On Windows, CMake should take care of your dependencies.
+CMake should take care of your dependencies.
 ```shell
 cd SIBR_viewers_windows
 cmake -Bbuild .
@@ -248,7 +274,7 @@ cmake --build build --target install --config RelWithDebInfo
 You may specify a different configuration, e.g. ```Debug``` if you need more control during development.
 
 #### Ubuntu
-For Ubuntu, you will need to install a few dependencies before running the project setup.
+You will need to install a few dependencies before running the project setup.
 ```shell
 # Dependencies
 sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libopencv-dev libglfw3-dev libavdevice-dev libavcodec-dev libeigen3-dev libxxf86vm-dev libembree-dev
@@ -257,37 +283,19 @@ cd SIBR_viewers_linux
 cmake -Bbuild .
 cmake --build build --target install
 ```
-If you receive a build error related to ```libglfw```, locate the library directory and set up a symbolic link there ```libglfw3.so``` &rarr; ```<your actual liblgfw lib>```. 
+If you receive a build error related to ```libglfw```, locate its library directory on your machine and set up a symbolic link there ```libglfw3.so``` &rarr; ```<your actual liblgfw lib>```. 
 
-### Running
+### Navigation in SIBR Viewers
+The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D``` for camera translation and ```Q, E, I, K, J, L``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
+
+### Running the Network Viewer
 You may run the compiled ```SIBR_remoteGaussian_app_<config>``` either by opening the build in your C++ development IDE or by running the installed app in ```install/bin```, e.g.: 
 ```shell
 ./SIBR_viewers_windows/install/bin/SIBR_remoteGaussian_app_rwdi.exe
 ```
-
 The network viewer allows you to connect to a running training process on the same or a different machine. If you are training on the same machine and OS, no command line parameters should be required: the optimizer communicates the location of the training data to the network viewer. By default, optimizer and network viewer will try to establish a connection on **localhost** on port **6009**. You can change this behavior by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. If for some reason the path used by the optimizer to find the training data is not reachable by the network viewer (e.g., due to them running on different (virtual) machines), you may specify an override location to the viewer by using ```--path <source path>```. 
 
-### Navigation
-The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D``` for camera translation and ```Q, E, I, K, J, L``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
-
-## Real-Time Viewer
-
-The Real-Time Viewer can be used to render trained models with real-time frame rates.
-
-### Hardware Requirements
-
-- CUDA-ready GPU with Compute Capability 7.0+
-- OpenGL 4.5-ready GPU
-- 8 GB VRAM
-
-### Software Requirements
-The requirements are the same as for the remote viewer.
-
-### Setup
-
-The setup is the same as for the remote viewer.
-
-### Running
+### Running the Real-Time Viewer
 You may run the compiled ```SIBR_gaussianViewer_app_<config>``` either by opening the build in your C++ development IDE or by running the installed app in ```install/bin```, e.g.: 
 ```shell
 ./SIBR_viewers_windows/install/bin/SIBR_gaussianViewer_app_rwdi.exe --model-path <path to trained model>
@@ -295,9 +303,7 @@ You may run the compiled ```SIBR_gaussianViewer_app_<config>``` either by openin
 
 It should suffice to provide the ```--model-path``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```--path```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
 
-### Navigation
-
-Navigation works exactly as it does in the network viewer. However, you also have the option to visualize the Gaussians by rendering them as ellipsoids from the floating menu.
+In addition to the intial point cloud and the splats, you also have the option to visualize the Gaussians by rendering them as ellipsoids from the floating menu.
 
 ## Converting your own Scenes
 
