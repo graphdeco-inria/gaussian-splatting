@@ -293,7 +293,7 @@ You may run the compiled ```SIBR_gaussianViewer_app_<config>``` either by openin
 ./SIBR_viewers_windows/install/bin/SIBR_gaussianViewer_app_rwdi.exe --model-path <path to trained model>
 ```
 
-It should suffice to provide the ```--model-path``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```--path```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and enter full-screen mode (Menu &rarr; Display).
+It should suffice to provide the ```--model-path``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```--path```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
 
 ### Navigation
 
