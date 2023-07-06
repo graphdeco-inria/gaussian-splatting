@@ -64,9 +64,10 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 - Please see FAQ for smaller VRAM configurations
 
 ### Software Requirements
-- C++ Compiler (we *recommend* Visual Studio 2019 for Windows)
-- CUDA 11 SDK for PyTorch extensions (we used 11.8)
 - Conda (recommended for easy setup)
+- C++ Compiler for PyTorch extensions (we *recommend* Visual Studio 2019 for Windows)
+- CUDA 11 SDK for PyTorch extensions (we used 11.8)
+- C++ Compiler and CUDA SDK must be compatible
 
 ### Setup
 
