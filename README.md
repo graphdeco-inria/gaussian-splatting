@@ -3,7 +3,7 @@ Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indi
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) |
 [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr)
 
-[T&T+DB Datasets (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB) ](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip)| [Evaluation Renderings TODO](TODO)|  <br>
+[T&T+DB Datasets (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Viewer Binaries for Windows (60MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip) | [Evaluation Renderings TODO](TODO) |  <br>
 ![Teaser image](assets/teaser.png)
 
 This repository contains the code associated with the paper "3D Gaussian Splatting for Real-Time Radiance Field Rendering", which can be found [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). We further provide the reference images used to create the error metrics reported in the paper, as well as recently created, pre-trained models. 
@@ -60,7 +60,8 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 ### Hardware Requirements
 
 - CUDA-ready GPU with Compute Capability 7.0+
-- 24 GB VRAM to train the largest scenes in our test suite
+- 24 GB VRAM (to train to paper evaluation quality)
+- Please see FAQ for smaller VRAM configurations
 
 ### Software Requirements
 - C++ Compiler (we *recommend* Visual Studio 2019 for Windows)
@@ -172,12 +173,11 @@ python render.py -m <path to trained model> # Generate renderings
 python metrics.py -m <path to trained model> # Compute error metrics on renderings
 ```
 
-If you want to evaluate our pre-trained models, you will have to download the corresponding source data sets and indicate their location to ```render.py``` with an additional ```--source_path/-s``` flag. 
+If you want to evaluate our pre-trained models, you will have to download the corresponding source data sets and indicate their location to ```render.py``` with an additional ```--source_path/-s``` flag. Note: The pre-trained models were created with the release codebase. This code base has been cleaned up and includes bugfixes, hence the metrics you get from evaluating them will differ from those in the paper.
 ```shell
 python render.py -m <path to pre-trained model> -s <path to COLMAP dataset>
 python metrics.py -m <path to pre-trained model>
 ```
-The pre-trained models were created with the release codebase. This code base has been cleaned up and includes bugfixes, hence the metrics you get from evaluating them will differ from those in the paper.
 
 <details>
 <summary><span style="font-weight: bold;">Command Line Arguments for render.py</span></summary>
@@ -248,12 +248,12 @@ python full_eval.py -o <directory with pretrained models> --skip_training -m360 
 <br>
 
 ## Interactive Viewers
-We provide two interactive iewers for our method: remote and real-time. Our viewing solutions are based on the SIBR framework. The setup is the same for both, the remote viewer (for observing the training) and the real-time viewer (for inspecting finalized models).
+We provide two interactive iewers for our method: remote and real-time. Our viewing solutions are based on the SIBR framework.
 
 ### Hardware Requirements
 - OpenGL 4.5-ready GPU
 - CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
-- 4 GB VRAM
+- 4 GB VRAM recommended
 
 ### Software Requirements
 - C++ Compiler (we *recommend* Visual Studio 2019 for Windows)
@@ -261,7 +261,10 @@ We provide two interactive iewers for our method: remote and real-time. Our view
 - CMake (recent version, we used 3.24)
 - 7zip (only on Windows)
 
-### Setup
+### Pre-built Windows Binaries
+We provide pre-build binaries for Windows [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip). We recommend using them on Windows for an efficient setup, since the building of SIBR involves several external dependencies that must be downloaded and compiled on-the-fly.
+
+### Installation from Source
 If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers_(windows|linux)``` (choose whichever fits your OS). The network viewer runs within the SIBR framework for Image-based Rendering applications.
 
 #### Windows
@@ -289,16 +292,16 @@ If you receive a build error related to ```libglfw```, locate its library direct
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D``` for camera translation and ```Q, E, I, K, J, L``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
 
 ### Running the Network Viewer
-You may run the compiled ```SIBR_remoteGaussian_app_<config>``` either by opening the build in your C++ development IDE or by running the installed app in ```install/bin```, e.g.: 
+You may run the compiled ```SIBR_remoteGaussian_app[_config]``` either by opening the build in your C++ development IDE or by running the installed app in ```install/bin```, e.g.: 
 ```shell
-./SIBR_viewers_windows/install/bin/SIBR_remoteGaussian_app_rwdi.exe
+./<SIBR install dir>/bin/SIBR_remoteGaussian_app
 ```
 The network viewer allows you to connect to a running training process on the same or a different machine. If you are training on the same machine and OS, no command line parameters should be required: the optimizer communicates the location of the training data to the network viewer. By default, optimizer and network viewer will try to establish a connection on **localhost** on port **6009**. You can change this behavior by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. If for some reason the path used by the optimizer to find the training data is not reachable by the network viewer (e.g., due to them running on different (virtual) machines), you may specify an override location to the viewer by using ```--path <source path>```. 
 
 ### Running the Real-Time Viewer
-You may run the compiled ```SIBR_gaussianViewer_app_<config>``` either by opening the build in your C++ development IDE or by running the installed app in ```install/bin```, e.g.: 
+You may run the compiled ```SIBR_gaussianViewer_app[_config]``` either by opening the build in your C++ development IDE or by running the installed app in ```install/bin```, e.g.: 
 ```shell
-./SIBR_viewers_windows/install/bin/SIBR_gaussianViewer_app_rwdi.exe --model-path <path to trained model>
+./<SIBR install dir>/bin/SIBR_gaussianViewer_app --model-path <path to trained model>
 ```
 
 It should suffice to provide the ```--model-path``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```--path```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
@@ -315,5 +318,7 @@ Alternatively, you can use the optional parameters ```--colmap_executable``` and
 ## FAQ
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page.
 
-- *24 GB of VRAM for training is a lot! Can't we do it with less?* Yes, most likely. By our calculations it should be possible with **way** less memory (~8GB). If we can find the time we will try to achieve this. If some PyTorch veteran out there wants to tackle this, we look forward to your pull request!
+- *I don't have 24 GB of VRAM for training, what do I do?* The VRAM consumption is determined by the number of points that are being optimized, which increases over time. If you only want to train to 7k iterations, you will need significantly less. To do the full training routine and avoid running out of memory, you can increase the ```---densify_grad_threshold```, ```--densification_interval``` or reduce the value of ```--densify_until_iter```. Note however that this will affect the quality of the result. Also try setting ```--test_iterations``` to ```-1``` to avoid memory spikes during testing. If ```--densify_grad_threshold``` is very high, no densification should occur and training should complete if the scene itself loads successfully.
+
+- *24 GB of VRAM for reference quality training is still a lot! Can't we do it with less?* Yes, most likely. By our calculations it should be possible with **way** less memory (~8GB). If we can find the time we will try to achieve this. If some PyTorch veteran out there wants to tackle this, we look forward to your pull request!
 
