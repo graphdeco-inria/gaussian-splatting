@@ -55,6 +55,12 @@ class ModelParams(ParamGroup):
         self.eval = False
         super().__init__(parser, "Loading Parameters", sentinel)
 
+    def extract(self, args):
+        g = super().extract(args)
+        g.model_path = os.path.abspath(g.model_path)
+        g.source_path = os.path.abspath(g.source_path)
+        return g
+
 class PipelineParams(ParamGroup):
     def __init__(self, parser):
         self.convert_SHs_python = False

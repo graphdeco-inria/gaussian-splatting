@@ -285,8 +285,7 @@ sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libo
 cd SIBR_viewers_linux
 cmake -Bbuild .
 cmake --build build --target install
-```
-If you receive a build error related to ```libglfw```, locate its library directory on your machine and set up a symbolic link there ```libglfw3.so``` &rarr; ```<your actual liblgfw lib>```. 
+``` 
 
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D``` for camera translation and ```Q, E, I, K, J, L``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
