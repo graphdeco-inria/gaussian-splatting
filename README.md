@@ -92,7 +92,7 @@ If you can afford the disk space, we recommend using our environment files for s
 To run the optimizer, simply use
 
 ```shell
-python train.py -s <path to dataset>
+python train.py -s <path to COLMAP or NeRF Synthetic dataset>
 ```
 
 <details>
@@ -168,7 +168,7 @@ The MipNeRF360 scenes are hosted by the paper authors [here](https://jonbarron.i
 ### Evaluation
 By default, the trained models use all available images in the dataset. To train them while withholding a test set for evaluation, use the ```--eval``` flag. This way, you can render training/test sets and produce error metrics as follows:
 ```shell
-python train.py -s <path to dataset> --eval # Train with train/test split
+python train.py -s <path to COLMAP or NeRF Synthetic dataset> --eval # Train with train/test split
 python render.py -m <path to trained model> # Generate renderings
 python metrics.py -m <path to trained model> # Compute error metrics on renderings
 ```
@@ -262,7 +262,7 @@ We provide two interactive iewers for our method: remote and real-time. Our view
 - 7zip (only on Windows)
 
 ### Pre-built Windows Binaries
-We provide pre-build binaries for Windows [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip). We recommend using them on Windows for an efficient setup, since the building of SIBR involves several external dependencies that must be downloaded and compiled on-the-fly.
+We provide pre-built binaries for Windows [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip). We recommend using them on Windows for an efficient setup, since the building of SIBR involves several external dependencies that must be downloaded and compiled on-the-fly.
 
 ### Installation from Source
 If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers_(windows|linux)``` (choose whichever fits your OS). The network viewer runs within the SIBR framework for Image-based Rendering applications.
