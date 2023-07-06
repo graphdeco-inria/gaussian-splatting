@@ -291,14 +291,14 @@ cmake --build build --target install
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D``` for camera translation and ```Q, E, I, K, J, L``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
 
 ### Running the Network Viewer
-You may run the compiled ```SIBR_remoteGaussian_app[_config]``` either by opening the build in your C++ development IDE or by running the installed app in ```<SIBR install dir>/bin```, e.g.: 
+After extracting or installing the viewers, you may run the compiled ```SIBR_remoteGaussian_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
 ```shell
 ./<SIBR install dir>/bin/SIBR_remoteGaussian_app
 ```
 The network viewer allows you to connect to a running training process on the same or a different machine. If you are training on the same machine and OS, no command line parameters should be required: the optimizer communicates the location of the training data to the network viewer. By default, optimizer and network viewer will try to establish a connection on **localhost** on port **6009**. You can change this behavior by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. If for some reason the path used by the optimizer to find the training data is not reachable by the network viewer (e.g., due to them running on different (virtual) machines), you may specify an override location to the viewer by using ```--path <source path>```. 
 
 ### Running the Real-Time Viewer
-You may run the compiled ```SIBR_gaussianViewer_app[_config]``` either by opening the build in your C++ development IDE or by running the installed app in ```<SIBR install dir>/bin```, e.g.: 
+After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
 ```shell
 ./<SIBR install dir>/bin/SIBR_gaussianViewer_app --model-path <path to trained model>
 ```
