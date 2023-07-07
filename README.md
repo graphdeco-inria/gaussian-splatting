@@ -38,8 +38,14 @@ This research was funded by the ERC Advanced grant FUNGRAPH No 788065. The autho
 
 ## Cloning the Repository
 
-The repository contains submodules, thus please check it out with
+The repository contains submodules, thus please check it out with 
 ```shell
+# SSH
+git clone git@github.com:graphdeco-inria/gaussian-splatting.git --recursive
+```
+or
+```shell
+# HTTPS
 git clone https://github.com/graphdeco-inria/gaussian-splatting --recursive
 ```
 
