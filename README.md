@@ -57,7 +57,7 @@ The codebase has 4 main components:
 - An OpenGL-based real-time viewer to render trained models in real-time.
 - A script to help you turn your own images into optimization-ready SfM data sets
 
-The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Linux Ubuntu 22. Instructions for setting up and running each of them are found in the sections below.
+The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Linux Ubuntu 22.04. Instructions for setting up and running each of them are found in the sections below.
 
 ## Optimizer
 
@@ -114,7 +114,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --eval
   Add this flag to use a MipNeRF360-style training/test split for evaluation.
   #### --resolution / -r
-  Changes the resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. ```1``` by default.
+  Specifies resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. **If not set and input image width exceeds 1.5 megapixels, inputs are automatically rescaled to this target.**
   #### --white_background / -w
   Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
   #### --sh_degree
@@ -169,8 +169,9 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
 </details>
 <br>
 
-The MipNeRF360 scenes are hosted by the paper authors [here](https://jonbarron.info/mipnerf360/). You can find our SfM data sets for Tanks&Temples and Deep Blending [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt+db.zip). If you do not provide an output model directory (```-m```), trained models are written to folders with randomized unique names inside the ```output``` directory. At this point, the trained models may be viewed with the real-time viewer (see further below).
+Note that similar to MipNeRF360, we target images at resolutions in the 1-1.5 megapixel range. For convenience, arbitrary-size inputs can be passed and will be automatically resized if their width exceeds 1500 pixels. We recommend to keep this behavior, but you may force training to use your higher-resolution images by specifying ```-r 1```.
 
+The MipNeRF360 scenes are hosted by the paper authors [here](https://jonbarron.info/mipnerf360/). You can find our SfM data sets for Tanks&Temples and Deep Blending [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt+db.zip). If you do not provide an output model directory (```-m```), trained models are written to folders with randomized unique names inside the ```output``` directory. At this point, the trained models may be viewed with the real-time viewer (see further below).
 
 ### Evaluation
 By default, the trained models use all available images in the dataset. To train them while withholding a test set for evaluation, use the ```--eval``` flag. This way, you can render training/test sets and produce error metrics as follows:

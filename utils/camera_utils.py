@@ -14,13 +14,27 @@ import numpy as np
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
 
+WARNED = False
+
 def loadCam(args, id, cam_info, resolution_scale):
     orig_w, orig_h = cam_info.image.size
 
     if args.resolution in [1, 2, 4, 8]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
     else:  # should be a type that converts to float
-        global_down = orig_w/args.resolution
+        if args.resolution == -1:
+            if orig_w > 1500:
+                global WARNED
+                if not WARNED:
+                    print("[ INFO ] Encountered quite large input images (>1.5Mpix), rescaling to 1.5Mpix. "
+                        "If this is not desired, please explicitly specify '--resolution/-r' as 1")
+                    WARNED = True
+                global_down = orig_w / 1500
+            else:
+                global_down = 1
+        else:
+            global_down = orig_w / args.resolution
+
         scale = float(global_down) * float(resolution_scale)
         resolution = (int(orig_w / scale), int(orig_h / scale))
 
