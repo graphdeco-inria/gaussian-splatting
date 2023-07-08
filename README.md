@@ -259,8 +259,8 @@ We provide two interactive iewers for our method: remote and real-time. Our view
 
 ### Hardware Requirements
 - OpenGL 4.5-ready GPU
-- CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
 - 4 GB VRAM recommended
+- CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
 
 ### Software Requirements
 - C++ Compiler (we *recommend* Visual Studio 2019 for Windows)
@@ -294,17 +294,6 @@ cmake -Bbuild .
 cmake --build build --target install
 ``` 
 
-
-
-
-
-### DEFAULT SHOULD BE TRACKBALL
-
-
-
-
-
-
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D``` for camera translation and ```Q, E, I, K, J, L``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
 
@@ -321,7 +310,9 @@ After extracting or installing the viewers, you may run the compiled ```SIBR_gau
 ./<SIBR install dir>/bin/SIBR_gaussianViewer_app -m <path to trained model>
 ```
 
-It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
+It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. 
+
+**To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).**
 
 In addition to the intial point cloud and the splats, you also have the option to visualize the Gaussians by rendering them as ellipsoids from the floating menu.
 
