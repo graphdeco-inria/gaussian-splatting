@@ -301,10 +301,10 @@ The network viewer allows you to connect to a running training process on the sa
 ### Running the Real-Time Viewer
 After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
 ```shell
-./<SIBR install dir>/bin/SIBR_gaussianViewer_app --model-path <path to trained model>
+./<SIBR install dir>/bin/SIBR_gaussianViewer_app -m <path to trained model>
 ```
 
-It should suffice to provide the ```--model-path``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```--path```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
+It should suffice to provide the ```--model-path``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
 
 In addition to the intial point cloud and the splats, you also have the option to visualize the Gaussians by rendering them as ellipsoids from the floating menu.
 
