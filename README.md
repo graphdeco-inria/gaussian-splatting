@@ -272,12 +272,12 @@ We provide two interactive iewers for our method: remote and real-time. Our view
 We provide pre-built binaries for Windows [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip). We recommend using them on Windows for an efficient setup, since the building of SIBR involves several external dependencies that must be downloaded and compiled on-the-fly.
 
 ### Installation from Source
-If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers_(windows|linux)``` (choose whichever fits your OS). The network viewer runs within the SIBR framework for Image-based Rendering applications.
+If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers```. The network viewer runs within the SIBR framework for Image-based Rendering applications.
 
 #### Windows
 CMake should take care of your dependencies.
 ```shell
-cd SIBR_viewers_windows
+cd SIBR_viewers
 cmake -Bbuild .
 cmake --build build --target install --config RelWithDebInfo
 ```
@@ -289,7 +289,7 @@ You will need to install a few dependencies before running the project setup.
 # Dependencies
 sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libopencv-dev libglfw3-dev libavdevice-dev libavcodec-dev libeigen3-dev libxxf86vm-dev libembree-dev
 # Project setup
-cd SIBR_viewers_linux
+cd SIBR_viewers
 cmake -Bbuild .
 cmake --build build --target install
 ``` 
@@ -321,7 +321,7 @@ After extracting or installing the viewers, you may run the compiled ```SIBR_gau
 ./<SIBR install dir>/bin/SIBR_gaussianViewer_app -m <path to trained model>
 ```
 
-It should suffice to provide the ```--model-path``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
+It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
 
 In addition to the intial point cloud and the splats, you also have the option to visualize the Gaussians by rendering them as ellipsoids from the floating menu.
 
