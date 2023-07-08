@@ -294,6 +294,17 @@ cmake -Bbuild .
 cmake --build build --target install
 ``` 
 
+
+
+
+
+### DEFAULT SHOULD BE TRACKBALL
+
+
+
+
+
+
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D``` for camera translation and ```Q, E, I, K, J, L``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
 
@@ -307,7 +318,7 @@ The network viewer allows you to connect to a running training process on the sa
 ### Running the Real-Time Viewer
 After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
 ```shell
-./<SIBR install dir>/bin/SIBR_gaussianViewer_app --model-path <path to trained model>
+./<SIBR install dir>/bin/SIBR_gaussianViewer_app -m <path to trained model>
 ```
 
 It should suffice to provide the ```--model-path``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```--path```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).
