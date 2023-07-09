@@ -3,7 +3,7 @@ Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indi
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) |
 [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr)
 
-[T&T+DB Datasets (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Viewer Binaries for Windows (60MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip) | [Evaluation Renderings TODO](TODO) |  <br>
+[T&T+DB Datasets (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Viewer Binaries for Windows (60MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip) | [Evaluation Images](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip) |  <br>
 ![Teaser image](assets/teaser.png)
 
 This repository contains the code associated with the paper "3D Gaussian Splatting for Real-Time Radiance Field Rendering", which can be found [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). We further provide the reference images used to create the error metrics reported in the paper, as well as recently created, pre-trained models. 
@@ -114,7 +114,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --eval
   Add this flag to use a MipNeRF360-style training/test split for evaluation.
   #### --resolution / -r
-  Specifies resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. **If not set and input image width exceeds 1.5 megapixels, inputs are automatically rescaled to this target.**
+  Specifies resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. **If not set and input image width exceeds 1.6 megapixels, inputs are automatically rescaled to this target.**
   #### --white_background / -w
   Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
   #### --sh_degree
@@ -169,7 +169,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
 </details>
 <br>
 
-Note that similar to MipNeRF360, we target images at resolutions in the 1-1.5 megapixel range. For convenience, arbitrary-size inputs can be passed and will be automatically resized if their width exceeds 1500 pixels. We recommend to keep this behavior, but you may force training to use your higher-resolution images by specifying ```-r 1```.
+Note that similar to MipNeRF360, we target images at resolutions in the 1-1.6 megapixel range. For convenience, arbitrary-size inputs can be passed and will be automatically resized if their width exceeds 1600 pixels. We recommend to keep this behavior, but you may force training to use your higher-resolution images by specifying ```-r 1```.
 
 The MipNeRF360 scenes are hosted by the paper authors [here](https://jonbarron.info/mipnerf360/). You can find our SfM data sets for Tanks&Temples and Deep Blending [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt+db.zip). If you do not provide an output model directory (```-m```), trained models are written to folders with randomized unique names inside the ```output``` directory. At this point, the trained models may be viewed with the real-time viewer (see further below).
 
@@ -233,6 +233,11 @@ python full_eval.py -m360 <mipnerf360 folder> -tat <tanks and temples folder> -d
 In the current version, this process takes about 7h on our reference machine containing an A6000. If you want to do the full evaluation on our pre-trained models, you can specify their download location and skip training. 
 ```shell
 python full_eval.py -o <directory with pretrained models> --skip_training -m360 <mipnerf360 folder> -tat <tanks and temples folder> -db <deep blending folder>
+```
+
+If you want to do compute the metrics on our paper's [evaluation images](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip), you can also skip rendering. In this case it is not necessary to provide the source datasets. You can compute metrics for multiple image sets at a time. 
+```shell
+python full_eval.py -m <directory with evaluation images>/garden ... --skip_training --skip_rendering
 ```
 
 <details>

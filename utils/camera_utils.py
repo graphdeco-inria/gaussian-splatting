@@ -23,13 +23,13 @@ def loadCam(args, id, cam_info, resolution_scale):
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
     else:  # should be a type that converts to float
         if args.resolution == -1:
-            if orig_w > 1500:
+            if orig_w > 1600:
                 global WARNED
                 if not WARNED:
-                    print("[ INFO ] Encountered quite large input images (>1.5Mpix), rescaling to 1.5Mpix. "
+                    print("[ INFO ] Encountered quite large input images (>1.6Mpix), rescaling to 1.6Mpix. "
                         "If this is not desired, please explicitly specify '--resolution/-r' as 1")
                     WARNED = True
-                global_down = orig_w / 1500
+                global_down = orig_w / 1600
             else:
                 global_down = 1
         else:
