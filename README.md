@@ -324,6 +324,7 @@ The network viewer allows you to connect to a running training process on the sa
   Port to use for connection to a running training script. 
   ### --rendering-size 
   Takes two space separated numbers to define the resolution at which network rendering occurs, ```1200``` width by default.
+  Note that to enforce an aspect that differs from the input images, you need ```--force-aspect-ratio``` too.
   ### --load_images
   Flag to load source dataset images to be displayed in the top view for each camera.
 </details>
@@ -357,7 +358,7 @@ SIBR has many other functionalities, please see the [documentation](https://sibr
   ### --path / -s
   Argument to override model's path to source dataset.
   ### --rendering-size 
-  Takes two space separated numbers to define the resolution at which real-time rendering occurs, ```1200``` width by default.
+  Takes two space separated numbers to define the resolution at which real-time rendering occurs, ```1200``` width by default. Note that to enforce an aspect that differs from the input images, you need ```--force-aspect-ratio``` too.
   ### --load_images
   Flag to load source dataset images to be displayed in the top view for each camera.
   ### --device
