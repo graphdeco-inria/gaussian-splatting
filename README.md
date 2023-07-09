@@ -308,7 +308,23 @@ After extracting or installing the viewers, you may run the compiled ```SIBR_rem
 ```shell
 ./<SIBR install dir>/bin/SIBR_remoteGaussian_app
 ```
-The network viewer allows you to connect to a running training process on the same or a different machine. If you are training on the same machine and OS, no command line parameters should be required: the optimizer communicates the location of the training data to the network viewer. By default, optimizer and network viewer will try to establish a connection on **localhost** on port **6009**. You can change this behavior by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. If for some reason the path used by the optimizer to find the training data is not reachable by the network viewer (e.g., due to them running on different (virtual) machines), you may specify an override location to the viewer by using ```--path <source path>```. 
+The network viewer allows you to connect to a running training process on the same or a different machine. If you are training on the same machine and OS, no command line parameters should be required: the optimizer communicates the location of the training data to the network viewer. By default, optimizer and network viewer will try to establish a connection on **localhost** on port **6009**. You can change this behavior by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. If for some reason the path used by the optimizer to find the training data is not reachable by the network viewer (e.g., due to them running on different (virtual) machines), you may specify an override location to the viewer by using ```-s <source path>```. 
+
+<details>
+<summary><span style="font-weight: bold;">Primary Command Line Arguments for Network Viewer</span></summary>
+
+  ### --path / -s
+  Argument to override model's path to source dataset.
+  ### --ip
+  IP to use for connection to a running training script.
+  ### --port
+  Port to use for connection to a running training script. 
+  ### --rendering-size 
+  Takes two space separated numbers to define the resolution at which network rendering occurs, ```1200``` width by default.
+  ### --load_images
+  Flag to load source dataset images to be displayed in the top view for each camera.
+</details>
+<br>
 
 ### Running the Real-Time Viewer
 After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
@@ -321,7 +337,25 @@ It should suffice to provide the ```-m``` parameter pointing to a trained model 
 **To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).**
 
 In addition to the intial point cloud and the splats, you also have the option to visualize the Gaussians by rendering them as ellipsoids from the floating menu.
-SIBR has many other functionalities, please see the [documentation](https://sibr.gitlabpages.inria.fr/) for more detials on the viewer, navigation options etc. There is also a Top View (available from the menu) that shows the placement of the input cameras and the original SfM point cloud; please note that Top View slows rendering when enabled.
+SIBR has many other functionalities, please see the [documentation](https://sibr.gitlabpages.inria.fr/) for more details on the viewer, navigation options etc. There is also a Top View (available from the menu) that shows the placement of the input cameras and the original SfM point cloud; please note that Top View slows rendering when enabled.
+
+<details>
+<summary><span style="font-weight: bold;">Primary Command Line Arguments for Real-Time Viewer</span></summary>
+
+  ### --model-path / -m
+  Path to trained model.
+  ### --iteration
+  Specifies which of state to load if multiple are available. Defaults to latest available iteration.
+  ### --path / -s
+  Argument to override model's path to source dataset.
+  ### --rendering-size 
+  Takes two space separated numbers to define the resolution at which real-time rendering occurs, ```1200``` width by default.
+  ### --load_images
+  Flag to load source dataset images to be displayed in the top view for each camera.
+  ### --device
+  Index of CUDA device to use for rasterization if multiple are available, ```0``` by default.
+</details>
+<br>
 
 ## Preprocessing your own Scenes
 
@@ -337,5 +371,5 @@ Alternatively, you can use the optional parameters ```--colmap_executable``` and
 
 - *24 GB of VRAM for reference quality training is still a lot! Can't we do it with less?* Yes, most likely. By our calculations it should be possible with **way** less memory (~8GB). If we can find the time we will try to achieve this. If some PyTorch veteran out there wants to tackle this, we look forward to your pull request!
 
-- *How can I use the differentiable Gaussian rasterizer for my own project?* Sure, it is included in this repo as a submodule ```diff-gaussian-rasterization```. Feel free to check out and install the package. It's not really documented, but using it from the Python side is very straightforward (cf. ```gaussian_renderer/__init__.py```).
+- *How can I use the differentiable Gaussian rasterizer for my own project?* Easy, it is included in this repo as a submodule ```diff-gaussian-rasterization```. Feel free to check out and install the package. It's not really documented, but using it from the Python side is very straightforward (cf. ```gaussian_renderer/__init__.py```).
 
