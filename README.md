@@ -330,6 +330,11 @@ The network viewer allows you to connect to a running training process on the sa
 <br>
 
 ### Running the Real-Time Viewer
+
+
+https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/9aa239af-67f9-4f9e-ba5b-d0132ccc06a0
+
+
 After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
 ```shell
 ./<SIBR install dir>/bin/SIBR_gaussianViewer_app -m <path to trained model>
