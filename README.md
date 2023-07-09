@@ -337,3 +337,5 @@ Alternatively, you can use the optional parameters ```--colmap_executable``` and
 
 - *24 GB of VRAM for reference quality training is still a lot! Can't we do it with less?* Yes, most likely. By our calculations it should be possible with **way** less memory (~8GB). If we can find the time we will try to achieve this. If some PyTorch veteran out there wants to tackle this, we look forward to your pull request!
 
+- *How can I use the differentiable Gaussian rasterizer for my own project?* Sure, it is included in this repo as a submodule ```diff-gaussian-rasterization```. Feel free to check out and install the package. It's not really documented, but using it from the Python side is very straightforward (cf. ```gaussian_renderer/__init__.py```).
+
