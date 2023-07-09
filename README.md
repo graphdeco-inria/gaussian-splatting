@@ -261,7 +261,7 @@ python full_eval.py -m <directory with evaluation images>/garden ... --skip_trai
 <br>
 
 ## Interactive Viewers
-We provide two interactive iewers for our method: remote and real-time. Our viewing solutions are based on the SIBR framework.
+We provide two interactive iewers for our method: remote and real-time. Our viewing solutions are based on the [SIBR](https://sibr.gitlabpages.inria.fr/) framework, developed by the GRAPHDECO group for several novel-view synthesis projects.
 
 ### Hardware Requirements
 - OpenGL 4.5-ready GPU
@@ -321,8 +321,9 @@ It should suffice to provide the ```-m``` parameter pointing to a trained model 
 **To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).**
 
 In addition to the intial point cloud and the splats, you also have the option to visualize the Gaussians by rendering them as ellipsoids from the floating menu.
+SIBR has many other functionalities, please see the [documentation](https://sibr.gitlabpages.inria.fr/) for more detials on the viewer, navigation options etc. There is also a Top View (available from the menu) that shows the placement of the input cameras and the original SfM point cloud; please note that Top View slows rendering when enabled.
 
-## Converting your own Scenes
+## Preprocessing your own Scenes
 
 We provide a converter script ```convert.py```, which uses COLMAP to extract SfM information. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```. If you have COLMAP and ImageMagick on your system path, you can simply run 
 ```shell
