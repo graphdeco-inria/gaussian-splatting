@@ -114,7 +114,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --eval
   Add this flag to use a MipNeRF360-style training/test split for evaluation.
   #### --resolution / -r
-  Specifies resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. **If not set and input image width exceeds 1.6 megapixels, inputs are automatically rescaled to this target.**
+  Specifies resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. **If not set and input image width exceeds 1.6K pixels, inputs are automatically rescaled to this target.**
   #### --white_background / -w
   Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
   #### --sh_degree
@@ -169,7 +169,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
 </details>
 <br>
 
-Note that similar to MipNeRF360, we target images at resolutions in the 1-1.6 megapixel range. For convenience, arbitrary-size inputs can be passed and will be automatically resized if their width exceeds 1600 pixels. We recommend to keep this behavior, but you may force training to use your higher-resolution images by specifying ```-r 1```.
+Note that similar to MipNeRF360, we target images at resolutions in the 1-1.6K pixel range. For convenience, arbitrary-size inputs can be passed and will be automatically resized if their width exceeds 1600 pixels. We recommend to keep this behavior, but you may force training to use your higher-resolution images by specifying ```-r 1```.
 
 The MipNeRF360 scenes are hosted by the paper authors [here](https://jonbarron.info/mipnerf360/). You can find our SfM data sets for Tanks&Temples and Deep Blending [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt+db.zip). If you do not provide an output model directory (```-m```), trained models are written to folders with randomized unique names inside the ```output``` directory. At this point, the trained models may be viewed with the real-time viewer (see further below).
 
