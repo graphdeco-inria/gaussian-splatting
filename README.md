@@ -305,7 +305,11 @@ The SIBR interface provides several methods of navigating the scene. By default,
 
 ### Running the Network Viewer
 
-https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/9fe09f3b-32a7-4889-ae4e-227c999298cf
+
+
+https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/90a2e4d3-cf2e-4633-b35f-bfe284e28ff7
+
+
 
 After extracting or installing the viewers, you may run the compiled ```SIBR_remoteGaussian_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
 ```shell
@@ -333,7 +337,11 @@ The network viewer allows you to connect to a running training process on the sa
 ### Running the Real-Time Viewer
 
 
-https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/9aa239af-67f9-4f9e-ba5b-d0132ccc06a0
+
+
+https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/0940547f-1d82-4c2f-a616-44eabbf0f816
+
+
 
 
 After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
