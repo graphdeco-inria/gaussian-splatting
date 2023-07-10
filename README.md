@@ -320,16 +320,16 @@ The network viewer allows you to connect to a running training process on the sa
 <details>
 <summary><span style="font-weight: bold;">Primary Command Line Arguments for Network Viewer</span></summary>
 
-  ### --path / -s
+  #### --path / -s
   Argument to override model's path to source dataset.
-  ### --ip
+  #### --ip
   IP to use for connection to a running training script.
-  ### --port
+  #### --port
   Port to use for connection to a running training script. 
-  ### --rendering-size 
+  #### --rendering-size 
   Takes two space separated numbers to define the resolution at which network rendering occurs, ```1200``` width by default.
   Note that to enforce an aspect that differs from the input images, you need ```--force-aspect-ratio``` too.
-  ### --load_images
+  #### --load_images
   Flag to load source dataset images to be displayed in the top view for each camera.
 </details>
 <br>
@@ -359,28 +359,74 @@ SIBR has many other functionalities, please see the [documentation](https://sibr
 <details>
 <summary><span style="font-weight: bold;">Primary Command Line Arguments for Real-Time Viewer</span></summary>
 
-  ### --model-path / -m
+  #### --model-path / -m
   Path to trained model.
-  ### --iteration
+  #### --iteration
   Specifies which of state to load if multiple are available. Defaults to latest available iteration.
-  ### --path / -s
+  #### --path / -s
   Argument to override model's path to source dataset.
-  ### --rendering-size 
+  #### --rendering-size 
   Takes two space separated numbers to define the resolution at which real-time rendering occurs, ```1200``` width by default. Note that to enforce an aspect that differs from the input images, you need ```--force-aspect-ratio``` too.
-  ### --load_images
+  #### --load_images
   Flag to load source dataset images to be displayed in the top view for each camera.
-  ### --device
+  #### --device
   Index of CUDA device to use for rasterization if multiple are available, ```0``` by default.
 </details>
 <br>
 
 ## Preprocessing your own Scenes
 
-We provide a converter script ```convert.py```, which uses COLMAP to extract SfM information. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```. If you have COLMAP and ImageMagick on your system path, you can simply run 
+Our rasterization requires a SIMPLE_PINHOLE or PINHOLE camera model for COLMAP data. We provide a converter script ```convert.py```, to extract undistorted images and SfM information. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```.
+```
+<location>
+|---input
+|   |---<image 0>
+|   |---<image 1>
+|   |---...
+```
+ If you have COLMAP and ImageMagick on your system path, you can simply run 
 ```shell
 python convert.py -s <location> [--resize] #If not resizing, ImageMagick is not needed
 ```
-Alternatively, you can use the optional parameters ```--colmap_executable``` and ```--magick_executable``` to point to the respective paths. Please note that on Windows, the executable should point to the COLMAP ```.bat``` file that takes care of setting the execution environment. Once done, ```<location>``` will contain the expected COLMAP data set structure with undistorted, differently sized input images, in addition to your original images and temporary data in the directory ```distorted```.
+Alternatively, you can use the optional parameters ```--colmap_executable``` and ```--magick_executable``` to point to the respective paths. Please note that on Windows, the executable should point to the COLMAP ```.bat``` file that takes care of setting the execution environment. Once done, ```<location>``` will contain the expected COLMAP data set structure with undistorted, resized input images, in addition to your original images and some temporary (distorted) data in the directory ```distorted```.
+
+If you have your own COLMAP dataset without undistortion (e.g., using ```OPENCV``` camera), you can try to just run the last part of the script: Put the images in ```input``` and the COLMAP info in a subdirectory ```distorted```:
+```
+<location>
+|---input
+|   |---<image 0>
+|   |---<image 1>
+|   |---...
+|---distorted
+|   |---sparse
+|   |   |---0
+|   |---database.db
+```
+Then run 
+```shell
+python convert.py -s <location> --skip_matching [--resize] #If not resizing, ImageMagick is not needed
+```
+
+<details>
+<summary><span style="font-weight: bold;">Command Line Arguments for convert.py</span></summary>
+
+  #### --no_gpu
+  Flag to avoid using GPU in COLMAP.
+  #### --skip_matching
+  Flag to indicate that COLMAP info is available for images.
+  #### --source_path / -s
+  Location of the inputs.
+  #### --camera 
+  Which camera model to use for the early matching steps, ```OPENCV``` by default.
+  #### --resize
+  Flag for creating resized versions of input images.
+  #### --colmap_executable
+  Path to the COLMAP executable (```.bat``` on Windows).
+  #### --magick_executable
+  Path to the ImageMagick executable.
+</details>
+<br>
+
 ## FAQ
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page.
 
