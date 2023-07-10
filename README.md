@@ -57,7 +57,7 @@ The codebase has 4 main components:
 - An OpenGL-based real-time viewer to render trained models in real-time.
 - A script to help you turn your own images into optimization-ready SfM data sets
 
-The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Linux Ubuntu 22.04. Instructions for setting up and running each of them are found in the sections below.
+The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
 
 ## Optimizer
 
