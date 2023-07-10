@@ -380,9 +380,9 @@ Our rasterization requires a SIMPLE_PINHOLE or PINHOLE camera model for COLMAP d
 ```
 <location>
 |---input
-|   |---<image 0>
-|   |---<image 1>
-|   |---...
+    |---<image 0>
+    |---<image 1>
+    |---...
 ```
  If you have COLMAP and ImageMagick on your system path, you can simply run 
 ```shell
@@ -398,10 +398,10 @@ If you have your own COLMAP dataset without undistortion (e.g., using ```OPENCV`
 |   |---<image 1>
 |   |---...
 |---distorted
-|   |---sparse
-|   |   |---0
-|   |   |   |---...
-|   |---database.db
+    |---database.db
+    |---sparse
+        |---0
+            |---...
 ```
 Then run 
 ```shell
