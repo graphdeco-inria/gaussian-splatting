@@ -49,7 +49,7 @@ def loadCam(args, id, cam_info, resolution_scale):
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                   image=gt_image, gt_alpha_mask=loaded_mask,
-                  image_name=cam_info.image_name, uid=id, data_on_cpu=args.data_on_cpu)
+                  image_name=cam_info.image_name, uid=id)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
