@@ -289,7 +289,7 @@ cmake --build build --target install --config RelWithDebInfo
 ```
 You may specify a different configuration, e.g. ```Debug``` if you need more control during development.
 
-#### Ubuntu
+#### Ubuntu 22.04
 You will need to install a few dependencies before running the project setup.
 ```shell
 # Dependencies
@@ -299,6 +299,14 @@ cd SIBR_viewers
 cmake -Bbuild .
 cmake --build build --target install
 ``` 
+
+#### Ubuntu 20.04
+Backwards compatibility with Focal Fossa is not fully tested, but building SIBR should still work by first invoking
+```shell
+git checkout fossa_compatibility
+git submodule update --init
+```
+and then continuing with the steps for Ubuntu 22.04.
 
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D, Q, E``` for camera translation and ```I, K, J, L, U, O``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
