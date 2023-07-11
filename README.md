@@ -269,7 +269,7 @@ We provide two interactive iewers for our method: remote and real-time. Our view
 - CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
 
 ### Software Requirements
-- C++ Compiler (we used Visual Studio 2019 for Windows)
+- Visual Studio or g++, **not Clang** (we used Visual Studio 2019 for Windows)
 - CUDA SDK 11 (we used 11.8)
 - CMake (recent version, we used 3.24)
 - 7zip (only on Windows)
