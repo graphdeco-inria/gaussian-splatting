@@ -3,7 +3,7 @@ Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indi
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) |
 [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |
 
-| [T&T+DB Datasets (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Viewers for Windows (60MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip) | [Evaluation Images (7 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip) |  <br>
+| [T&T+DB COLMAP (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Viewers for Windows (60MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip) | [Evaluation Images (7 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip) |  <br>
 ![Teaser image](assets/teaser.png)
 
 This repository contains the official authors implementation associated with the paper "3D Gaussian Splatting for Real-Time Radiance Field Rendering", which can be found [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). We further provide the reference images used to create the error metrics reported in the paper, as well as recently created, pre-trained models. 
@@ -57,7 +57,7 @@ The codebase has 4 main components:
 - An OpenGL-based real-time viewer to render trained models in real-time.
 - A script to help you turn your own images into optimization-ready SfM data sets
 
-The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Linux Ubuntu 22.04. Instructions for setting up and running each of them are found in the sections below.
+The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
 
 ## Optimizer
 
@@ -92,7 +92,7 @@ conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_spl
 conda activate <Drive>/<env_path>/gaussian_splatting
 ```
 
-If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make changes, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.8, PyTorch 2.0.0, CUDA 11.8).
+If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make modifications, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.8, PyTorch 2.0.0, CUDA 11.8).
 
 ### Running
 
@@ -181,7 +181,7 @@ python render.py -m <path to trained model> # Generate renderings
 python metrics.py -m <path to trained model> # Compute error metrics on renderings
 ```
 
-If you want to evaluate our pre-trained models, you will have to download the corresponding source data sets and indicate their location to ```render.py``` with an additional ```--source_path/-s``` flag. Note: The pre-trained models were created with the release codebase. This code base has been cleaned up and includes bugfixes, hence the metrics you get from evaluating them will differ from those in the paper.
+If you want to evaluate our [pre-trained models](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip), you will have to download the corresponding source data sets and indicate their location to ```render.py``` with an additional ```--source_path/-s``` flag. Note: The pre-trained models were created with the release codebase. This code base has been cleaned up and includes bugfixes, hence the metrics you get from evaluating them will differ from those in the paper.
 ```shell
 python render.py -m <path to pre-trained model> -s <path to COLMAP dataset>
 python metrics.py -m <path to pre-trained model>
@@ -235,7 +235,7 @@ In the current version, this process takes about 7h on our reference machine con
 python full_eval.py -o <directory with pretrained models> --skip_training -m360 <mipnerf360 folder> -tat <tanks and temples folder> -db <deep blending folder>
 ```
 
-If you want to do compute the metrics on our paper's [evaluation images](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip), you can also skip rendering. In this case it is not necessary to provide the source datasets. You can compute metrics for multiple image sets at a time. 
+If you want to compute the metrics on our paper's [evaluation images](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip), you can also skip rendering. In this case it is not necessary to provide the source datasets. You can compute metrics for multiple image sets at a time. 
 ```shell
 python full_eval.py -m <directory with evaluation images>/garden ... --skip_training --skip_rendering
 ```
@@ -320,16 +320,16 @@ The network viewer allows you to connect to a running training process on the sa
 <details>
 <summary><span style="font-weight: bold;">Primary Command Line Arguments for Network Viewer</span></summary>
 
-  ### --path / -s
+  #### --path / -s
   Argument to override model's path to source dataset.
-  ### --ip
+  #### --ip
   IP to use for connection to a running training script.
-  ### --port
+  #### --port
   Port to use for connection to a running training script. 
-  ### --rendering-size 
+  #### --rendering-size 
   Takes two space separated numbers to define the resolution at which network rendering occurs, ```1200``` width by default.
   Note that to enforce an aspect that differs from the input images, you need ```--force-aspect-ratio``` too.
-  ### --load_images
+  #### --load_images
   Flag to load source dataset images to be displayed in the top view for each camera.
 </details>
 <br>
@@ -349,45 +349,96 @@ After extracting or installing the viewers, you may run the compiled ```SIBR_gau
 ./<SIBR install dir>/bin/SIBR_gaussianViewer_app -m <path to trained model>
 ```
 
-It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. 
+It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. Combine it with ```--force-aspect-ratio``` if you want the exact resolution and don't mind image distortion. 
 
 **To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display).**
 
 In addition to the intial point cloud and the splats, you also have the option to visualize the Gaussians by rendering them as ellipsoids from the floating menu.
-SIBR has many other functionalities, please see the [documentation](https://sibr.gitlabpages.inria.fr/) for more details on the viewer, navigation options etc. There is also a Top View (available from the menu) that shows the placement of the input cameras and the original SfM point cloud; please note that Top View slows rendering when enabled.
+SIBR has many other functionalities, please see the [documentation](https://sibr.gitlabpages.inria.fr/) for more details on the viewer, navigation options etc. There is also a Top View (available from the menu) that shows the placement of the input cameras and the original SfM point cloud; please note that Top View slows rendering when enabled. The real-time viewer also uses slightly more aggressive, fast culling, which can be toggled in the floating menu. If you ever encounter an issue that can be solved by turning fast culling off, please let us know.
 
 <details>
 <summary><span style="font-weight: bold;">Primary Command Line Arguments for Real-Time Viewer</span></summary>
 
-  ### --model-path / -m
+  #### --model-path / -m
   Path to trained model.
-  ### --iteration
+  #### --iteration
   Specifies which of state to load if multiple are available. Defaults to latest available iteration.
-  ### --path / -s
+  #### --path / -s
   Argument to override model's path to source dataset.
-  ### --rendering-size 
+  #### --rendering-size 
   Takes two space separated numbers to define the resolution at which real-time rendering occurs, ```1200``` width by default. Note that to enforce an aspect that differs from the input images, you need ```--force-aspect-ratio``` too.
-  ### --load_images
+  #### --load_images
   Flag to load source dataset images to be displayed in the top view for each camera.
-  ### --device
+  #### --device
   Index of CUDA device to use for rasterization if multiple are available, ```0``` by default.
 </details>
 <br>
 
 ## Preprocessing your own Scenes
 
-We provide a converter script ```convert.py```, which uses COLMAP to extract SfM information. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```. If you have COLMAP and ImageMagick on your system path, you can simply run 
+Our rasterization requires a SIMPLE_PINHOLE or PINHOLE camera model for COLMAP data. We provide a converter script ```convert.py```, to extract undistorted images and SfM information. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```.
+```
+<location>
+|---input
+    |---<image 0>
+    |---<image 1>
+    |---...
+```
+ If you have COLMAP and ImageMagick on your system path, you can simply run 
 ```shell
 python convert.py -s <location> [--resize] #If not resizing, ImageMagick is not needed
 ```
-Alternatively, you can use the optional parameters ```--colmap_executable``` and ```--magick_executable``` to point to the respective paths. Please note that on Windows, the executable should point to the COLMAP ```.bat``` file that takes care of setting the execution environment. Once done, ```<location>``` will contain the expected COLMAP data set structure with undistorted, differently sized input images, in addition to your original images and temporary data in the directory ```distorted```.
+Alternatively, you can use the optional parameters ```--colmap_executable``` and ```--magick_executable``` to point to the respective paths. Please note that on Windows, the executable should point to the COLMAP ```.bat``` file that takes care of setting the execution environment. Once done, ```<location>``` will contain the expected COLMAP data set structure with undistorted, resized input images, in addition to your original images and some temporary (distorted) data in the directory ```distorted```.
+
+If you have your own COLMAP dataset without undistortion (e.g., using ```OPENCV``` camera), you can try to just run the last part of the script: Put the images in ```input``` and the COLMAP info in a subdirectory ```distorted```:
+```
+<location>
+|---input
+|   |---<image 0>
+|   |---<image 1>
+|   |---...
+|---distorted
+    |---database.db
+    |---sparse
+        |---0
+            |---...
+```
+Then run 
+```shell
+python convert.py -s <location> --skip_matching [--resize] #If not resizing, ImageMagick is not needed
+```
+
+<details>
+<summary><span style="font-weight: bold;">Command Line Arguments for convert.py</span></summary>
+
+  #### --no_gpu
+  Flag to avoid using GPU in COLMAP.
+  #### --skip_matching
+  Flag to indicate that COLMAP info is available for images.
+  #### --source_path / -s
+  Location of the inputs.
+  #### --camera 
+  Which camera model to use for the early matching steps, ```OPENCV``` by default.
+  #### --resize
+  Flag for creating resized versions of input images.
+  #### --colmap_executable
+  Path to the COLMAP executable (```.bat``` on Windows).
+  #### --magick_executable
+  Path to the ImageMagick executable.
+</details>
+<br>
+
 ## FAQ
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page.
 
-- *I don't have 24 GB of VRAM for training, what do I do?* The VRAM consumption is determined by the number of points that are being optimized, which increases over time. If you only want to train to 7k iterations, you will need significantly less. To do the full training routine and avoid running out of memory, you can increase the ```---densify_grad_threshold```, ```--densification_interval``` or reduce the value of ```--densify_until_iter```. Note however that this will affect the quality of the result. Also try setting ```--test_iterations``` to ```-1``` to avoid memory spikes during testing. If ```--densify_grad_threshold``` is very high, no densification should occur and training should complete if the scene itself loads successfully.
+- *I don't have 24 GB of VRAM for training, what do I do?* The VRAM consumption is determined by the number of points that are being optimized, which increases over time. If you only want to train to 7k iterations, you will need significantly less. To do the full training routine and avoid running out of memory, you can increase the ```--densify_grad_threshold```, ```--densification_interval``` or reduce the value of ```--densify_until_iter```. Note however that this will affect the quality of the result. Also try setting ```--test_iterations``` to ```-1``` to avoid memory spikes during testing. If ```--densify_grad_threshold``` is very high, no densification should occur and training should complete if the scene itself loads successfully.
 
 - *24 GB of VRAM for reference quality training is still a lot! Can't we do it with less?* Yes, most likely. By our calculations it should be possible with **way** less memory (~8GB). If we can find the time we will try to achieve this. If some PyTorch veteran out there wants to tackle this, we look forward to your pull request!
 
+- *How can I use this for a much larger dataset, like a city district?* Given enough memory, this should work out fine, but it will require to adapt the ```--scaling_lr``` and ```--position_lr_init/final```. To avoid manual tuning, a suggestion is to check the loss: if it diverges early on, reset and use a lower scaling / position learning rate.
+
 - *How can I use the differentiable Gaussian rasterizer for my own project?* Easy, it is included in this repo as a submodule ```diff-gaussian-rasterization```. Feel free to check out and install the package. It's not really documented, but using it from the Python side is very straightforward (cf. ```gaussian_renderer/__init__.py```).
+
+- *Wait, but ```<insert feature>``` isn't optimized and could be much better?* There are several parts we didn't even have time to think about improving (yet). The performance you get with this prototype is probably a rather slow baseline for what is physically possible.
 
 - *Something is broken, how did this happen?* We tried hard to provide a solid and comprehensible basis to make use of the paper's method. We have refactored the code quite a bit, but we have limited capacity to test all possible usage scenarios. Thus, if part of the website, the code or the performance is lacking, please create an issue. If we find the time, we will do our best to address it.
