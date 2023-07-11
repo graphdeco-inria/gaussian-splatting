@@ -37,7 +37,7 @@ class Camera(nn.Module):
         if gt_alpha_mask is not None:
             self.original_image *= gt_alpha_mask.cpu() if self.data_on_cpu else gt_alpha_mask.cuda()
         else:
-            self.original_image *= torch.ones((1, self.image_height, self.image_width), device="cpu")
+            self.original_image *= torch.ones((1, self.image_height, self.image_width), device="cpu") if self.data_on_cpu else torch.ones((1, self.image_height, self.image_width), device="cpu")
 
         self.zfar = 100.0
         self.znear = 0.01
