@@ -115,6 +115,8 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Add this flag to use a MipNeRF360-style training/test split for evaluation.
   #### --resolution / -r
   Specifies resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. **If not set and input image width exceeds 1.6K pixels, inputs are automatically rescaled to this target.**
+  #### --data_device
+  Specifies where to put the source image data, ```cuda``` by default, recommended to use ```cpu``` if training on large/high-resolution dataset, will reduce VRAM consumption, but slightly slow down training.
   #### --white_background / -w
   Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
   #### --sh_degree
@@ -165,8 +167,6 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Space-separated iterations at which the training script saves the Gaussian model, ```7000 30000 <iterations>``` by default.
   #### --quiet 
   Flag to omit any text written to standard out pipe. 
-  #### --data_device
-  Specify where to put the source image data, ```cuda``` by default, recommended to use ```cpu``` if training on large/high-resolution dataset, will reduce VRAM consumption, but slightly slow down training.
 
 </details>
 <br>
