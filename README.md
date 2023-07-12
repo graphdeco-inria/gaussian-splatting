@@ -304,7 +304,6 @@ cmake --build build --target install
 Backwards compatibility with Focal Fossa is not fully tested, but building SIBR should still invoking
 ```shell
 git checkout fossa_compatibility
-git submodule update --init
 ```
 in ```SIBR_viewers``` and then continuing with the steps for Ubuntu 22.04.
 
