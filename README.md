@@ -297,7 +297,7 @@ sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libo
 # Project setup
 cd SIBR_viewers
 cmake -Bbuild .
-cmake --build build --target install
+cmake --build build -j 24 --target install --config Release
 ``` 
 
 #### Ubuntu 20.04
