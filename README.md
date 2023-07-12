@@ -71,8 +71,8 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 ### Software Requirements
 - Conda (recommended for easy setup)
-- C++ Compiler for PyTorch extensions (we *recommend* Visual Studio 2019 for Windows)
-- CUDA 11 SDK for PyTorch extensions (we used 11.8)
+- C++ Compiler for PyTorch extensions (we used Visual Studio 2019 for Windows)
+- CUDA SDK 11.7+ for PyTorch extensions (we used 11.8, **known issues with 11.6**)
 - C++ Compiler and CUDA SDK must be compatible
 
 ### Setup
@@ -269,8 +269,8 @@ We provide two interactive iewers for our method: remote and real-time. Our view
 - CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
 
 ### Software Requirements
-- C++ Compiler (we *recommend* Visual Studio 2019 for Windows)
-- CUDA 11 Developer SDK (we used 11.8)
+- Visual Studio or g++, **not Clang** (we used Visual Studio 2019 for Windows)
+- CUDA SDK 11 (we used 11.8)
 - CMake (recent version, we used 3.24)
 - 7zip (only on Windows)
 
@@ -289,7 +289,7 @@ cmake --build build --target install --config RelWithDebInfo
 ```
 You may specify a different configuration, e.g. ```Debug``` if you need more control during development.
 
-#### Ubuntu
+#### Ubuntu 22.04
 You will need to install a few dependencies before running the project setup.
 ```shell
 # Dependencies
@@ -299,6 +299,14 @@ cd SIBR_viewers
 cmake -Bbuild .
 cmake --build build --target install
 ``` 
+
+#### Ubuntu 20.04
+Backwards compatibility with Focal Fossa is not fully tested, but building SIBR should still work by first invoking
+```shell
+git checkout fossa_compatibility
+git submodule update --init
+```
+and then continuing with the steps for Ubuntu 22.04.
 
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D, Q, E``` for camera translation and ```I, K, J, L, U, O``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
@@ -374,9 +382,24 @@ SIBR has many other functionalities, please see the [documentation](https://sibr
 </details>
 <br>
 
-## Preprocessing your own Scenes
+## Processing your own Scenes
 
-Our rasterization requires a SIMPLE_PINHOLE or PINHOLE camera model for COLMAP data. We provide a converter script ```convert.py```, to extract undistorted images and SfM information. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```.
+Our COLMAP loaders expect the following dataset structure in the source path location:
+
+```
+<location>
+|---images
+|   |---<image 0>
+|   |---<image 1>
+|   |---...
+|---sparse
+    |---0
+        |---cameras.bin
+        |---images.bin
+        |---points3D.bin
+```
+
+For rasterization, the camera models must be either a SIMPLE_PINHOLE or PINHOLE camera. We provide a converter script ```convert.py```, to extract undistorted images and SfM information from input images. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```.
 ```
 <location>
 |---input
