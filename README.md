@@ -165,8 +165,8 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Space-separated iterations at which the training script saves the Gaussian model, ```7000 30000 <iterations>``` by default.
   #### --quiet 
   Flag to omit any text written to standard out pipe. 
-  #### --data_on_cpu
-  Flag to put data on cpu, will save a lot of VRAM required to train, slightly slower the training, useful for large amount of training data
+  #### --data_device
+  Specify where to put the data on,```cuda``` by default, recommend use ```cpu``` if training on large scale/resolution dataset, will save a lot of VRAM required to train, but slightly slower the training
 
 </details>
 <br>
