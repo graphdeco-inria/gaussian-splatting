@@ -166,7 +166,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --quiet 
   Flag to omit any text written to standard out pipe. 
   #### --data_device
-  Specify where to put the data on,```cuda``` by default, recommend use ```cpu``` if training on large scale/resolution dataset, will save a lot of VRAM required to train, but slightly slower the training
+  Specify where to put the source image data, ```cuda``` by default, recommended to use ```cpu``` if training on large/high-resolution dataset, will reduce VRAM consumption, but slightly slow down training.
 
 </details>
 <br>
