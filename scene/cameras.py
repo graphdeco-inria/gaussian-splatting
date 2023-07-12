@@ -33,7 +33,7 @@ class Camera(nn.Module):
             self.data_device = torch.device(data_device)
         except Exception as e:
             print(e)
-            print("[Warning] Custom device {data_device} failed, fallback to default cuda device" )
+            print(f"[Warning] Custom device {data_device} failed, fallback to default cuda device" )
             self.data_device = torch.device("cuda")
 
         self.original_image = image.clamp(0.0, 1.0).to(self.data_device)
