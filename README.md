@@ -394,9 +394,9 @@ Our COLMAP loaders expect the following dataset structure in the source path loc
 |   |---...
 |---sparse
     |---0
-        |---cameras.bin  | cameras.txt
-        |---images.bin   | images.txt
-        |---points3D.bin | points3D.txt
+        |---cameras.bin
+        |---images.bin
+        |---points3D.bin
 ```
 
 For rasterization, the camera models must be either a SIMPLE_PINHOLE or PINHOLE camera. We provide a converter script ```convert.py```, to extract undistorted images and SfM information from input images. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```.
