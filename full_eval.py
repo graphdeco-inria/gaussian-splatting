@@ -37,13 +37,13 @@ if not args.skip_training or not args.skip_rendering:
     args = parser.parse_args()
 
 if not args.skip_training:
-    common_args = " --eval "
-    # for scene in mipnerf360_outdoor_scenes:
-    #     source = args.mipnerf360 + "/" + scene
-    #     os.system("python train.py -s " + source + " -i images_4 -m " + args.output_path + "/" + scene + common_args)
-    # for scene in mipnerf360_indoor_scenes:
-    #     source = args.mipnerf360 + "/" + scene
-    #     os.system("python train.py -s " + source + " -i images_2 -m " + args.output_path + "/" + scene + common_args)
+    common_args = " --quiet --eval --test_iterations -1 "
+    for scene in mipnerf360_outdoor_scenes:
+        source = args.mipnerf360 + "/" + scene
+        os.system("python train.py -s " + source + " -i images_4 -m " + args.output_path + "/" + scene + common_args)
+    for scene in mipnerf360_indoor_scenes:
+        source = args.mipnerf360 + "/" + scene
+        os.system("python train.py -s " + source + " -i images_2 -m " + args.output_path + "/" + scene + common_args)
     for scene in tanks_and_temples_scenes:
         source = args.tanksandtemples + "/" + scene
         os.system("python train.py -s " + source + " -m " + args.output_path + "/" + scene + common_args)
