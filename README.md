@@ -298,7 +298,6 @@ You will need to install a few dependencies before running the project setup.
 sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libopencv-dev libglfw3-dev libavdevice-dev libavcodec-dev libeigen3-dev libxxf86vm-dev libembree-dev
 # Project setup
 cd SIBR_viewers
-# Default
 cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
 cmake --build build -j24 --target install
 ``` 
@@ -382,6 +381,8 @@ SIBR has many other functionalities, please see the [documentation](https://sibr
   Flag to load source dataset images to be displayed in the top view for each camera.
   #### --device
   Index of CUDA device to use for rasterization if multiple are available, ```0``` by default.
+  #### --no_interop
+  Disables CUDA/GL interop forcibly. Use on systems that may not behave according to spec (e.g., WSL2 with MESA GL 4.5 software rendering).
 </details>
 <br>
 
