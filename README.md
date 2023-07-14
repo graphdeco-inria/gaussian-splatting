@@ -130,6 +130,20 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Flag to make pipeline compute forward and backward of the 3D covariance with PyTorch instead of ours.
   #### --iterations
   Number of total iterations to train for, ```30_000``` by default.
+  #### --ip
+  IP to start GUI server on, ```127.0.0.1``` by default.
+  #### --port 
+  Port to use for GUI server, ```6009``` by default.
+  #### --test_iterations
+  Space-separated iterations at which the training script computes L1 and PSNR over test set, ```7000 30000``` by default.
+  #### --save_iterations
+  Space-separated iterations at which the training script saves the Gaussian model, ```7000 30000 <iterations>``` by default.
+  #### --checkpoint_iterations
+  Space-separated iterations at which to store a checkpoint for continuing later, saved in the model directory.
+  #### --start_checkpoint
+  Path to a saved checkpoint to continue training from.
+  #### --quiet 
+  Flag to omit any text written to standard out pipe. 
   #### --feature_lr
   Spherical harmonics features learning rate, ```0.0025``` by default.
   #### --opacity_lr
@@ -160,16 +174,6 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Influence of SSIM on total loss from 0 to 1, ```0.2``` by default. 
   #### --percent_dense
   Percentage of scene extent (0--1) a point must exceed to be forcibly densified, ```0.1``` by default.
-  #### --ip
-  IP to start GUI server on, ```127.0.0.1``` by default.
-  #### --port 
-  Port to use for GUI server, ```6009``` by default.
-  #### --test_iterations
-  Space-separated iterations at which the training script computes L1 and PSNR over test set, ```7000 30000``` by default.
-  #### --save_iterations
-  Space-separated iterations at which the training script saves the Gaussian model, ```7000 30000 <iterations>``` by default.
-  #### --quiet 
-  Flag to omit any text written to standard out pipe. 
 
 </details>
 <br>
