@@ -468,6 +468,10 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
 
 - *How can I use this for a much larger dataset, like a city district?* The current method was not designed for these, but given enough memory, it should work out. However, the approach can struggle in multi-scale detail scenes (extreme close-ups, mixed with far-away shots). This is usually the case in, e.g., driving data sets (cars close up, buildings far away). For such scenes, you will want to lower the ```--position_lr_init/final``` and ```--scaling_lr``` (x0.3, x0.1, ...).
 
+Default Learning Rates | Using ```--position_lr_init 0.000016 --scaling_lr 0.001```
+:--- | ---:
+![Default learning rate result](assets/worse.png "title-1") | ![Reduced learning rate result](assets/better.png "title-2")
+
 - *I don't have 24 GB of VRAM for training, what do I do?* The VRAM consumption is determined by the number of points that are being optimized, which increases over time. If you only want to train to 7k iterations, you will need significantly less. To do the full training routine and avoid running out of memory, you can increase the ```--densify_grad_threshold```, ```--densification_interval``` or reduce the value of ```--densify_until_iter```. Note however that this will affect the quality of the result. Also try setting ```--test_iterations``` to ```-1``` to avoid memory spikes during testing. If ```--densify_grad_threshold``` is very high, no densification should occur and training should complete if the scene itself loads successfully.
 
 - *24 GB of VRAM for reference quality training is still a lot! Can't we do it with less?* Yes, most likely. By our calculations it should be possible with **way** less memory (~8GB). If we can find the time we will try to achieve this. If some PyTorch veteran out there wants to tackle this, we look forward to your pull request!
