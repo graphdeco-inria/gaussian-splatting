@@ -466,24 +466,12 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page.
 
 
-- *How can I use this for a much larger dataset, like a city district?* The current method was not designed for these, but given enough memory, it should work out. However, the approach can struggle in multi-scale detail scenes (extreme close-ups, mixed with far-away shots). This is usually the case in, e.g., driving data sets (cars close up, buildings far away). For such scenes, you will want to lower the ```--position_lr_init/final``` and ```--scaling_lr``` (x0.3, x0.1, ...).
+- *How can I use this for a much larger dataset, like a city district?* The current method was not designed for these, but given enough memory, it should work out. However, the approach can struggle in multi-scale detail scenes (extreme close-ups, mixed with far-away shots). This is usually the case in, e.g., driving data sets (cars close up, buildings far away). For such scenes, you will want to lower the ```--position_lr_init/final``` and ```--scaling_lr``` (x0.3, x0.1, ...). Compare default learning rate (left) and ```--position_lr_init 0.000016 --scaling_lr 0.001"``` (right) below.
 
-<div style="display: flex; align-items: center;">
-  <div style="width: 50%;">
-    <div style="text-align: center;">Default Learning Rates</div>
-    <div style="display: flex; justify-content: center;">
-      <img src="assets/worse.png" alt="Default learning rate result" title="title-1" style="width: 95%;">
-    </div>
-  </div>
-  <div style="flex-grow: 1;"></div>
-  <div style="width: 50%;">
-    <div style="text-align: center;">Using <code>--position_lr_init 0.000016 --scaling_lr 0.001</code></div>
-    <div style="display: flex; justify-content: center;">
-      <img src="assets/better.png" alt="Reduced learning rate result" title="title-2" style="width: 95%;">
-    </div>
-  </div>
-</div>
-<br>
+| | |
+| --- | --- |
+| ![Default learning rate result](assets/worse.png "title-1") <!-- --> | <!-- --> ![Reduced learning rate result](assets/better.png "title-2") |
+
 
 - *I don't have 24 GB of VRAM for training, what do I do?* The VRAM consumption is determined by the number of points that are being optimized, which increases over time. If you only want to train to 7k iterations, you will need significantly less. To do the full training routine and avoid running out of memory, you can increase the ```--densify_grad_threshold```, ```--densification_interval``` or reduce the value of ```--densify_until_iter```. Note however that this will affect the quality of the result. Also try setting ```--test_iterations``` to ```-1``` to avoid memory spikes during testing. If ```--densify_grad_threshold``` is very high, no densification should occur and training should complete if the scene itself loads successfully.
 
