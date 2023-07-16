@@ -149,7 +149,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --opacity_lr
   Opacity learning rate, ```0.05``` by default.
   #### --scaling_lr
-  Scaling learning rate, ```0.001``` by default.
+  Scaling learning rate, ```0.005``` by default.
   #### --rotation_lr
   Rotation learning rate, ```0.001``` by default.
   #### --position_lr_max_steps
@@ -465,11 +465,13 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
 ## FAQ
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page.
 
+
+- *How can I use this for a much larger dataset, like a city district?* The current method was not designed for these, but given enough memory, it should work out. However, the approach can struggle in multi-scale detail scenes (extreme close-ups, mixed with far-away shots). This is usually the case in, e.g., driving data sets (cars close up, buildings far away). For such scenes, you will want to lower the ```--position_lr_init/final``` and ```--scaling_lr``` (x0.3, x0.1, ...).
+
 - *I don't have 24 GB of VRAM for training, what do I do?* The VRAM consumption is determined by the number of points that are being optimized, which increases over time. If you only want to train to 7k iterations, you will need significantly less. To do the full training routine and avoid running out of memory, you can increase the ```--densify_grad_threshold```, ```--densification_interval``` or reduce the value of ```--densify_until_iter```. Note however that this will affect the quality of the result. Also try setting ```--test_iterations``` to ```-1``` to avoid memory spikes during testing. If ```--densify_grad_threshold``` is very high, no densification should occur and training should complete if the scene itself loads successfully.
 
 - *24 GB of VRAM for reference quality training is still a lot! Can't we do it with less?* Yes, most likely. By our calculations it should be possible with **way** less memory (~8GB). If we can find the time we will try to achieve this. If some PyTorch veteran out there wants to tackle this, we look forward to your pull request!
 
-- *How can I use this for a much larger dataset, like a city district?* Given enough memory, this should work out fine, but it will require to adapt the ```--scaling_lr``` and ```--position_lr_init/final```. To avoid manual tuning, a suggestion is to check the loss: if it diverges early on, reset and use a lower scaling / position learning rate.
 
 - *How can I use the differentiable Gaussian rasterizer for my own project?* Easy, it is included in this repo as a submodule ```diff-gaussian-rasterization```. Feel free to check out and install the package. It's not really documented, but using it from the Python side is very straightforward (cf. ```gaussian_renderer/__init__.py```).
 
