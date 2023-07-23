@@ -128,6 +128,10 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Flag to make pipeline compute forward and backward of SHs with PyTorch instead of ours.
   #### --convert_cov3D_python
   Flag to make pipeline compute forward and backward of the 3D covariance with PyTorch instead of ours.
+  #### --debug
+  Enables debug mode if you experience erros. If the rasterizer fails, a ```dump``` file is created that you may forward to us in an issue so we can take a look.
+  #### --debug_from
+  Debugging is **slow**. You may specify an iteration (starting from 0) after which the above debugging becomes active.
   #### --iterations
   Number of total iterations to train for, ```30_000``` by default.
   #### --ip
