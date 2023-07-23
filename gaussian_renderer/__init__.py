@@ -44,7 +44,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         projmatrix=viewpoint_camera.full_proj_transform,
         sh_degree=pc.active_sh_degree,
         campos=viewpoint_camera.camera_center,
-        prefiltered=False
+        prefiltered=False,
+        debug=pipe.debug
     )
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
