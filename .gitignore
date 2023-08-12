@@ -9,7 +9,7 @@ screenshots
 *.zip
 scene/
 output/
-tandt_db/
+db/
 test/
 test810/
 viewers/
