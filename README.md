@@ -274,7 +274,7 @@ python full_eval.py -m <directory with evaluation images>/garden ... --skip_trai
 <br>
 
 ## Interactive Viewers
-We provide two interactive iewers for our method: remote and real-time. Our viewing solutions are based on the [SIBR](https://sibr.gitlabpages.inria.fr/) framework, developed by the GRAPHDECO group for several novel-view synthesis projects.
+We provide two interactive viewers for our method: remote and real-time. Our viewing solutions are based on the [SIBR](https://sibr.gitlabpages.inria.fr/) framework, developed by the GRAPHDECO group for several novel-view synthesis projects.
 
 ### Hardware Requirements
 - OpenGL 4.5-ready GPU and drivers (or latest MESA software)
