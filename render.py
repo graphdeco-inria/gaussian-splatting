@@ -56,6 +56,8 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
 
 if __name__ == "__main__":
     # Set up command line argument parser
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+
     parser = ArgumentParser(description="Testing script parameters")
     model = ModelParams(parser, sentinel=True)
     pipeline = PipelineParams(parser)
