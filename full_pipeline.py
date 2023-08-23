@@ -10,6 +10,7 @@ from natsort import natsorted
 import sys
 from tqdm import tqdm
 import json
+import sys
 def detect_red(image_path):
     # Load the image
     image = cv2.imread(image_path)
@@ -67,20 +68,22 @@ def get_area_all(d):
     return (area_all / len(ll_all))
     
 
+if __name__ == "__main__":
+    start = int(sys.argv[1])
+    end = int(sys.argv[2])
+    progress_bar = tqdm(total=(end - start)*7*7)
+    for i in range(start,end):
+        i = '{:0>2d}'.format(i)
+        source = f'./img_822/colmap_{i}'
+        for ii in range(7):
+            for jj in range(7):
+                output = f'./output/colmap_{i}_{ii}_{jj}'
+                os.system(f'python train.py -s {source} -m {output} --iterations 10000 --eval --ls {ii} --rs {jj}')
+                os.system(f'python render_depth2.py -m {output} --ls {ii} --rs {jj}')
+                #os.system(f'python area_test.py {output}')
+                area = get_area_all(output)
+                with open(f'res_{start}_{end}.txt', 'a') as f:
+                    f.writelines(f'{ii} {jj} {area}\n')
+                progress_bar.update(1)
 
-progress_bar = tqdm(total=21*7*7)
-for i in range(21):
-    i = '{:0>2d}'.format(i)
-    source = f'./img_822/colmap_{i}'
-    for ii in range(7):
-        for jj in range(7):
-            output = f'./output/colmap_{i}_{ii}_{jj}'
-            os.system(f'python train.py -s {source} -m {output} --iterations 10000 --eval --ls {ii} --rs {jj}')
-            os.system(f'python render_depth2.py -m {output} --ls {ii} --rs {jj}')
-            #os.system(f'python area_test.py {output}')
-            area = get_area_all(output)
-            with open('res.txt', 'a') as f:
-                f.writelines(f'{ii} {jj} {area}\n')
-            progress_bar.update(1)
-
-progress_bar.close()
+    progress_bar.close()
