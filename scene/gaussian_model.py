@@ -193,9 +193,6 @@ class GaussianModel:
 
         xyz = self._xyz.detach().cpu().numpy()
         normals = np.zeros_like(xyz)
-        normals[:, 0:1] = self.xyz_gradient_accum.detach().cpu().numpy()
-        normals[:, 1:2] = self.denom.detach().cpu().numpy()
-        normals[:, 2:3] = normals[:, 0:1] / normals[:, 1:2]
         f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         opacities = self._opacity.detach().cpu().numpy()

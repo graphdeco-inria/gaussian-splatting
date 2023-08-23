@@ -22,6 +22,7 @@ from pathlib import Path
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
+import copy
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -94,8 +95,8 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         else:
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
-        image_path = os.path.join(images_folder, extr.name)
         #image_path = os.path.join(images_folder, os.path.basename(extr.name))
+        image_path = os.path.join(images_folder, extr.name)
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
 
@@ -130,31 +131,64 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, llffhold=8):
-    # try:
-    #     cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
-    #     cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
-    #     cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
-    #     cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
-    # except:
-    cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
-    cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
-    cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
-    cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
+def readColmapSceneInfo(path, images, eval, left_start = [0], right_start = [0], llffhold=8):
+    try:
+        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
+        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
+        cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
+        cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+    except:
+        cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
+        cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
+        cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
+        cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
     reading_dir = "images" if images == None else images
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
     #cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_path)
+    left = [11,12,10,19,17,6,15,16,9,14]
+    right = [18,1,5,4,7,13,8,2,3,0]
+    left = [f'cam_{i}' for i in left]
+    right = [f'cam_{i}' for i in right]
 
     if eval:
-        # train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
-        # test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
-        train_cam_infos = cam_infos[0:18]
-        test_cam_infos = cam_infos[18:]
+        print('left group: {}'.format(left_start))
+        print('right group: {}'.format(right_start))
+        group_left = []
+        group_right = []
+        train_cam_infos = []
+        #pop_list = []
+        #test_cam_infos = copy.deepcopy(cam_infos)
+        for ls, rs in zip(left_start,right_start):
+            group_left+=cam_infos[ls*20:ls*20+20]
+            group_right+=cam_infos[rs*20:rs*20+20]
+        
+        for ind, x in enumerate(group_left):
+            #flag = True
+            for cam_name in left:
+                if cam_name == x.image_name:
+                    train_cam_infos.append(x)
+                    #pop_list.append(left_start*20+ind)
+                    break
+
+        for ind, x in enumerate(group_right):
+            #flag = True
+            for cam_name in right:
+                if cam_name == x.image_name:
+                    train_cam_infos.append(x)
+                    #pop_list.append(right_start*20+ind)
+                    break
+        
+        test_cam_infos = [x for x in cam_infos if x not in train_cam_infos]
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
+    
+    # for x in test_cam_infos:
+    #     x.image_name = os.path.join(x.image_path, x.image_name)
+    # for x in train_cam_infos:
+    #     x.image_name = os.path.join(x.image_path, x.image_name)
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
