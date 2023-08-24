@@ -77,7 +77,9 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 ### Setup
 
-Our provided install method is based on Conda package and environment management:
+#### Local Setup
+
+Our default, provided install method is based on Conda package and environment management:
 ```shell
 SET DISTUTILS_USE_SDK=1 # Windows only
 conda env create --file environment.yml
@@ -92,6 +94,10 @@ conda config --add pkgs_dirs <Drive>/<pkg_path>
 conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_splatting
 conda activate <Drive>/<env_path>/gaussian_splatting
 ```
+
+#### Colab
+
+User [camenduru](https://github.com/camenduru) was kind enough to provide a Colab template that uses pre-built wheels for a quick and easy access to the method. Please check it out [here](https://github.com/camenduru/gaussian-splatting-colab).
 
 #### Modifications
 
