@@ -6,4 +6,4 @@
 	url = https://github.com/graphdeco-inria/diff-gaussian-rasterization
 [submodule "SIBR_viewers"]
 	path = SIBR_viewers
-	url = https://gitlab.inria.fr/sibr/sibr_core
+	url = https://gitlab.inria.fr/sibr/sibr_core.git
