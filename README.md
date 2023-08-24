@@ -97,7 +97,7 @@ conda activate <Drive>/<env_path>/gaussian_splatting
 
 #### Colab
 
-User [camenduru](https://github.com/camenduru) was kind enough to provide a Colab template that uses pre-built wheels for a quick and easy access to the method. Please check it out [here](https://github.com/camenduru/gaussian-splatting-colab).
+User [camenduru](https://github.com/camenduru) was kind enough to provide a Colab template that uses pre-built wheels for quick and easy access to the method. Please check it out [here](https://github.com/camenduru/gaussian-splatting-colab).
 
 #### Modifications
 
@@ -125,7 +125,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --resolution / -r
   Specifies resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. **If not set and input image width exceeds 1.6K pixels, inputs are automatically rescaled to this target.**
   #### --data_device
-  Specifies where to put the source image data, ```cuda``` by default, recommended to use ```cpu``` if training on large/high-resolution dataset, will reduce VRAM consumption, but slightly slow down training.
+  Specifies where to put the source image data, ```cuda``` by default, recommended to use ```cpu``` if training on large/high-resolution dataset, will reduce VRAM consumption, but slightly slow down training. Thanks to [HrsPythonix](https://github.com/HrsPythonix).
   #### --white_background / -w
   Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
   #### --sh_degree
