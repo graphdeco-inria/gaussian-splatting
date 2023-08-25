@@ -147,10 +147,11 @@ def readColmapSceneInfo(path, images, eval, left_start = [0], right_start = [0],
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
     #cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_path)
-    left = [11,12,10,19,17,6,15,16,9,14]
-    right = [18,1,5,4,7,13,8,2,3,0]
-    left = [f'cam_{i}' for i in left]
-    right = [f'cam_{i}' for i in right]
+    
+    # left = [11,12,10,19,17,6,15,16,9,14]
+    # right = [18,1,5,4,7,13,8,2,3,0]
+    # left = [f'cam_{i}' for i in left]
+    # right = [f'cam_{i}' for i in right]
 
     if eval:
         print('left group: {}'.format(left_start))
