@@ -62,7 +62,14 @@ Here is what the workflow looks like: <br>
 ## Requirements
 - An NVIDIA GPU with 24GB VRAM* or more. Preferably an RTX 3090 or better. *Future updates to these instructions will have options to modify training for GPUs with less VRAM such as a 3080.
 - __Git__ - You will need this to pull the code from GitHub. You can download it [here ](https://git-scm.com/downloads). Follow default installation instructions. You can test to see if you have it already installed by typing ```git --version``` into command prompt
-- __Conda__
+- __Conda__ - I recommend using [Anaconda](https://www.anaconda.com/download) because it's easy to install and manage environments in the future. [MiniConda](https://docs.conda.io/en/latest/miniconda.html) is a great lightweight alternative.
+- __CUDA Toolkit__ - this was tested with 11.8. Ensure you are not running 11.6 or 12+. You can download CUDA Toolkit [here](https://developer.nvidia.com/cuda-toolkit-archive) You can check which version of CUDA Toolkit you have installed by typing ```nvcc --version``` into command prompt.
+- __Visual Studio 2019 or newer__ - You can download and install it [here](https://visualstudio.microsoft.com/vs/older-downloads/). Make sure you add __Desktop Development with C++__ when installing <br>
+![VS_Option](assets/VS_Option.png)
+- __COLMAP__ - Use the Windows binary, it's easy! You can download it [here](https://github.com/colmap/colmap/releases)
+- __ImageMagik__ - This is for preparing your images. Download it [here](https://imagemagick.org/script/download.php)
+- __FFMPEG__ - Use this to extract images from video. Download it [here](https://ffmpeg.org/download.html)
+
 
 ## Cloning the Repository
 
@@ -485,6 +492,7 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
   Path to the ImageMagick executable.
 </details>
 <br>
+
 
 ## FAQ
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page.
