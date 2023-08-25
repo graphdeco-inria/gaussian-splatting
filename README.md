@@ -1,4 +1,14 @@
 # 3D Gaussian Splatting for Real-Time Radiance Field Rendering
+
+## This is a forked Windows Installation Tutorial and the main codes will not be updated
+__Read first:__ This forked GitHub project is intented for folks who have little to know command-line knowledge and want to install, train, and view 3D Gaussian Splatting. If you have used Instant NGP, Nerftudio, or other similar command-line based radiance field projects, most likely you have already installed some or all of the depedencies required for this project.
+
+I created a video walkthough to compliment the installation instructions. You can watch it independently or with this project page as reference. Please follow my YT channel for additional updates. Now let's get 3D Gaussian Splatting!
+
+The section below is from the original GitHub page. Jump down to __"Overview"__ to get started.
+
+
+# About 3D Gaussian Splatting for Real-Time Radiance Field Rendering
 Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) |
 [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |
@@ -36,6 +46,24 @@ Abstract: *Radiance Field methods have recently revolutionized novel-view synthe
 
 This research was funded by the ERC Advanced grant FUNGRAPH No 788065. The authors are grateful to Adobe for generous donations, the OPAL infrastructure from Université Côte d’Azur and for the HPC resources from GENCI–IDRIS (Grant 2022-AD011013409). The authors thank the anonymous reviewers for their valuable feedback, P. Hedman and A. Tewari for proofreading earlier drafts also T. Müller, A. Yu and S. Fridovich-Keil for helping with the comparisons.
 
+## Overview
+
+The codebase has 4 main components:
+- A script to help you turn your own images into optimization-ready SfM data sets
+- A PyTorch-based optimizer to produce a 3D Gaussian model from SfM inputs
+- A network viewer that allows to connect to and visualize the optimization process
+- An OpenGL-based real-time viewer to render trained models in real-time.
+
+
+Here is what the workflow looks like: <br>
+![Workflow](assets/Workflow.png)
+
+
+## Requirements
+- An NVIDIA GPU with 24GB VRAM* or more. Preferably an RTX 3090 or better. *Future updates to these instructions will have options to modify training for GPUs with less VRAM such as a 3080.
+- __Git__ - You will need this to pull the code from GitHub. You can download it [here ](https://git-scm.com/downloads). Follow default installation instructions. You can test to see if you have it already installed by typing ```git --version``` into command prompt
+- __Conda__
+
 ## Cloning the Repository
 
 The repository contains submodules, thus please check it out with 
@@ -48,14 +76,6 @@ or
 # HTTPS
 git clone https://github.com/graphdeco-inria/gaussian-splatting --recursive
 ```
-
-## Overview
-
-The codebase has 4 main components:
-- A PyTorch-based optimizer to produce a 3D Gaussian model from SfM inputs
-- A network viewer that allows to connect to and visualize the optimization process
-- An OpenGL-based real-time viewer to render trained models in real-time.
-- A script to help you turn your own images into optimization-ready SfM data sets
 
 The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
 
