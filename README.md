@@ -63,7 +63,13 @@ Here is what the workflow looks like: <br>
 
 
 ## Requirements
-- An NVIDIA GPU with 24GB VRAM* or more. Preferably an RTX 3090 or better. *Future updates to these instructions will have options to modify training for GPUs with less VRAM such as a 3080.
+This is the hardware and software required to run 3D Gaussian Splatting for Real-Time Radiance Fields. Technically, the viewer has much smaller requirements compared to the the optimizer. I decided to list the 
+
+### Hardware
+- An NVIDIA GPU with 24GB VRAM* or more. Preferably an RTX 3090 or better. _*Future updates to these instructions will have options to modify training for GPUs with less VRAM such as a 3080._
+
+### Software
+This is the sofware dependencies you will need installed prior to installing the project. Many of these dependencies are shared with other NeRF projects.
 - __Git__ - You will need this to pull the code from GitHub. You can download it [here ](https://git-scm.com/downloads). Follow default installation instructions. You can test to see if you have it already installed by typing ```git --version``` into command prompt
 - __Conda__ - I recommend using [Anaconda](https://www.anaconda.com/download) because it's easy to install and manage environments in the future. [MiniConda](https://docs.conda.io/en/latest/miniconda.html) is a great lightweight alternative.
 - __CUDA Toolkit__ - this was tested with 11.8. Ensure you are not running 11.6 or 12+. You can download CUDA Toolkit [here](https://developer.nvidia.com/cuda-toolkit-archive) You can check which version of CUDA Toolkit you have installed by typing ```nvcc --version``` into command prompt.
@@ -75,26 +81,16 @@ Here is what the workflow looks like: <br>
 
 
 ## Cloning the Repository
+You will need to pull a copy of the code from GitHub. You will do this by using Git which was pre-installed during the dependencies section of this tutorial. You can also use GitHub desktop to clone the repository. Follow these steps to clone the repository: <br>
 
-The repository contains submodules, thus please check it out with 
-```shell
-# SSH
-git clone git@github.com:graphdeco-inria/gaussian-splatting.git --recursive
-```
-or
-```shell
-# HTTPS
-git clone https://github.com/graphdeco-inria/gaussian-splatting --recursive
-```
+1. Open Windows Command Prompt by tying "cmd" into your search bar.
+2. Copy the below code into command prompt and press enter
 
-The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
+```git clone https://github.com/graphdeco-inria/gaussian-splatting --recursive```
 
-## Optimizer
+The folder will download to the root of our command line prompt with the name "Gaussian-Splatting". Typically in your C:User/<username> folder. For example, on my PC the folder is now located at C:User/Jonat/Guassian-Splatting
 
-The optimizer uses PyTorch and CUDA extensions in a Python environment to produce trained models. 
-
-
-### Setup
+## Installing the Optimizer
 
 Our provided install method is based on Conda package and environment management:
 ```shell
@@ -112,13 +108,19 @@ conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_spl
 conda activate <Drive>/<env_path>/gaussian_splatting
 ```
 
-#### Modifications
 
-If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make modifications, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.8, PyTorch 2.0.0, CUDA 12). Make sure to create an environment where PyTorch and its CUDA runtime version match and the installed CUDA SDK has no major version difference with PyTorch's CUDA version.
+## Optimizer
+
+The optimizer uses PyTorch and CUDA extensions in a Python environment to produce trained models. These trained models are what you view in the real-time viewer. This is where you "processes your dataset" into 3D Guassian Splats.
+
 
 ### Running
 
-To run the optimizer, simply use
+To run the optimizer, ensure you have the Conda environment active. You should see (gaussian_splatting) at the front of your command prompt string. If you do not see it, use this command to activate the Conda environement ```conda activate gaussian_splatting```
+
+ have pathed to the Gaussian-splatting folder within command promps
+
+, simply use
 
 ```shell
 python train.py -s <path to COLMAP or NeRF Synthetic dataset>
