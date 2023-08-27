@@ -54,7 +54,7 @@ This research was funded by the ERC Advanced grant FUNGRAPH No 788065. The autho
 The codebase has 4 main components:
 - A script to help you turn your own images into optimization-ready SfM data sets
 - A PyTorch-based optimizer to produce a 3D Gaussian model from SfM inputs
-- A network viewer that allows to connect to and visualize the optimization process _(Not covered in the video tutorial)_
+- A network viewer that allows to connect to and visualize the optimization process **(ommitted from this fork for simplicity, please see original repo)**
 - An OpenGL-based real-time viewer to render trained models in real-time.
 
 
@@ -92,9 +92,10 @@ The folder will download to the root of our command line prompt with the name "G
 
 ## Installing the Optimizer
 
-Our provided install method is based on Conda package and environment management:
+To install the code that you pulled from GitHub, you will need to create a Conda environment that includes all of the compailed code for running. Open command prompt and enter these lines below one at a time. The second line will compile the code which can take 10 minutes or longer. The last line will "activate" the conda environment. You will need to enter ```conda activate gaussian_splatting``` at the start of each session you plan to optimize 3D Gaussian Splatting.
+
 ```shell
-SET DISTUTILS_USE_SDK=1 # Windows only
+SET DISTUTILS_USE_SDK=1
 conda env create --file environment.yml
 conda activate gaussian_splatting
 ```
@@ -107,6 +108,75 @@ conda config --add pkgs_dirs <Drive>/<pkg_path>
 conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_splatting
 conda activate <Drive>/<env_path>/gaussian_splatting
 ```
+
+## Preparing Images From Your Own Scenes
+
+Our COLMAP loaders expect the following dataset structure in the source path location:
+
+```
+<location>
+|---images
+|   |---<image 0>
+|   |---<image 1>
+|   |---...
+|---sparse
+    |---0
+        |---cameras.bin
+        |---images.bin
+        |---points3D.bin
+```
+
+For rasterization, the camera models must be either a SIMPLE_PINHOLE or PINHOLE camera. We provide a converter script ```convert.py```, to extract undistorted images and SfM information from input images. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```.
+```
+<location>
+|---input
+    |---<image 0>
+    |---<image 1>
+    |---...
+```
+ If you have COLMAP and ImageMagick on your system path, you can simply run 
+```shell
+python convert.py -s <location> [--resize] #If not resizing, ImageMagick is not needed
+```
+Alternatively, you can use the optional parameters ```--colmap_executable``` and ```--magick_executable``` to point to the respective paths. Please note that on Windows, the executable should point to the COLMAP ```.bat``` file that takes care of setting the execution environment. Once done, ```<location>``` will contain the expected COLMAP data set structure with undistorted, resized input images, in addition to your original images and some temporary (distorted) data in the directory ```distorted```.
+
+If you have your own COLMAP dataset without undistortion (e.g., using ```OPENCV``` camera), you can try to just run the last part of the script: Put the images in ```input``` and the COLMAP info in a subdirectory ```distorted```:
+```
+<location>
+|---input
+|   |---<image 0>
+|   |---<image 1>
+|   |---...
+|---distorted
+    |---database.db
+    |---sparse
+        |---0
+            |---...
+```
+Then run 
+```shell
+python convert.py -s <location> --skip_matching [--resize] #If not resizing, ImageMagick is not needed
+```
+
+<details>
+<summary><span style="font-weight: bold;">Command Line Arguments for convert.py</span></summary>
+
+  #### --no_gpu
+  Flag to avoid using GPU in COLMAP.
+  #### --skip_matching
+  Flag to indicate that COLMAP info is available for images.
+  #### --source_path / -s
+  Location of the inputs.
+  #### --camera 
+  Which camera model to use for the early matching steps, ```OPENCV``` by default.
+  #### --resize
+  Flag for creating resized versions of input images.
+  #### --colmap_executable
+  Path to the COLMAP executable (```.bat``` on Windows).
+  #### --magick_executable
+  Path to the ImageMagick executable.
+</details>
+<br>
 
 
 ## Optimizer
@@ -207,154 +277,18 @@ Note that similar to MipNeRF360, we target images at resolutions in the 1-1.6K p
 
 The MipNeRF360 scenes are hosted by the paper authors [here](https://jonbarron.info/mipnerf360/). You can find our SfM data sets for Tanks&Temples and Deep Blending [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip). If you do not provide an output model directory (```-m```), trained models are written to folders with randomized unique names inside the ```output``` directory. At this point, the trained models may be viewed with the real-time viewer (see further below).
 
-### Evaluation
-By default, the trained models use all available images in the dataset. To train them while withholding a test set for evaluation, use the ```--eval``` flag. This way, you can render training/test sets and produce error metrics as follows:
-```shell
-python train.py -s <path to COLMAP or NeRF Synthetic dataset> --eval # Train with train/test split
-python render.py -m <path to trained model> # Generate renderings
-python metrics.py -m <path to trained model> # Compute error metrics on renderings
-```
-
-If you want to evaluate our [pre-trained models](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip), you will have to download the corresponding source data sets and indicate their location to ```render.py``` with an additional ```--source_path/-s``` flag. Note: The pre-trained models were created with the release codebase. This code base has been cleaned up and includes bugfixes, hence the metrics you get from evaluating them will differ from those in the paper.
-```shell
-python render.py -m <path to pre-trained model> -s <path to COLMAP dataset>
-python metrics.py -m <path to pre-trained model>
-```
-
-<details>
-<summary><span style="font-weight: bold;">Command Line Arguments for render.py</span></summary>
-
-  #### --model_path / -m 
-  Path to the trained model directory you want to create renderings for.
-  #### --skip_train
-  Flag to skip rendering the training set.
-  #### --skip_test
-  Flag to skip rendering the test set.
-  #### --quiet 
-  Flag to omit any text written to standard out pipe. 
-
-  **The below parameters will be read automatically from the model path, based on what was used for training. However, you may override them by providing them explicitly on the command line.** 
-
-  #### --source_path / -s
-  Path to the source directory containing a COLMAP or Synthetic NeRF data set.
-  #### --images / -i
-  Alternative subdirectory for COLMAP images (```images``` by default).
-  #### --eval
-  Add this flag to use a MipNeRF360-style training/test split for evaluation.
-  #### --resolution / -r
-  Changes the resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. ```1``` by default.
-  #### --white_background / -w
-  Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
-  #### --convert_SHs_python
-  Flag to make pipeline render with computed SHs from PyTorch instead of ours.
-  #### --convert_cov3D_python
-  Flag to make pipeline render with computed 3D covariance from PyTorch instead of ours.
-
-</details>
-
-<details>
-<summary><span style="font-weight: bold;">Command Line Arguments for metrics.py</span></summary>
-
-  #### --model_paths / -m 
-  Space-separated list of model paths for which metrics should be computed.
-</details>
-<br>
-
-We further provide the ```full_eval.py``` script. This script specifies the routine used in our evaluation and demonstrates the use of some additional parameters, e.g., ```--images (-i)``` to define alternative image directories within COLMAP data sets. If you have downloaded and extracted all the training data, you can run it like this:
-```shell
-python full_eval.py -m360 <mipnerf360 folder> -tat <tanks and temples folder> -db <deep blending folder>
-```
-In the current version, this process takes about 7h on our reference machine containing an A6000. If you want to do the full evaluation on our pre-trained models, you can specify their download location and skip training. 
-```shell
-python full_eval.py -o <directory with pretrained models> --skip_training -m360 <mipnerf360 folder> -tat <tanks and temples folder> -db <deep blending folder>
-```
-
-If you want to compute the metrics on our paper's [evaluation images](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip), you can also skip rendering. In this case it is not necessary to provide the source datasets. You can compute metrics for multiple image sets at a time. 
-```shell
-python full_eval.py -m <directory with evaluation images>/garden ... --skip_training --skip_rendering
-```
-
-<details>
-<summary><span style="font-weight: bold;">Command Line Arguments for full_eval.py</span></summary>
-  
-  #### --skip_training
-  Flag to skip training stage.
-  #### --skip_rendering
-  Flag to skip rendering stage.
-  #### --skip_metrics
-  Flag to skip metrics calculation stage.
-  #### --output_path
-  Directory to put renderings and results in, ```./eval``` by default, set to pre-trained model location if evaluating them.
-  #### --mipnerf360 / -m360
-  Path to MipNeRF360 source datasets, required if training or rendering.
-  #### --tanksandtemples / -tat
-  Path to Tanks&Temples source datasets, required if training or rendering.
-  #### --deepblending / -db
-  Path to Deep Blending source datasets, required if training or rendering.
-</details>
-<br>
 
 ## Interactive Viewers
 We provide two interactive viewers for our method: remote and real-time. Our viewing solutions are based on the [SIBR](https://sibr.gitlabpages.inria.fr/) framework, developed by the GRAPHDECO group for several novel-view synthesis projects.
 
-### Hardware Requirements
-- OpenGL 4.5-ready GPU and drivers (or latest MESA software)
-- 4 GB VRAM recommended
-- CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
-
-### Software Requirements
-- Visual Studio or g++, **not Clang** (we used Visual Studio 2019 for Windows)
-- CUDA SDK 11 (we used 11.8)
-- CMake (recent version, we used 3.24)
-- 7zip (only on Windows)
 
 ### Pre-built Windows Binaries
 We provide pre-built binaries for Windows [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip). We recommend using them on Windows for an efficient setup, since the building of SIBR involves several external dependencies that must be downloaded and compiled on-the-fly.
 
 
-#### Windows
-CMake should take care of your dependencies.
-```shell
-cd SIBR_viewers
-cmake -Bbuild .
-cmake --build build --target install --config RelWithDebInfo
-```
-You may specify a different configuration, e.g. ```Debug``` if you need more control during development.
-
-
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D, Q, E``` for camera translation and ```I, K, J, L, U, O``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
 
-### Running the Network Viewer
-
-
-
-https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/90a2e4d3-cf2e-4633-b35f-bfe284e28ff7
-
-
-
-After extracting or installing the viewers, you may run the compiled ```SIBR_remoteGaussian_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
-```shell
-./<SIBR install dir>/bin/SIBR_remoteGaussian_app
-```
-The network viewer allows you to connect to a running training process on the same or a different machine. If you are training on the same machine and OS, no command line parameters should be required: the optimizer communicates the location of the training data to the network viewer. By default, optimizer and network viewer will try to establish a connection on **localhost** on port **6009**. You can change this behavior by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. If for some reason the path used by the optimizer to find the training data is not reachable by the network viewer (e.g., due to them running on different (virtual) machines), you may specify an override location to the viewer by using ```-s <source path>```. 
-
-<details>
-<summary><span style="font-weight: bold;">Primary Command Line Arguments for Network Viewer</span></summary>
-
-  #### --path / -s
-  Argument to override model's path to source dataset.
-  #### --ip
-  IP to use for connection to a running training script.
-  #### --port
-  Port to use for connection to a running training script. 
-  #### --rendering-size 
-  Takes two space separated numbers to define the resolution at which network rendering occurs, ```1200``` width by default.
-  Note that to enforce an aspect that differs from the input images, you need ```--force-aspect-ratio``` too.
-  #### --load_images
-  Flag to load source dataset images to be displayed in the top view for each camera.
-</details>
-<br>
 
 ### Running the Real-Time Viewer
 
@@ -400,74 +334,7 @@ SIBR has many other functionalities, please see the [documentation](https://sibr
 </details>
 <br>
 
-## Processing your own Scenes
 
-Our COLMAP loaders expect the following dataset structure in the source path location:
-
-```
-<location>
-|---images
-|   |---<image 0>
-|   |---<image 1>
-|   |---...
-|---sparse
-    |---0
-        |---cameras.bin
-        |---images.bin
-        |---points3D.bin
-```
-
-For rasterization, the camera models must be either a SIMPLE_PINHOLE or PINHOLE camera. We provide a converter script ```convert.py```, to extract undistorted images and SfM information from input images. Optionally, you can use ImageMagick to resize the undistorted images. This rescaling is similar to MipNeRF360, i.e., it creates images with 1/2, 1/4 and 1/8 the original resolution in corresponding folders. To use them, please first install a recent version of COLMAP (ideally CUDA-powered) and ImageMagick. Put the images you want to use in a directory ```<location>/input```.
-```
-<location>
-|---input
-    |---<image 0>
-    |---<image 1>
-    |---...
-```
- If you have COLMAP and ImageMagick on your system path, you can simply run 
-```shell
-python convert.py -s <location> [--resize] #If not resizing, ImageMagick is not needed
-```
-Alternatively, you can use the optional parameters ```--colmap_executable``` and ```--magick_executable``` to point to the respective paths. Please note that on Windows, the executable should point to the COLMAP ```.bat``` file that takes care of setting the execution environment. Once done, ```<location>``` will contain the expected COLMAP data set structure with undistorted, resized input images, in addition to your original images and some temporary (distorted) data in the directory ```distorted```.
-
-If you have your own COLMAP dataset without undistortion (e.g., using ```OPENCV``` camera), you can try to just run the last part of the script: Put the images in ```input``` and the COLMAP info in a subdirectory ```distorted```:
-```
-<location>
-|---input
-|   |---<image 0>
-|   |---<image 1>
-|   |---...
-|---distorted
-    |---database.db
-    |---sparse
-        |---0
-            |---...
-```
-Then run 
-```shell
-python convert.py -s <location> --skip_matching [--resize] #If not resizing, ImageMagick is not needed
-```
-
-<details>
-<summary><span style="font-weight: bold;">Command Line Arguments for convert.py</span></summary>
-
-  #### --no_gpu
-  Flag to avoid using GPU in COLMAP.
-  #### --skip_matching
-  Flag to indicate that COLMAP info is available for images.
-  #### --source_path / -s
-  Location of the inputs.
-  #### --camera 
-  Which camera model to use for the early matching steps, ```OPENCV``` by default.
-  #### --resize
-  Flag for creating resized versions of input images.
-  #### --colmap_executable
-  Path to the COLMAP executable (```.bat``` on Windows).
-  #### --magick_executable
-  Path to the ImageMagick executable.
-</details>
-<br>
 
 
 ## FAQ
