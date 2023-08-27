@@ -1,11 +1,14 @@
 # 3D Gaussian Splatting for Real-Time Radiance Field Rendering
 
-## This is a forked Windows Installation Tutorial and the main codes will not be updated
-__Read first:__ This forked GitHub project is intented for folks who have little to know command-line knowledge and want to install, train, and view 3D Gaussian Splatting. If you have used Instant NGP, Nerftudio, or other similar command-line based radiance field projects, most likely you have already installed some or all of the depedencies required for this project.
+### Read first
+__This is a forked Windows Installation Tutorial and the main codes will not be updated__
+This forked GitHub project is intented for folks who have little to know command-line knowledge and want to install, train, and view 3D Gaussian Splatting. If you have used Instant NGP, Nerftudio, or other similar command-line based radiance field projects, most likely you have already installed some or all of the depedencies required for this project.
 
 I created a video walkthough to compliment the installation instructions. You can watch it independently or with this project page as reference. Please follow my YT channel for additional updates. Now let's get 3D Gaussian Splatting!
 
-The section below is from the original GitHub page. Jump down to __"Overview"__ to get started.
+The section below is from the original GitHub page. Jump down to __"Overview"__ to get started. <br>
+<br>
+<br>
 
 
 # About 3D Gaussian Splatting for Real-Time Radiance Field Rendering
@@ -51,7 +54,7 @@ This research was funded by the ERC Advanced grant FUNGRAPH No 788065. The autho
 The codebase has 4 main components:
 - A script to help you turn your own images into optimization-ready SfM data sets
 - A PyTorch-based optimizer to produce a 3D Gaussian model from SfM inputs
-- A network viewer that allows to connect to and visualize the optimization process
+- A network viewer that allows to connect to and visualize the optimization process _(Not covered in the video tutorial)_
 - An OpenGL-based real-time viewer to render trained models in real-time.
 
 
@@ -90,17 +93,6 @@ The components have different requirements w.r.t. both hardware and software. Th
 
 The optimizer uses PyTorch and CUDA extensions in a Python environment to produce trained models. 
 
-### Hardware Requirements
-
-- CUDA-ready GPU with Compute Capability 7.0+
-- 24 GB VRAM (to train to paper evaluation quality)
-- Please see FAQ for smaller VRAM configurations
-
-### Software Requirements
-- Conda (recommended for easy setup)
-- C++ Compiler for PyTorch extensions (we used Visual Studio 2019 for Windows)
-- CUDA SDK 11 for PyTorch extensions (we used 11.8, **known issues with 11.6**)
-- C++ Compiler and CUDA SDK must be compatible
 
 ### Setup
 
@@ -317,8 +309,6 @@ We provide two interactive viewers for our method: remote and real-time. Our vie
 ### Pre-built Windows Binaries
 We provide pre-built binaries for Windows [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip). We recommend using them on Windows for an efficient setup, since the building of SIBR involves several external dependencies that must be downloaded and compiled on-the-fly.
 
-### Installation from Source
-If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers```. The network viewer runs within the SIBR framework for Image-based Rendering applications.
 
 #### Windows
 CMake should take care of your dependencies.
@@ -329,22 +319,6 @@ cmake --build build --target install --config RelWithDebInfo
 ```
 You may specify a different configuration, e.g. ```Debug``` if you need more control during development.
 
-#### Ubuntu 22.04
-You will need to install a few dependencies before running the project setup.
-```shell
-# Dependencies
-sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libopencv-dev libglfw3-dev libavdevice-dev libavcodec-dev libeigen3-dev libxxf86vm-dev libembree-dev
-# Project setup
-cd SIBR_viewers
-cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
-cmake --build build -j24 --target install
-``` 
-
-#### Ubuntu 20.04
-Backwards compatibility with Focal Fossa is not fully tested, but building SIBR with CMake should still work after invoking
-```shell
-git checkout fossa_compatibility
-```
 
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D, Q, E``` for camera translation and ```I, K, J, L, U, O``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
