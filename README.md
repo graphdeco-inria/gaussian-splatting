@@ -88,7 +88,7 @@ You will need to pull a copy of the code from GitHub. You will do this by using 
 
 ```git clone https://github.com/graphdeco-inria/gaussian-splatting --recursive```
 
-The folder will download to the root of our command line prompt with the name "Gaussian-Splatting". Typically in your C:User/<username> folder. For example, on my PC the folder is now located at C:User/Jonat/Guassian-Splatting
+The folder will download to the root of our command line prompt with the name "Gaussian-Splatting". Typically in your ```C:User/<username>``` folder. For example, on my PC the folder is now located at C:User/Jonat/Guassian-Splatting
 
 ## Installing the Optimizer
 
