@@ -79,6 +79,10 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 User [camenduru](https://github.com/camenduru) was kind enough to provide a Colab template that uses this repo's source (status: August 2023!) for quick and easy access to the method. Please check it out [here](https://github.com/camenduru/gaussian-splatting-colab).
 
+#### Step-by-step Tutorial
+
+Jonathan Stephens made a fantastic step-by-step tutorial for setting up Gaussian Splatting on your machine, along with instructions for creating usable datasets from videos. If the instructions below are too dry for you, go ahead and check it out [here](https://www.youtube.com/watch?v=UXtuigy_wYc).
+
 #### Local Setup
 
 Our default, provided install method is based on Conda package and environment management:
