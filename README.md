@@ -4,7 +4,7 @@
 __This is a forked Windows Installation Tutorial and the main codes will not be updated__
 This forked GitHub project is intented for folks who have little to know command-line knowledge and want to install, train, and view 3D Gaussian Splatting. If you have used Instant NGP, Nerftudio, or other similar command-line based radiance field projects, most likely you have already installed some or all of the depedencies required for this project.
 
-I created a <a href="http://google.com/](https://youtu.be/UXtuigy_wYc?si=93d4d1iP30NMgfYm)" target="_blank">walkthrough video</a>  to compliment the installation instructions. You can watch it independently or with this project page as reference. Please follow my YT channel for additional updates. Now let's get 3D Gaussian Splatting!
+I created a <a href="https://youtu.be/UXtuigy_wYc?si=93d4d1iP30NMgfYm" target="_blank">walkthrough video</a>  to compliment the installation instructions. You can watch it independently or with this project page as reference. Please follow my YT channel for additional updates. Now let's get 3D Gaussian Splatting!
 
 The section below is from the original GitHub page. Jump down to [Overview](#overview) to get started. <br>
 <br>
