@@ -78,7 +78,7 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 ### Software Requirements
 - Conda (recommended for easy setup)
 - C++ Compiler for PyTorch extensions (we used Visual Studio 2019 for Windows)
-- CUDA SDK 11 for PyTorch extensions (we used 11.8, **known issues with 11.6**)
+- CUDA SDK 11 for PyTorch extensions, install *after* Visual Studio (we used 11.8, **known issues with 11.6**)
 - C++ Compiler and CUDA SDK must be compatible
 
 ### Setup
@@ -291,7 +291,7 @@ We provide two interactive viewers for our method: remote and real-time. Our vie
 
 ### Software Requirements
 - Visual Studio or g++, **not Clang** (we used Visual Studio 2019 for Windows)
-- CUDA SDK 11 (we used 11.8)
+- CUDA SDK 11, install *after* Visual Studio (we used 11.8)
 - CMake (recent version, we used 3.24)
 - 7zip (only on Windows)
 
