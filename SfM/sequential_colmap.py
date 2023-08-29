@@ -30,51 +30,7 @@ class CameraInfo2(NamedTuple):
     width: int
     height: int
 
-def process(proj_path, img_path):
-    sparse_path = os.path.join(proj_path,'sparse')
-    os.system(f'{cmdname} feature_extractor --database_path {proj_path}/ddd.db --image_path {img_path} --ImageReader.camera_model PINHOLE --ImageReader.single_camera 1 --ImageReader.camera_params \"788.44, 789.29, 640, 360\" --SiftExtraction.num_threads 64')
-    os.system(f'{cmdname} exhaustive_matcher --database_path {proj_path}/ddd.db')
-    os.makedirs(sparse_path, exist_ok=True)
-    os.system(f'{cmdname} mapper --database_path {proj_path}/ddd.db --image_path {img_path} --output_path {sparse_path}')
-    os.system(f'{cmdname} model_converter --input_path {sparse_path}/0 --output_path {sparse_path}/0 --output_type TXT')
-
-def incremental_process(proj_path, img_path):
-    sparse_path = os.path.join(proj_path,'sparse')
-    os.system(f'{cmdname} feature_extractor --database_path {proj_path}/ddd.db --image_path {img_path} --ImageReader.camera_model PINHOLE --ImageReader.single_camera 1 --ImageReader.camera_params \"788.44, 789.29, 640, 360\" --SiftExtraction.num_threads 64')
-    os.system(f'{cmdname} exhaustive_matcher --database_path {proj_path}/ddd.db')
-    os.makedirs(sparse_path, exist_ok=True)
-    os.system(f'{cmdname} mapper --database_path {proj_path}/ddd.db --image_path {img_path} --output_path {sparse_path}')
-    os.system(f'{cmdname} model_converter --input_path {sparse_path}/0 --output_path {sparse_path}/0 --output_type TXT')
-
-def load_colmap_cameras(proj_path, img_path):
-    cameras_extrinsic_file = os.path.join(proj_path, "sparse/0", "images.bin")
-    cameras_intrinsic_file = os.path.join(proj_path, "sparse/0", "cameras.bin")
-    cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
-    cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
-    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics,cam_intrinsics=cam_intrinsics, images_folder=img_path)
-    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_path)
-    return cam_infos
-
-def prepare_scene(img_path, proj_path, depth = 1):
-    proj_img_path = os.path.join(proj_path, 'image')
-    os.makedirs(proj_img_path, exist_ok=True)
-    dir_depth_string = '*'
-    for idx in range(depth - 1):
-        dir_depth_string = f'{dir_depth_string}/*'
-    pattern = os.path.join(img_path, dir_depth_string)
-    print(pattern)
-    dst_names = []
-    for img_name in glob.glob(pattern):
-        # check if the image ends with png
-        if (img_name.endswith('.png') or img_name.endswith('.jpg')):
-            x = img_name.split('/')
-            dst_name = os.path.join(proj_img_path, f'{x[len(x) - 2]}.{x[len(x) - 1]}')
-            shutil.copyfile(img_name, dst_name)
-            dst_names.append(dst_name)
-            print(img_name)
-    return dst_names
-
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+def readColmapCameras2(cam_extrinsics, cam_intrinsics, images_folder):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
@@ -113,6 +69,52 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
+
+def process(proj_path, img_path):
+    sparse_path = os.path.join(proj_path,'sparse')
+    os.system(f'{cmdname} feature_extractor --database_path {proj_path}/ddd.db --image_path {img_path} --ImageReader.camera_model PINHOLE --ImageReader.single_camera 1 --ImageReader.camera_params \"788.44, 789.29, 640, 360\" --SiftExtraction.num_threads 64')
+    os.system(f'{cmdname} exhaustive_matcher --database_path {proj_path}/ddd.db')
+    os.makedirs(sparse_path, exist_ok=True)
+    os.system(f'{cmdname} mapper --database_path {proj_path}/ddd.db --image_path {img_path} --output_path {sparse_path}')
+    os.system(f'{cmdname} model_converter --input_path {sparse_path}/0 --output_path {sparse_path}/0 --output_type TXT')
+
+def incremental_process(proj_path, img_path):
+    sparse_path = os.path.join(proj_path,'sparse')
+    os.system(f'{cmdname} feature_extractor --database_path {proj_path}/ddd.db --image_path {img_path} --ImageReader.camera_model PINHOLE --ImageReader.single_camera 1 --ImageReader.camera_params \"788.44, 789.29, 640, 360\" --SiftExtraction.num_threads 64')
+    os.system(f'{cmdname} exhaustive_matcher --database_path {proj_path}/ddd.db')
+    os.makedirs(sparse_path, exist_ok=True)
+    os.system(f'{cmdname} mapper --database_path {proj_path}/ddd.db --image_path {img_path} --output_path {sparse_path}')
+    os.system(f'{cmdname} model_converter --input_path {sparse_path}/0 --output_path {sparse_path}/0 --output_type TXT')
+
+def load_colmap_cameras(proj_path, img_path):
+    cameras_extrinsic_file = os.path.join(proj_path, "sparse/0", "images.bin")
+    cameras_intrinsic_file = os.path.join(proj_path, "sparse/0", "cameras.bin")
+    cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
+    cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+    cam_infos_unsorted = readColmapCameras2(cam_extrinsics=cam_extrinsics,cam_intrinsics=cam_intrinsics, images_folder=img_path)
+    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_path)
+    return cam_infos
+
+def prepare_scene(img_path, proj_path, depth = 1):
+    proj_img_path = os.path.join(proj_path, 'image')
+    os.makedirs(proj_img_path, exist_ok=True)
+    dir_depth_string = '*'
+    for idx in range(depth - 1):
+        dir_depth_string = f'{dir_depth_string}/*'
+    pattern = os.path.join(img_path, dir_depth_string)
+    print(pattern)
+    dst_names = []
+    for img_name in glob.glob(pattern):
+        # check if the image ends with png
+        if (img_name.endswith('.png') or img_name.endswith('.jpg')):
+            x = img_name.split('/')
+            dst_name = os.path.join(proj_img_path, f'{x[len(x) - 2]}.{x[len(x) - 1]}')
+            shutil.copyfile(img_name, dst_name)
+            dst_names.append(dst_name)
+            print(img_name)
+    return dst_names
+
+
 
 def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
     os.makedirs(output_folder, exist_ok=True)
@@ -201,7 +203,7 @@ proj_path = '/data/xiaoyun/dlf_result/proj_0829_all'
 cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'image'))
 
 ## select part results
-selected_indices = ['img_1693287405.0451224', 'img_1693287413.63681','img_1693287422.2212815', 'img_1693287514.7129002', 'img_1693287531.8887675', 'img_1693287711.4288707']
+selected_indices = ['img_1693287405.0451224', 'img_1693287422.2212815', 'img_1693287514.7129002', 'img_1693287531.8887675', 'img_1693287711.4288707']
 select_part_observes(proj_path, selected_indices, cam_infos, '/data/xiaoyun/dlf_result/proj_0829_img_combo')
 
 
