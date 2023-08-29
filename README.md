@@ -336,7 +336,8 @@ SIBR has many other functionalities, please see the [documentation](https://sibr
 </details>
 <br>
 
-
+## Troubleshooting
+- If you encounter an error running train.py that states: ```ModuleNotFoundError: No module named 'diff_gaussian_rasterization'```, this means that you had an issue during the Optimizer install process. Try [installing the optimizer](#installing-the-optimizer) again. Take note of any specific errors and report them in the original GitHub [issues page](https://github.com/graphdeco-inria/gaussian-splatting/issues) <br>
 
 
 ## FAQ
