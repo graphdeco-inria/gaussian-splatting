@@ -118,7 +118,7 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
     os.makedirs(output_folder, exist_ok=True)
     output_proj_path = os.path.join(output_folder, 'sparse/0')
     os.makedirs(output_proj_path, exist_ok=True)
-    image_dir = os.path.join(output_folder, 'image')
+    image_dir = os.path.join(output_folder, 'images')
     os.makedirs(image_dir, exist_ok=True)
 
     f_cams_selected = []
@@ -201,8 +201,9 @@ proj_path = '/data/xiaoyun/dlf_result/proj_0829_all'
 cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'image'))
 
 ## select part results
-selected_indices = ['img_1693287405.0451224', 'img_1693287422.2212815', 'img_1693287514.7129002', 'img_1693287531.8887675', 'img_1693287711.4288707']
-select_part_observes(proj_path, selected_indices, cam_infos, '/data/xiaoyun/dlf_result/proj_0829_img_combo')
+# selected_indices = ['img_1693287405.0451224', 'img_1693287422.2212815', 'img_1693287514.7129002', 'img_1693287531.8887675', 'img_1693287711.4288707']
+selected_indices = ['img_1693287405.0451224', 'img_1693287447.988503']
+select_part_observes(proj_path, selected_indices, cam_infos, '/data/xiaoyun/dlf_result/proj_0829_img_position1')
 
 
 

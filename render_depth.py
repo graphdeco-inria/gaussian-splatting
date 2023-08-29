@@ -31,6 +31,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     makedirs(gts_path, exist_ok=True)
     makedirs(depth_path, exist_ok=True)
 
+    print(f'views size: {len(views)} \n')
+
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
         results = render(view, gaussians, pipeline, background)
         rendering = results["render"]
