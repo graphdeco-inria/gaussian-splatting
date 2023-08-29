@@ -130,7 +130,7 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
                     f_cams_selected.append(cam_infos[idx])
                     break
         else:
-            if str_prefix[prefix_idx] in imagename:
+            if str_prefix in imagename:
                 f_cams_selected.append(cam_infos[idx])
     
     with open(os.path.join(output_proj_path, 'cameras.txt'),'w') as f:
@@ -185,16 +185,24 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
 # img_path = '/data/xiaoyun/dlf_data/00/img_1692935998.4679725/'
 # proj_path = '/data/xiaoyun/dlf_data/00/proj_1692935998.4679725/'
 
-img_path = '/data/xiaoyun/dlf_data/00'
-proj_path = '/data/xiaoyun/dlf_result/proj_00'
+# img_path = '/data/xiaoyun/dlf_data/00'
+# proj_path = '/data/xiaoyun/dlf_result/proj_00'
 
 img_path = '/data/xiaoyun/dlf_data_0829/colmap_00_03/images_all'
 proj_path = '/data/xiaoyun/dlf_result/proj_0829_all'
 
-dst_names = prepare_scene(img_path, proj_path, depth=2)
-process(proj_path, os.path.join(proj_path, 'image'))
-# cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'image'))
-# select_part_observes(proj_path, 'img_1692936003.1167815', cam_infos, '/data/xiaoyun/dlf_result/proj_00_img_1692936003.1167815')
+## copy images
+# dst_names = prepare_scene(img_path, proj_path, depth=2)
+
+## run COLMAP
+# process(proj_path, os.path.join(proj_path, 'image'))
+
+## load COLMAP results
+cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'image'))
+
+## select part results
+selected_indices = ['img_1693287405.0451224', 'img_1693287413.63681','img_1693287422.2212815', 'img_1693287514.7129002', 'img_1693287531.8887675', 'img_1693287711.4288707']
+select_part_observes(proj_path, selected_indices, cam_infos, '/data/xiaoyun/dlf_result/proj_0829_img_combo')
 
 
 
