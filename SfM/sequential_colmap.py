@@ -114,8 +114,6 @@ def prepare_scene(img_path, proj_path, depth = 1):
             print(img_name)
     return dst_names
 
-
-
 def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
     os.makedirs(output_folder, exist_ok=True)
     output_proj_path = os.path.join(output_folder, 'sparse/0')
