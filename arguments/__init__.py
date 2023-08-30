@@ -12,6 +12,7 @@
 from argparse import ArgumentParser, Namespace
 import sys
 import os
+import pdb
 
 class GroupParams:
     pass
@@ -54,11 +55,15 @@ class ModelParams(ParamGroup):
         self._white_background = False
         self.data_device = "cuda"
         self.eval = False
+        self.ls = [0]
+        self.rs = [0]
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
         g = super().extract(args)
         g.source_path = os.path.abspath(g.source_path)
+        g.ls = [int(i) for i in g.ls]
+        g.rs = [int(i) for i in g.rs]
         return g
 
 class PipelineParams(ParamGroup):
