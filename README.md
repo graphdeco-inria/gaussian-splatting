@@ -485,7 +485,7 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
 
 - *I'm on Windows and I can't manage to build the submodules, what do I do?* Consider following the steps in the excellent video tutorial [here](https://www.youtube.com/watch?v=UXtuigy_wYc), hopefully they should help. The order in which the steps are done is important! Alternatively, consider using the linked Colab template.
 
-- *It still doesn't work. It says something about ```cl.exe```* User Henry Pearce found a workaround. You can you try adding the visual studio path to your environment variables (your version number might differ);
+- *It still doesn't work. It says something about ```cl.exe```. What do I do?* User Henry Pearce found a workaround. You can you try adding the visual studio path to your environment variables (your version number might differ);
 ```C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.29.30133\bin\Hostx64\x64```
 Then make sure you start a new conda prompt and cd to your repo location and try this;
 ```
