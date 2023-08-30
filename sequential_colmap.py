@@ -145,16 +145,23 @@ def incremental_process(proj_path, img_path):
     os.system(f'{cmdname} model_converter --input_path {sparse_path}/0 --output_path {sparse_path}/0 --output_type TXT')
 
 def load_colmap_cameras(proj_path, img_path):
-    cameras_extrinsic_file = os.path.join(proj_path, "sparse/0", "images.bin")
-    cameras_intrinsic_file = os.path.join(proj_path, "sparse/0", "cameras.bin")
-    cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
-    cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+    try:
+        cameras_extrinsic_file = os.path.join(proj_path, "sparse/0", "images.txt")
+        cameras_intrinsic_file = os.path.join(proj_path, "sparse/0", "cameras.txt")
+        cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
+        cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
+    except:
+        cameras_extrinsic_file = os.path.join(proj_path, "sparse/0", "images.bin")
+        cameras_intrinsic_file = os.path.join(proj_path, "sparse/0", "cameras.bin")
+        cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
+        cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
+    
     cam_infos_unsorted = readColmapCameras2(cam_extrinsics=cam_extrinsics,cam_intrinsics=cam_intrinsics, images_folder=img_path)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_path)
     return cam_infos
 
 def prepare_scene(img_path, proj_path, depth = 1):
-    proj_img_path = os.path.join(proj_path, 'image')
+    proj_img_path = os.path.join(proj_path, 'images')
     os.makedirs(proj_img_path, exist_ok=True)
     dir_depth_string = '*'
     for idx in range(depth - 1):
@@ -238,7 +245,7 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
     return 0
     
 
-def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times):
+def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times, source, colmap_output, model_output):
     for i in range(start_group,end_group):
         for j in range(start_group,end_group):
             left_group = times[i]
@@ -250,24 +257,23 @@ def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times):
             
             for ii in right_ind:
                 selected_indices.append(right_group + f'.cam_{ii}.png')
+            colmap_dir = os.path.join(colmap_output,f'{i}_{j}')
+            select_part_observes(proj_path, selected_indices, cam_infos, colmap_dir)
+            os.system(f'cp {colmap_dir}/sparse/0/points* {proj_path}/sparse/0')
             
-            select_part_observes(proj_path, selected_indices, cam_infos, f'/data/jianing/dlf_result/colmap_{i}_{j}')
-            os.system(f'cp /data/jianing/dlf_result/colmap_{i}_{j}/sparse/0/points* /data/jianing/dlf_result/proj_0829_all/sparse/0')
-            
-            source = f'/data/jianing/dlf_result/proj_0829_all'
-            output = f'/data/jianing/output_829/colmap_{i}_{j}'
+            output = os.path.join(model_output,f'colmap_{i}_{j}')
             os.system(f'python /home/jianing/gaussian-splatting/train.py -s {source} -m {output} --iterations 10000 --eval --ls 0{i} --rs 0{j}')
-            os.system(f'python /home/jianing/gaussian-splatting/render_depth.py -m {output} --ls 0{i} --rs 0{j} --eval')
-            #os.system(f'python area_test.py {output}')
-            area = get_area_all(output)
-            with open(f'/data/jianing/output_829/res_{start_group}_{end_group}.txt', 'a') as f:
-                f.writelines(f'{i} {j} {area}\n')
+            # os.system(f'python /home/jianing/gaussian-splatting/render_depth.py -m {output} --ls 0{i} --rs 0{j} --eval')
+            # #os.system(f'python area_test.py {output}')
+            # area = get_area_all(output)
+            # with open(f'/data/jianing/output_829/res_{start_group}_{end_group}.txt', 'a') as f:
+            #     f.writelines(f'{i} {j} {area}\n')
 
 if __name__ == '__main__':
-    img_path = '/data/xiaoyun/dlf_data_0829/colmap_00_03/images_all'
-    proj_path = '/data/xiaoyun/dlf_result/proj_0829_all'
+    #img_path = '/data/xiaoyun/dlf_data_0829/colmap_00_03/images_all'
+    proj_path = '/data/jianing/dlf_result/proj_0829_all_sm'
     times = []
-    for i in os.listdir(img_path):
+    for i in os.listdir(os.path.join(proj_path, 'images')):
         i = i.split('.')[0] + '.' + i.split('.')[1]
         if i not in times :
             times.append(i)
@@ -276,10 +282,11 @@ if __name__ == '__main__':
 
     
     ## load COLMAP results
-    cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'image'))
+    cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'images'))
     left_ind = [10,11,9,17,16,14,15,8,13]
     right_ind = [1,5,4,6,12,0,3,2,7]
     ## select part results
-    
-    process_full_pipeline(1, 6, proj_path, cam_infos, times)
+    colmap_output = '/data/jianing/dlf_result/colmap_sm'
+    model_output = '/data/jianing/output_829_sm'
+    process_full_pipeline(1, 6, proj_path, cam_infos, times, proj_path, colmap_output,model_output)
 
