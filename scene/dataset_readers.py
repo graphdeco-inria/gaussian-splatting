@@ -23,6 +23,7 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 import copy
+import pdb
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -99,6 +100,8 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_path = os.path.join(images_folder, extr.name)
         # image_name = os.path.basename(image_path).split(".")[0]
         image_name = os.path.basename(image_path)[:-4]
+        #image_name = os.path.basename(image_path).split(".")[0]
+        image_name = os.path.basename(image_path)[:-4]
         image = Image.open(image_path)
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
@@ -148,50 +151,46 @@ def readColmapSceneInfo(path, images, eval, left_start = [0], right_start = [0],
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
     #cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_path)
-    
+    cam_names = [x.image_path for x in cam_infos]
     # left = [11,12,10,19,17,6,15,16,9,14]
     # right = [18,1,5,4,7,13,8,2,3,0]
     # left = [f'cam_{i}' for i in left]
     # right = [f'cam_{i}' for i in right]
-
+    left = [10,11,9,17,16,14,15,8,13]
+    right = [1,5,4,6,12,0,3,2,7]
+    left = [f'cam_{i}' for i in left]
+    right = [f'cam_{i}' for i in right]
     if eval:
+        cam_num = 18
         print('left group: {}'.format(left_start))
         print('right group: {}'.format(right_start))
         group_left = []
         group_right = []
         train_cam_infos = []
-        #pop_list = []
-        #test_cam_infos = copy.deepcopy(cam_infos)
+        pop_list = []
         for ls, rs in zip(left_start,right_start):
-            group_left+=cam_infos[ls*20:ls*20+20]
-            group_right+=cam_infos[rs*20:rs*20+20]
-        
+            group_left+=cam_infos[ls * cam_num : ls * cam_num + cam_num]
+            group_right+=cam_infos[rs * cam_num : rs * cam_num + cam_num]
+    
         for ind, x in enumerate(group_left):
             #flag = True
             for cam_name in left:
-                if cam_name == x.image_name:
+                if cam_name == x.image_name.split('.')[-1]:
                     train_cam_infos.append(x)
-                    #pop_list.append(left_start*20+ind)
                     break
 
         for ind, x in enumerate(group_right):
             #flag = True
             for cam_name in right:
-                if cam_name == x.image_name:
+                if cam_name == x.image_name.split('.')[-1]:
                     train_cam_infos.append(x)
-                    #pop_list.append(right_start*20+ind)
                     break
-        
-        test_cam_infos = [x for x in cam_infos if x not in train_cam_infos]
+        train_cam_names = [x.image_name for x in train_cam_infos]
+        test_cam_infos = [x for x in cam_infos if x.image_name not in train_cam_names]
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
     
-    # for x in test_cam_infos:
-    #     x.image_name = os.path.join(x.image_path, x.image_name)
-    # for x in train_cam_infos:
-    #     x.image_name = os.path.join(x.image_path, x.image_name)
-
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
     ply_path = os.path.join(path, "sparse/0/points3D.ply")

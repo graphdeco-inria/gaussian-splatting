@@ -7,14 +7,72 @@ import shutil
 import numpy as np
 from PIL import Image
 from typing import NamedTuple
+import pdb
 
-sys.path.append('/home/xiaoyun/Code/gaussian-splatting')
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
 from scene.dataset_readers import readColmapCameras
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
+from natsort import natsorted
+import cv2
 
 cmdname = 'colmap'
 # cmdname = 'COLMAP.bat'
+
+def detect_red(image_path):
+    # Load the image
+    image = cv2.imread(image_path)
+
+    image = cv2.bilateralFilter(image, d=9, sigmaColor=75, sigmaSpace=75)
+
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+    # Define the lower and upper bounds for red color in HSV
+    lower_red = np.array([0, 130, 56])
+    upper_red = np.array([10, 255, 255])
+
+    # Create a mask for red regions
+    red_mask = cv2.inRange(hsv_image, lower_red, upper_red)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
+
+    # Find contours in the mask
+    contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contour_sum = 0
+
+    contours_filter = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > 100:
+            contour_sum+=area 
+            contours_filter.append(contour)
+        #print(f"Contour Area: {area}")
+
+    # Draw contours on the original image
+    result_image = image.copy()
+    cv2.drawContours(result_image, contours_filter, -1, (0, 255, 0), 2)
+
+    return result_image, contour_sum
+
+def get_area_all(d):
+    left = [10,11,9,17,16,14,15,8,13]
+    right = [1,5,4,6,12,0,3,2,7]
+    left = [f'cam_{i}.png' for i in left]
+    right = [f'cam_{i}.png' for i in right]
+    dd_train = d + "/train/ours_10000/renders"
+    dd_test = d + "/test/ours_10000/renders"
+    
+    
+    ll_all = [os.path.join(dd_train,i)for i in os.listdir(dd_train)] + [os.path.join(dd_test,i)for i in os.listdir(dd_test)]
+    
+    all_area_list = []
+    area_all = 0
+    for ii in tqdm(ll_all):
+        path = ii
+        _,area = detect_red(path)
+        # print(area)
+        area_all += area
+    return (area_all / len(ll_all))
 
 class CameraInfo2(NamedTuple):
     uid: int
@@ -179,31 +237,49 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
     os.system(f'{cmdname} model_converter --input_path {output_proj_path} --output_path {output_proj_path} --output_type TXT')
     return 0
     
-# img_path = '/data/xiaoyun/dlf_data/00/img_1692936003.1167815/'
-# proj_path = '/data/xiaoyun/dlf_data/00/proj_1692936003.1167815/'
 
-# img_path = '/data/xiaoyun/dlf_data/00/img_1692935998.4679725/'
-# proj_path = '/data/xiaoyun/dlf_data/00/proj_1692935998.4679725/'
+def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times):
+    for i in range(start_group,end_group):
+        for j in range(start_group,end_group):
+            left_group = times[i]
+            right_group = times[j]
+            selected_indices = []
+            selected_indices.append(times[0])
+            for ii in left_ind:
+                selected_indices.append(left_group + f'.cam_{ii}.png')
+            
+            for ii in right_ind:
+                selected_indices.append(right_group + f'.cam_{ii}.png')
+            
+            select_part_observes(proj_path, selected_indices, cam_infos, f'/data/jianing/dlf_result/colmap_{i}_{j}')
+            os.system(f'cp /data/jianing/dlf_result/colmap_{i}_{j}/sparse/0/points* /data/jianing/dlf_result/proj_0829_all/sparse/0')
+            
+            source = f'/data/jianing/dlf_result/proj_0829_all'
+            output = f'/data/jianing/output_829/colmap_{i}_{j}'
+            os.system(f'python /home/jianing/gaussian-splatting/train.py -s {source} -m {output} --iterations 10000 --eval --ls 0{i} --rs 0{j}')
+            os.system(f'python /home/jianing/gaussian-splatting/render_depth.py -m {output} --ls 0{i} --rs 0{j} --eval')
+            #os.system(f'python area_test.py {output}')
+            area = get_area_all(output)
+            with open(f'/data/jianing/output_829/res_{start_group}_{end_group}.txt', 'a') as f:
+                f.writelines(f'{i} {j} {area}\n')
 
-# img_path = '/data/xiaoyun/dlf_data/00'
-# proj_path = '/data/xiaoyun/dlf_result/proj_00'
+if __name__ == '__main__':
+    img_path = '/data/xiaoyun/dlf_data_0829/colmap_00_03/images_all'
+    proj_path = '/data/xiaoyun/dlf_result/proj_0829_all'
+    times = []
+    for i in os.listdir(img_path):
+        i = i.split('.')[0] + '.' + i.split('.')[1]
+        if i not in times :
+            times.append(i)
+    times = natsorted(times)
+    #print(times)
 
-img_path = '/data/xiaoyun/dlf_data_0829/colmap_00_03/images_all'
-proj_path = '/data/xiaoyun/dlf_result/proj_0829_all'
-
-## copy images
-# dst_names = prepare_scene(img_path, proj_path, depth=2)
-
-## run COLMAP
-# process(proj_path, os.path.join(proj_path, 'image'))
-
-## load COLMAP results
-cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'image'))
-
-## select part results
-# selected_indices = ['img_1693287405.0451224', 'img_1693287422.2212815', 'img_1693287514.7129002', 'img_1693287531.8887675', 'img_1693287711.4288707']
-selected_indices = ['img_1693287405.0451224', 'img_1693287447.988503']
-select_part_observes(proj_path, selected_indices, cam_infos, '/data/xiaoyun/dlf_result/proj_0829_img_position1')
-
-
+    
+    ## load COLMAP results
+    cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'image'))
+    left_ind = [10,11,9,17,16,14,15,8,13]
+    right_ind = [1,5,4,6,12,0,3,2,7]
+    ## select part results
+    
+    process_full_pipeline(1, 6, proj_path, cam_infos, times)
 
