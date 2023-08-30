@@ -42,10 +42,6 @@ Jonathan Stephens made a fantastic step-by-step tutorial for setting up Gaussian
 
 User [camenduru](https://github.com/camenduru) was kind enough to provide a Colab template that uses this repo's source (status: August 2023!) for quick and easy access to the method. Please check it out [here](https://github.com/camenduru/gaussian-splatting-colab).
 
-## NerfStudio Integration
-
-An user-made plugin for NeRFstudio to display trained models has been provided [here](https://neuralradiancefields.io/3d-gaussian-splatting-viewer-added-to-nerfstudio)
-
 ## Cloning the Repository
 
 The repository contains submodules, thus please check it out with 
