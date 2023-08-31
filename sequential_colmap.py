@@ -245,7 +245,7 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
     return 0
     
 
-def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times, source, colmap_output, model_output):
+def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times, colmap_output, model_output, train = True, render = False):
     for i in range(start_group,end_group):
         for j in range(start_group,end_group):
             left_group = times[i]
@@ -262,10 +262,12 @@ def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times, s
             os.system(f'cp {colmap_dir}/sparse/0/points* {proj_path}/sparse/0')
             
             output = os.path.join(model_output,f'colmap_{i}_{j}')
-            os.system(f'python /home/jianing/gaussian-splatting/train.py -s {source} -m {output} --iterations 10000 --eval --ls 0{i} --rs 0{j}')
-            # os.system(f'python /home/jianing/gaussian-splatting/render_depth.py -m {output} --ls 0{i} --rs 0{j} --eval')
-            # #os.system(f'python area_test.py {output}')
-            # area = get_area_all(output)
+            if train:
+                os.system(f'python /home/jianing/gaussian-splatting/train.py -s {proj_path} -m {output} --iterations 10000 --eval --ls 0{i} --rs 0{j}')
+            if render:
+                os.system(f'python /home/jianing/gaussian-splatting/render_depth.py -m {output} --ls 0{i} --rs 0{j} --eval')
+            #os.system(f'python area_test.py {output}')
+            #area = get_area_all(output)
             # with open(f'/data/jianing/output_829/res_{start_group}_{end_group}.txt', 'a') as f:
             #     f.writelines(f'{i} {j} {area}\n')
 
@@ -288,5 +290,6 @@ if __name__ == '__main__':
     ## select part results
     colmap_output = '/data/jianing/dlf_result/colmap_sm'
     model_output = '/data/jianing/output_829_sm'
-    process_full_pipeline(1, 6, proj_path, cam_infos, times, proj_path, colmap_output,model_output)
-
+    process_full_pipeline(1, 6, proj_path, cam_infos, times, colmap_output,model_output, False, True)
+    # process_full_pipeline(6, 12, proj_path, cam_infos, times, colmap_output,model_output)
+    # process_full_pipeline(12, 18, proj_path, cam_infos, times, colmap_output,model_output)
