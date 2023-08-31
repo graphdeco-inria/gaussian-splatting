@@ -282,7 +282,6 @@ if __name__ == '__main__':
     times = natsorted(times)
     #print(times)
 
-    
     ## load COLMAP results
     cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'images'))
     left_ind = [10,11,9,17,16,14,15,8,13]

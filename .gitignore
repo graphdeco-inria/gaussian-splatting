@@ -3,3 +3,5 @@ output/
 *.txt
 *.json
 __pycache__/
+data/
+test810_all4/
