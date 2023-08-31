@@ -336,9 +336,17 @@ SIBR has many other functionalities, please see the [documentation](https://sibr
 </details>
 <br>
 
-## Troubleshooting
-- If you encounter an error running train.py that states: ```ModuleNotFoundError: No module named 'diff_gaussian_rasterization'```, this means that you had an issue during the Optimizer install process. Try [installing the optimizer](#installing-the-optimizer) again. Take note of any specific errors and report them in the original GitHub [issues page](https://github.com/graphdeco-inria/gaussian-splatting/issues) <br>
+## Install Troubleshooting
+- If you encounter an error running train.py that states: ```ModuleNotFoundError: No module named 'diff_gaussian_rasterization'```, this means that you had an issue during the Optimizer install process. Try [installing the optimizer](#installing-the-optimizer) again. Take note of any specific errors and report them in the original GitHub [issues page](https://github.com/graphdeco-inria/gaussian-splatting/issues)
+- If it still doesn't work. Most likely the It says something about cl.exe missing. You can you try adding the visual studio path to your environment variables (your version number might differ); `C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.29.30133\bin\Hostx64\x64` Then make sure you start a new conda prompt and cd to your repo location and try this;
 
+```shell
+conda activate gaussian_splatting
+cd <dir_to_repo>/gaussian-splatting
+pip install submodules\diff-gaussian-rasterization
+pip install submodules\simple-knn
+```
+I will make a tutorial video soon on how to troubleshoot common installation problems. In the meantime, keep asking questions in the main GitHub repo and I'll jump on when I can to answer questions.
 
 ## FAQ
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page.
