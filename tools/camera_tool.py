@@ -10,6 +10,7 @@ dir_path = Path(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(str(dir_path.parent.absolute()))
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix, focal2fov, fov2focal
 
+# function to load cameras
 class ViewpointCamera:
     FoVx: np.array
     FoVy: np.array
@@ -39,6 +40,43 @@ class ViewpointCamera:
         self.projection_matrix = getProjectionMatrix(znear=znear, zfar=zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0, 1).cuda()
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
+
+    def load_extrinsic2(self, R, T, znear, zfar):
+        trans = np.array([0.0, 0.0, 0.0])
+        scale = 1.0
+        self.world_view_transform = getWorld2View2(R, T, trans, scale)
+        # self.world_view_transform = RT
+        self.world_view_transform = torch.tensor(self.world_view_transform).transpose(0, 1).cuda()
+        self.projection_matrix = getProjectionMatrix(znear=znear, zfar=zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0, 1).cuda()
+        self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
+        self.camera_center = self.world_view_transform.inverse()[3, :3]
+
+# function for spline interpolation
+from scipy.spatial.transform import Rotation, RotationSpline
+from scipy.interpolate import CubicSpline
+
+class CameraInterpolation:
+    # Define a function to interpolate rotation matrices using SLERP
+    def interpolate_extrinsic_matrices(Rs, Ts, inter_num):
+        interpolated_matrices = []
+        t_orig = np.linspace(0.0, len(Rs) - 1, num=len(Rs), endpoint=True)
+        t_values = np.linspace(0.0, len(Rs) - 1, num=inter_num, endpoint=True)
+        # Interpolate rotation matrices 
+        rotations = Rotation.from_matrix(Rs)
+        rot_spline = RotationSpline(t_orig, rotations)
+        interpolated_rotations = rot_spline(t_values)
+        interpolated_matrices = interpolated_rotations.as_matrix()
+        # Interpolate translation matrices 
+        Ts_mat = np.stack(Ts)
+        spline1 = CubicSpline(t_orig, Ts_mat[:, 0])
+        spline2 = CubicSpline(t_orig, Ts_mat[:, 1])
+        spline3 = CubicSpline(t_orig, Ts_mat[:, 2])
+        interpolated_positions = np.array([
+            spline1(t_values),
+            spline2(t_values),
+            spline3(t_values)
+        ]).T
+        return interpolated_matrices, interpolated_positions
 
 def load_params_from_file(filename):
     # Define a regular expression pattern to match floating-point numbers
@@ -119,14 +157,23 @@ def load_views_from_lookat_torch(filename):
         views.append(view)
     return views
 
-# # Example usage:
-# eye = [0.0, 0.0, 3.0]     # Camera position
-# target = [0.0, 0.0, 0.0]  # Point the camera looks at
-# up = [0.0, 1.0, 0.0]      # Up vector
+def load_views_from_lookat_torch_w_spline_interpolation(filename, inter_num = 100):
+    glcams = load_params_from_file('./tools/cameras3.lookat')
+    Rs = []
+    Ts = []
+    for idx in range(len(glcams['eye'])):
+        view = ViewpointCamera()
+        RT, R, T = look_at_to_rt(glcams['eye'][idx], glcams['target'][idx], glcams['up'][idx])
+        Rs.append(R)
+        Ts.append(T)
+    Rs_inter, Ts_inter = CameraInterpolation.interpolate_extrinsic_matrices(Rs, Ts)
+    views = []
+    for idx in range(Rs_inter.shape[0]):
+        view = ViewpointCamera()
+        view.load_extrinsic2(Rs_inter[idx, :, :], Ts_inter[idx, :], glcams['clipZ'][0][0].item(), glcams['clipZ'][0][1].item())
+        views.append(view)
 
-# extrinsic_matrix = look_at_to_extrinsic(eye, target, up)
-# print("Camera Extrinsic Matrix:")
-# print(extrinsic_matrix)
+    return views
 
 if __name__ == '__main__':
     a = 1

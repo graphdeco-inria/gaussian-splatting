@@ -22,7 +22,7 @@ from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
 import numpy as np
 
-from tools.camera_tool import load_views_from_lookat_torch
+from tools.camera_tool import load_views_from_lookat_torch, load_views_from_lookat_torch_w_spline_interpolation
 
 def render_sets_from_file(dataset : ModelParams, iteration : int, pipeline : PipelineParams, name):
     with torch.no_grad():
@@ -40,7 +40,9 @@ def render_sets_from_file(dataset : ModelParams, iteration : int, pipeline : Pip
         makedirs(gts_path, exist_ok=True)
         makedirs(depth_path, exist_ok=True)
 
-        views = load_views_from_lookat_torch('./tools/cameras.lookat')
+        # views = load_views_from_lookat_torch('./tools/cameras.lookat')
+        views = load_views_from_lookat_torch_w_spline_interpolation('./tools/cameras.lookat', 100)
+
         for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
             results = render(view, gaussians, pipeline, background)
             rendering = results["render"]
