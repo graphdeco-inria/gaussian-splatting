@@ -18,6 +18,8 @@ class ViewpointCamera:
     world_view_transform: np.array
     full_proj_transform: np.array
     camera_center: np.array
+    R: np.array
+    T: np.array
 
     def __init__(self, image_width=1280, image_height=720, fx = 783.5623272369992, fy = 775.0592003023257):
         self.image_width = image_width
@@ -28,10 +30,15 @@ class ViewpointCamera:
 
     def load_extrinsic(self, eye, target, up, znear, zfar):
         self.camera_center = eye
-        _, R, T = look_at_to_rt(eye, target, up)
-        self.world_view_transform = getWorld2View2(R, T)
-        self.projection_matrix = getProjectionMatrix(znear, zfar, self.FoVx, self.FoVy)
-        self.full_proj_transform = np.matmul(self.world_view_transform, self.projection_matrix)
+        RT, self.R, self.T = look_at_to_rt(eye, target, up)
+        trans = np.array([0.0, 0.0, 0.0])
+        scale = 1.0
+        self.world_view_transform = getWorld2View2(self.R, self.T, trans, scale)
+        # self.world_view_transform = RT
+        self.world_view_transform = torch.tensor(self.world_view_transform).transpose(0, 1).cuda()
+        self.projection_matrix = getProjectionMatrix(znear=znear, zfar=zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0, 1).cuda()
+        self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
+        self.camera_center = self.world_view_transform.inverse()[3, :3]
 
 def load_params_from_file(filename):
     # Define a regular expression pattern to match floating-point numbers
@@ -76,45 +83,39 @@ def load_params_from_file(filename):
 
 def look_at_to_rt(eye, target, up):
     # Calculate the forward, right, and up vectors.
-    forward = np.array(target) - np.array(eye)
-    forward /= np.linalg.norm(forward)
+    up = -up
+    zaxis = (target - eye)
+    zaxis /= np.linalg.norm(zaxis)
     
-    right = np.cross(forward, up)
-    right /= np.linalg.norm(right)
+    xaxis = np.cross(up, zaxis)
+    xaxis /= np.linalg.norm(xaxis)
     
-    new_up = np.cross(right, forward)
-    new_up /= np.linalg.norm(new_up)
+    yaxis = np.cross(zaxis, xaxis)
+    yaxis /= np.linalg.norm(yaxis)
 
     # Create the rotation matrix (3x3).
-    rotation_matrix = np.vstack((right, new_up, -forward)).T
+    rotation_matrix = np.vstack((xaxis, yaxis, zaxis)).T
 
     # Create the translation vector (3x1).
-    translation_vector = -np.dot(rotation_matrix, np.array(eye))
+    translation_vector = -np.dot(eye, rotation_matrix)
 
     # Combine the rotation and translation into an RT matrix (4x4).
     rt_matrix = np.identity(4)
     rt_matrix[:3, :3] = rotation_matrix
     rt_matrix[:3, 3] = translation_vector
+
+    rt_matrix = rt_matrix.astype(np.float32)
+    rotation_matrix = rotation_matrix.astype(np.float32)
+    translation_vector = translation_vector.astype(np.float32)
     
     return rt_matrix, rotation_matrix, translation_vector
 
-def load_views_from_lookat(filename):
-    glcams = load_params_from_file('./tools/cameras.lookat')
-    views = []
-    for idx in range(len(glcams)):
-        view = ViewpointCamera()
-        view.load_extrinsic(glcams['eye'][idx], glcams['target'][idx], glcams['up'][idx], glcams['clipZ'][idx][0].item(), glcams['clipZ'][idx][1].item())
-        views.append(view)
-    return views
-
 def load_views_from_lookat_torch(filename):
-    glcams = load_params_from_file('./tools/cameras.lookat')
+    glcams = load_params_from_file('./tools/cameras3.lookat')
     views = []
-    for idx in range(len(glcams)):
+    for idx in range(len(glcams['eye'])):
         view = ViewpointCamera()
         view.load_extrinsic(glcams['eye'][idx], glcams['target'][idx], glcams['up'][idx], glcams['clipZ'][idx][0].item(), glcams['clipZ'][idx][1].item())
-        view.world_view_transform = torch.tensor(view.world_view_transform).transpose(0, 1).cuda()
-        view.full_proj_transform = torch.tensor(view.world_view_transform).transpose(0, 1).cuda()
         views.append(view)
     return views
 
@@ -128,5 +129,4 @@ def load_views_from_lookat_torch(filename):
 # print(extrinsic_matrix)
 
 if __name__ == '__main__':
-    glcams = load_views_from_lookat('./tools/cameras.lookat')
     a = 1
