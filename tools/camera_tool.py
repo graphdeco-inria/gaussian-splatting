@@ -166,7 +166,7 @@ def load_views_from_lookat_torch_w_spline_interpolation(filename, inter_num = 10
         RT, R, T = look_at_to_rt(glcams['eye'][idx], glcams['target'][idx], glcams['up'][idx])
         Rs.append(R)
         Ts.append(T)
-    Rs_inter, Ts_inter = CameraInterpolation.interpolate_extrinsic_matrices(Rs, Ts)
+    Rs_inter, Ts_inter = CameraInterpolation.interpolate_extrinsic_matrices(Rs, Ts, inter_num=inter_num)
     views = []
     for idx in range(Rs_inter.shape[0]):
         view = ViewpointCamera()
