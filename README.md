@@ -336,6 +336,45 @@ SIBR has many other functionalities, please see the [documentation](https://sibr
 </details>
 <br>
 
+## Installing the Nerfstudio Viewer
+A fork form the Nerfstudio has been created that enables the viewer for 3D Gaussian Splatting. [You can find the official fork here]([url](https://github.com/yzslab/nerfstudio/tree/gaussian_splatting)).
+
+I created a video on how to install and run this viewer. [View the video here](https://github.com/yzslab/nerfstudio/tree/gaussian_splatting).
+
+Here is the instructions to follow:
+Open Command Prompt
+
+Pull the branched fork of code. _Make sure to change your original Nerfstudio project folder so you don't modify it._ <br>
+```git clone -b gaussian_splatting --recursive https://github.com/yzslab/nerfstudio.git```
+
+Activate your Nerfstudio Conda Environment <br>
+```conda activate nerfstudio```
+
+Change directory to nerfstudio <br>
+```cd nerfstudio```
+
+Install plyfile <br>
+```pip install plyfile==0.8.1```
+
+Install submodules <br>
+```shell
+pip install ./submodules/diff-gaussian-rasterization
+pip install ./submodules/simple-knn
+```
+
+Launch the viewer <br>
+```python nerfstudio/scripts/gaussian_splatting/run_viewer.py --model-path GAUSSIAN_TRAINING_OUTPUT_MODEL_DIR```
+
+Render your camera path <br>
+```shell
+python nerfstudio/scripts/gaussian_splatting/render.py camera-path \
+    --model-path GAUSSIAN_TRAINING_OUTPUT_MODEL_DIR \
+    --camera-path-filename YOUR_CAMERA_PATH_FILE.json \
+    --output-path YOUR_OUTPUT_MP4_FILE.mp4
+```
+
+
+
 ## Install Troubleshooting
 - If you encounter an error running train.py that states: ```ModuleNotFoundError: No module named 'diff_gaussian_rasterization'```, this means that you had an issue during the Optimizer install process. Try [installing the optimizer](#installing-the-optimizer) again. Take note of any specific errors and report them in the original GitHub [issues page](https://github.com/graphdeco-inria/gaussian-splatting/issues)
 - If it still doesn't work. Most likely the It says something about cl.exe missing. You can you try adding the visual studio path to your environment variables (your version number might differ); `C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.29.30133\bin\Hostx64\x64` Then make sure you start a new conda prompt and cd to your repo location and try this;
