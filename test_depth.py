@@ -7,6 +7,8 @@ from matplotlib import pyplot as plt
 
 import lpips
 
+def split_list(input_list, chunk_size = 18):
+    return [input_list[i:i+chunk_size] for i in range(0, len(input_list), chunk_size)]
 
 
 def get_rt(txt_dir,target_name):
@@ -106,26 +108,24 @@ def project_depth_rgb(K1,K2,relative_transform,depth_image_A,rgb_A = None):
     return depth_image_B, rgb_image_B
 
 def get_pose_dir(img_name):
-    basename = os.path.basename(img_name).split('_')
-    pose_dir = f'{basename[0]}_{basename[1]}/{basename[2]}_{basename[3]}.png'
+    #basename = os.path.basename(img_name).split('_')
+    pose_dir = img_name.replace('images','')
     return pose_dir
 
 if __name__ == '__main__':
-    root = './output/colmap_00_1_1'
+    root = '/data/jianing/output_829/colmap_1_1'
 
-    train_depth_dir = os.path.join(root,'train','ours_5000','depth')
-    test_depth_dir = os.path.join(root,'test','ours_5000','depth')
+    train_depth_dir = os.path.join(root,'train','ours_10000','depth')
+    test_depth_dir = os.path.join(root,'test','ours_10000','depth')
 
-    train_img_dir = os.path.join(root,'train','ours_5000','renders')
-    test_img_dir = os.path.join(root,'test','ours_5000','renders')
+    train_img_dir = os.path.join(root,'train','ours_10000','renders')
+    test_img_dir = os.path.join(root,'test','ours_10000','renders')
 
-    #gt_dir = os.path.join(root,'test','ours_5000','gt')
+    ll_img_ref = [os.path.join(train_img_dir,i) for i in os.listdir(train_img_dir)]
+    ll_img_test = [os.path.join(test_img_dir,i) for i in os.listdir(test_img_dir)]
 
-    ll_img_ref = [os.path.join(train_img_dir,i) for i in os.listdir(train_img_dir) if '_0.jpg' in i]
-    ll_img_test = [os.path.join(test_img_dir,i) for i in os.listdir(test_img_dir) if '_0.jpg' in i]
-
-    ll_dep_ref = [os.path.join(train_depth_dir,i) for i in os.listdir(train_depth_dir) if '_0.npy' in i]
-    ll_dep_test = [os.path.join(test_depth_dir,i) for i in os.listdir(test_depth_dir) if '_0.npy' in i]
+    ll_dep_ref = [os.path.join(train_depth_dir,i) for i in os.listdir(train_depth_dir) if '.npy' in i]
+    ll_dep_test = [os.path.join(test_depth_dir,i) for i in os.listdir(test_depth_dir) if '.npy' in i]
 
     def extract_cam_number(filename):
         parts = filename.split("_")
@@ -134,36 +134,32 @@ if __name__ == '__main__':
                 return int(parts[i + 1])
         return 0
 
-    ll_img_ref = sorted(ll_img_ref, key=extract_cam_number)#40
-    ll_img_test = sorted(ll_img_test, key=extract_cam_number)#100
-    ll_dep_ref = sorted(ll_dep_ref, key=extract_cam_number)#40
-    ll_dep_test = sorted(ll_dep_test, key=extract_cam_number)#100
+    ll_img_ref = sorted(ll_img_ref)
+    ll_img_test = sorted(ll_img_test)
+    ll_dep_ref = sorted(ll_dep_ref)
+    ll_dep_test = sorted(ll_dep_test)
 
-    txt_dir = './img_822_sm2/colmap_00/sparse/0'
+    txt_dir = '/data/jianing/dlf_result/proj_0829_all/sparse/0'
     loss_fn = lpips.LPIPS(net='alex',version='0.1')
 
-    for i in range(20):
-        ll_img_ref_c = ll_img_ref[2*i:2*i+2]
-        ll_dep_ref_c = ll_dep_ref[2*i:2*i+2]
-
-        ll_img_test_c = ll_img_ref[5*i:5*i+5]
-        ll_dep_test_c = ll_dep_ref[5*i:5*i+5]
-        for imgn, depn in zip(ll_img_test_c,ll_dep_test_c):
-            pose_dir = get_pose_dir(imgn)
-
-            for imgn2, depn2 in zip(ll_img_ref_c,ll_dep_ref_c):
-                pose_dir2 = get_pose_dir(imgn2)
-                #project test to ref
-                #A: render img   B:projected img  gt: real B img
+    ll_img_ref = split_list(ll_img_ref)
+    ll_img_test = split_list(ll_img_test)
+    ll_dep_ref = split_list(ll_dep_ref)
+    ll_dep_test = split_list(ll_dep_test)
+    
+    for img_list, dep_list in zip(ll_img_ref,ll_dep_ref):
+        for img_list_render, dep_list_render in zip(ll_img_test, ll_dep_test):
+            for img, dep, img_render, dep_render in zip(img_list,dep_list,img_list_render,dep_list_render):
+                pose_dir = get_pose_dir(imgn)
                 R1, T1, K1 = get_rt(txt_dir, pose_dir)
                 R2, T2, K2 = get_rt(txt_dir, pose_dir2)
 
                 relative_transform = relative_pose(R1, T1, R2, T2)
 
-                depth_image_A = np.load(depn)
-                rgb_A = cv2.imread(imgn)
+                depth_image_A = np.load(dep)
+                rgb_A = cv2.imread(img)
                 depth_image_B,rgb_B = project_depth_rgb(K1, K2,relative_transform, depth_image_A, rgb_A)
-                gt = cv2.imread(imgn2)
+                gt = cv2.imread(img_render)
                 normalized_depth = cv2.normalize(depth_image_A, None, 0, 255, cv2.NORM_MINMAX)
                 depth_gray = np.uint8(normalized_depth)
 
