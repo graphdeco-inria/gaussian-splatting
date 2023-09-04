@@ -42,6 +42,13 @@ Jonathan Stephens made a fantastic step-by-step tutorial for setting up Gaussian
 
 User [camenduru](https://github.com/camenduru) was kind enough to provide a Colab template that uses this repo's source (status: August 2023!) for quick and easy access to the method. Please check it out [here](https://github.com/camenduru/gaussian-splatting-colab).
 
+## Docker
+
+Use the Dockerfile to build a working docker image with this repository. In order to build the container succesfully make sure that:
+- NVIDIA's drivers are updated in the host machine (tested with 525.125.06)
+- The default-runtime for docker is set to "nvidia" in the /etc/docker/daemon.json file. See [this](https://github.com/NVIDIA/nvidia-docker/issues/1033).
+- For the above to work, the [nvidia-container-toolkit](https://gitlab.com/nvidia/container-toolkit/container-toolkit)  should be installed in your host (tested with version 1.14.0-rc.2).
+
 ## Cloning the Repository
 
 The repository contains submodules, thus please check it out with 
@@ -324,6 +331,7 @@ cd SIBR_viewers
 cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
 cmake --build build -j24 --target install
 ``` 
+Alternatively, you can build a docker image using the Dockerfile mentioned above.
 
 #### Ubuntu 20.04
 Backwards compatibility with Focal Fossa is not fully tested, but building SIBR with CMake should still work after invoking
