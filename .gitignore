@@ -5,3 +5,6 @@ output/
 __pycache__/
 data/
 test810_all4/
+db/
+viewers/
+viewers.zip
