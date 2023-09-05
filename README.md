@@ -55,7 +55,7 @@ Build your docker image from the Dockerfile by downloading the [Dockerfile](http
 mkdir gaussian_splatting
 cd gaussian_splatting
 wget https://raw.githubusercontent.com/sergiobd/gaussian-splatting-docker/docker/Dockerfile
-build -t gaussian_splatting .
+docker build -t gaussian_splatting .
 docker run -it --gpus all --name gaussian_splatting --shm-size=64g -v /your/local/shared/folder:/workspace/data gaussian_splatting:latest bash
 ```
 Please refer to [Docker's documentation](https://docs.docker.com/) for specific docker instructions.
