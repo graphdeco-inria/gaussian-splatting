@@ -44,3 +44,4 @@ WORKDIR /workspace/gaussian-splatting/SIBR_viewers
 RUN cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build -j24 --target install
 
+WORKDIR /workspace/gaussian-splatting
