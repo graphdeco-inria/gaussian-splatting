@@ -107,7 +107,7 @@ def update_vertices():
     for i, j in ti.ndrange(n, n):
         vertices[i * n + j] = x[i, j]
 
-window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (1024, 1024),
+window = ti.ui.Window("Taichi Cloth Simulation on GGUI", (720, 720),
                       vsync=True)
 canvas = window.get_canvas()
 canvas.set_background_color((1, 1, 1))
