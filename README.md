@@ -44,11 +44,21 @@ User [camenduru](https://github.com/camenduru) was kind enough to provide a Cola
 
 ## Docker
 
-Use the Dockerfile to build a working docker image with this repository. In order to build the container succesfully make sure that:
+Use the Dockerfile to build an (Ubuntu 22.04) image with this repository. In order to build the image succesfully make sure that:
 - NVIDIA's drivers are updated in the host machine (tested with 525.125.06)
-- The default-runtime for docker is set to "nvidia" in the /etc/docker/daemon.json file. See [this](https://github.com/NVIDIA/nvidia-docker/issues/1033).
+- The default-runtime for docker is set to `nvidia` in the `/etc/docker/daemon.json` file. See [this](https://github.com/NVIDIA/nvidia-docker/issues/1033).
 - For the above to work, the [nvidia-container-toolkit](https://gitlab.com/nvidia/container-toolkit/container-toolkit)  should be installed in your host (tested with version 1.14.0-rc.2).
 
+Build your docker image from the Dockerfile by downloading the [Dockerfile](https://github.com/sergiobd/gaussian-splatting-docker/blob/docker/Dockerfile) and placing it in an empty folder. You can do this manually or by using `wget`. Then, build the docker image and run it with GPU enabled. 
+
+```
+mkdir gaussian_splatting
+cd gaussian_splatting
+wget https://raw.githubusercontent.com/sergiobd/gaussian-splatting-docker/docker/Dockerfile
+build -t gaussian_splatting .
+docker run -it --gpus all --name gaussian_splatting --shm-size=64g -v /your/local/shared/folder:/workspace/data gaussian_splatting:latest bash
+```
+Please refer to [Docker's documentation](https://docs.docker.com/) for specific docker instructions.
 ## Cloning the Repository
 
 The repository contains submodules, thus please check it out with 
