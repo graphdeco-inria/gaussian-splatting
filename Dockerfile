@@ -27,6 +27,9 @@ WORKDIR /workspace/gaussian-splatting
 
 RUN conda env create --file environment.yml && conda init bash && exec bash && conda activate gaussian_splatting
 
+# Make gaussian_splatting the default environment on start
+RUN echo "conda activate gaussian_splatting" >> /root/.bashrc
+
 # Tweak the CMake file for matching the existing OpenCV version. Fix the naming of FindEmbree.cmake
 WORKDIR /workspace/gaussian-splatting/SIBR_viewers/cmake/linux
 RUN sed -i 's/find_package(OpenCV 4\.5 REQUIRED)/find_package(OpenCV 4.2 REQUIRED)/g' dependencies.cmake
