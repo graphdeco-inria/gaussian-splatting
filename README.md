@@ -63,7 +63,7 @@ Here is what the workflow looks like: <br>
 
 
 ## Requirements
-This is the hardware and software required to run 3D Gaussian Splatting for Real-Time Radiance Fields. Technically, the viewer has much smaller requirements compared to the the optimizer. I decided to list the 
+This is the hardware and software required to run 3D Gaussian Splatting for Real-Time Radiance Fields. Technically, the viewer has much smaller requirements compared to the the optimizer.
 
 ### Hardware
 - An NVIDIA GPU with 24GB VRAM* or more. Preferably an RTX 3090 or better. _*Future updates to these instructions will have options to modify training for GPUs with less VRAM such as a 3080._
@@ -88,11 +88,11 @@ You will need to pull a copy of the code from GitHub. You will do this by using 
 
 ```git clone https://github.com/graphdeco-inria/gaussian-splatting --recursive```
 
-The folder will download to the root of our command line prompt with the name "Gaussian-Splatting". Typically in your ```C:User/<username>``` folder. For example, on my PC the folder is now located at C:User/Jonat/Guassian-Splatting
+The folder will download to the root of our command-line prompt with the name "Gaussian-Splatting". Typically in your ```C:User/<username>``` folder. For example, on my PC the folder is now located at C:User/Jonat/Guassian-Splatting
 
 ## Installing the Optimizer
 
-To install the code that you pulled from GitHub, you will need to create a Conda environment that includes all of the compailed code for running. Open command prompt and enter these lines below one at a time. The second line will compile the code which can take 10 minutes or longer. The last line will "activate" the conda environment. You will need to enter ```conda activate gaussian_splatting``` at the start of each session you plan to optimize 3D Gaussian Splatting.
+To install the code that you pulled from GitHub, you will need to create a Conda environment that includes all of the compiled code for running. Open command prompt and enter these lines below one at a time. The second line will compile the code which can take 10 minutes or longer, see the note below if it fails. The last line will "activate" the conda environment. You will need to enter ```conda activate gaussian_splatting``` at the start of each session you plan to optimize 3D Gaussian Splatting.
 
 ```shell
 SET DISTUTILS_USE_SDK=1
@@ -108,6 +108,8 @@ conda config --add pkgs_dirs <Drive>/<pkg_path>
 conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_splatting
 conda activate <Drive>/<env_path>/gaussian_splatting
 ```
+
+If the pip dependencies fail to install for the second command and you see a reference to "cl.exe" in the error message you can use [this](https://github.com/graphdeco-inria/gaussian-splatting/issues/146#issuecomment-1697780349) fix.
 
 ## Preparing Images From Your Own Scenes
 
