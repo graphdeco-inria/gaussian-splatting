@@ -246,6 +246,8 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
     
 
 def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times, colmap_output, model_output, train = True, render = False):
+    left_ind = [10,11,9,17,16,14,15,8,13]
+    right_ind = [1,5,4,6,12,0,3,2,7]
     for i in range(start_group,end_group):
         for j in range(start_group,end_group):
             left_group = times[i]
@@ -271,9 +273,28 @@ def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times, c
             # with open(f'/data/jianing/output_829/res_{start_group}_{end_group}.txt', 'a') as f:
             #     f.writelines(f'{i} {j} {area}\n')
 
+def process_full_pipeline_single(proj_path, cam_infos, times, colmap_output, model_output, train = True, render = False):
+    
+    selected_indices = []
+    selected_indices.append(times[0])
+    
+    colmap_dir = os.path.join(colmap_output,'0_0')
+    select_part_observes(proj_path, selected_indices, cam_infos, colmap_dir)
+    os.system(f'cp {colmap_dir}/sparse/0/points* {proj_path}/sparse/0')
+    
+    output = os.path.join(model_output,'colmap_0_0')
+    if train:
+        os.system(f'python /home/jianing/gaussian-splatting/train.py -s {proj_path} -m {output} --iterations 10000 --eval --ls 0 --rs 0')
+    if render:
+        os.system(f'python /home/jianing/gaussian-splatting/render_depth.py -m {output} --ls 0 --rs 0 --eval')
+
 if __name__ == '__main__':
-    #img_path = '/data/xiaoyun/dlf_data_0829/colmap_00_03/images_all'
-    proj_path = '/data/jianing/dlf_result/proj_0829_all_sm'
+    proj_path = '/data/jianing/dlf_result/proj_0904_all'
+    # img_path = '/data/jianing/data/img_904_1'
+    # dst_name = prepare_scene(img_path, proj_path,depth=2)
+    # process(proj_path, os.path.join(proj_path,'images'))
+    # #img_path = '/data/xiaoyun/dlf_data_0829/colmap_00_03/images_all'
+    #proj_path = '/data/jianing/dlf_result/proj_0829_all'
     times = []
     for i in os.listdir(os.path.join(proj_path, 'images')):
         i = i.split('.')[0] + '.' + i.split('.')[1]
@@ -284,11 +305,10 @@ if __name__ == '__main__':
 
     ## load COLMAP results
     cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'images'))
-    left_ind = [10,11,9,17,16,14,15,8,13]
-    right_ind = [1,5,4,6,12,0,3,2,7]
     ## select part results
-    colmap_output = '/data/jianing/dlf_result/colmap_sm'
-    model_output = '/data/jianing/output_829_sm'
-    process_full_pipeline(1, 6, proj_path, cam_infos, times, colmap_output,model_output, False, True)
+    colmap_output = '/data/jianing/dlf_result/colmap_904'
+    model_output = '/data/jianing/output_904'
+    process_full_pipeline_single(proj_path, cam_infos, times, colmap_output, model_output, True, True)
+    process_full_pipeline(1, 10, proj_path, cam_infos, times, colmap_output,model_output, True, True)
     # process_full_pipeline(6, 12, proj_path, cam_infos, times, colmap_output,model_output)
     # process_full_pipeline(12, 18, proj_path, cam_infos, times, colmap_output,model_output)
