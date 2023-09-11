@@ -20,20 +20,31 @@ from utils.general_utils import safe_state
 from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
+import matplotlib.pyplot as plt
+import numpy as np
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
+    depth_path = os.path.join(model_path, name, "ours_{}".format(iteration), "depth")
 
     makedirs(render_path, exist_ok=True)
     makedirs(gts_path, exist_ok=True)
+    makedirs(depth_path, exist_ok=True)
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        rendering = render(view, gaussians, pipeline, background)["render"]
+        results = render(view, gaussians, pipeline, background)
+        rendering = results["render"]
         gt = view.original_image[0:3, :, :]
+        depth = results["depth"]
+        print(results["num_gauss"])
+        depth[(depth < 0)] = 0
+        depth = (depth / (depth.max() + 1e-5)).detach().cpu().numpy().squeeze()
+        depth = (depth * 255).astype(np.uint8)
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
         torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
-
+        #torchvision.utils.save_image(plt.cm.jet(depth.clone().detach().cpu()), os.path.join(depth_path, '{0:05d}'.format(idx) + ".png"))
+        plt.imsave(os.path.join(depth_path, '{0:05d}'.format(idx) + ".png"), depth, cmap='jet')
 def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool):
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree)
