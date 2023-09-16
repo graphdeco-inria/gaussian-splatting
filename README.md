@@ -182,7 +182,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Iteration where densification stops, ```15_000``` by default.
   #### --densify_grad_threshold
   Limit that decides if points should be densified based on 2D position gradient, ```0.0002``` by default.
-  #### --densification_interal
+  #### --densification_interval
   How frequently to densify, ```100``` (every 100 iterations) by default.
   #### --opacity_reset_interval
   How frequently to reset opacity, ```3_000``` by default. 
