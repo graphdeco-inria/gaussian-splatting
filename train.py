@@ -9,6 +9,9 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+# command 
+# python train.py --model_path ../data/919/1695106719.5731606_dense/output --source_path ../data/919/1695106719.5731606_dense/ --iterations 10000
+
 import os
 import torch
 from random import randint
@@ -115,6 +118,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+                    
+                    # clean gaussians out of the box
+                    gaussians.clean_gaussians_out_of_mask()
                 
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
