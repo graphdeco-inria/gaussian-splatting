@@ -407,5 +407,5 @@ class GaussianModel:
         self.denom[update_filter] += 1
 
     def clean_gaussians_out_of_mask(self):
-        prune_mask = (self._xyz[:, 2] < 12).squeeze()
+        prune_mask = (self._xyz[:, 2] < 9).squeeze()
         self.prune_points(prune_mask)
