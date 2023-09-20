@@ -125,3 +125,4 @@ if __name__ == "__main__":
     model.load_gaussian_ply('D:/Code/gaussian-splatting/output/colmap_2_5/point_cloud/iteration_10000/point_cloud2.ply')
     model.crop_pointclouds()
     model.save_gaussian_ply('D:/Code/gaussian-splatting/output/colmap_2_5/point_cloud/iteration_10000/point_cloud.ply')
+    

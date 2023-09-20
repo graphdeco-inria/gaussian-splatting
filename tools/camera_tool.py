@@ -175,5 +175,20 @@ def load_views_from_lookat_torch_w_spline_interpolation(filename, inter_num = 10
 
     return views
 
+def interpolate_cameras(cameras, inter_num):
+    Rs = []
+    Ts = []
+    for idx in range(len(cameras)):
+        Rs.append(cameras[idx].R)
+        Ts.append(cameras[idx].T)
+    Rs_inter, Ts_inter = CameraInterpolation.interpolate_extrinsic_matrices(Rs, Ts, inter_num=inter_num)
+    views = []
+    for idx in range(Rs_inter.shape[0]):
+        view = ViewpointCamera()
+        view.load_extrinsic2(Rs_inter[idx, :, :], Ts_inter[idx, :], 0.01, 100)
+        views.append(view)
+
+    return views
+
 if __name__ == '__main__':
     a = 1

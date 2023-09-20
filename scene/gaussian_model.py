@@ -405,3 +405,7 @@ class GaussianModel:
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
+
+    def clean_gaussians_out_of_mask(self):
+        prune_mask = (self._xyz[:, 2] < 9).squeeze()
+        self.prune_points(prune_mask)
