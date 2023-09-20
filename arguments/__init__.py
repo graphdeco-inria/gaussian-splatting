@@ -57,6 +57,7 @@ class ModelParams(ParamGroup):
         self.eval = False
         self.ls = [0]
         self.rs = [0]
+        self.cam_num = 18
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
@@ -64,6 +65,7 @@ class ModelParams(ParamGroup):
         g.source_path = os.path.abspath(g.source_path)
         g.ls = [int(i) for i in g.ls]
         g.rs = [int(i) for i in g.rs]
+        g.cam_num = int(g.cam_num)
         return g
 
 class PipelineParams(ParamGroup):
