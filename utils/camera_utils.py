@@ -55,6 +55,7 @@ def loadCam(args, id, cam_info, resolution_scale):
         masked_preview[0, resized_mask[0] == 0.] /= 4.
         masked_preview[0, resized_mask[0] == 0.] += 0.75
         preview_save_path = os.path.join(args.model_path, "mask_preview", cam_info.image_name.replace("/", "_"))
+        preview_save_path = preview_save_path + '.png'
         os.makedirs(os.path.dirname(preview_save_path), exist_ok=True)
         torchvision.utils.save_image(masked_preview, preview_save_path)
 
