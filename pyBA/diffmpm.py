@@ -4,6 +4,7 @@ import os
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import imageio
 
 real = ti.f32
 ti.init(default_fp=real, arch=ti.gpu, flatten_if=True)
@@ -12,18 +13,18 @@ dim = 2
 n_particles = 8192
 n_solid_particles = 0
 n_actuators = 0
-n_grid = 128
+n_grid = 128 
 dx = 1 / n_grid
 inv_dx = 1 / dx
-dt = 1e-3
+dt = 1e-4
 p_vol = 1
-E = 10
+E = 15
 # TODO: update
 mu = E
 la = E
 max_steps = 2048
 steps = 1024
-gravity = 3.8
+gravity = 0
 target = [0.8, 0.2]
 
 scalar = lambda: ti.field(dtype=real)
@@ -46,7 +47,7 @@ x_avg = vec()
 
 actuation = scalar()
 actuation_omega = 20
-act_strength = 4 * 5
+act_strength = 30
 
 
 
@@ -111,7 +112,7 @@ def p2g(f: ti.i32):
             act = 0.0
         # ti.print(act)
 
-        A = ti.Matrix([[1.0, 0.0], [0.0, 1.0]]) * act
+        A = ti.Matrix([[0.0, 0.0], [0.0, 1.0]]) * act
         cauchy = ti.Matrix([[0.0, 0.0], [0.0, 0.0]])
         mass = 0.0
         if particle_type[p] == 0:
@@ -173,7 +174,7 @@ def grid_op():
             v_out[0] = 0
             v_out[1] = 0
 
-        grid_v_out[i, j] = v_out
+        grid_v_out[i, j] = v_out * (1-1e-2)
 
 
 @ti.kernel
@@ -207,10 +208,10 @@ def compute_actuation(t: ti.i32):
     #                                       2 * math.pi / n_sin_waves * j)
     #     act += bias[i]
     #     actuation[t, i] = ti.tanh(act)
-    actuation[t, 0] = -1
-    actuation[t, 1] = 0
-    actuation[t, 2] = 0
-    actuation[t, 3] = 1
+    actuation[t, 0] = -0.5
+    actuation[t, 1] = 0.5
+    actuation[t, 2] = -0.5
+    actuation[t, 3] = 0.5
 
 @ti.kernel
 def compute_x_avg():
@@ -313,7 +314,7 @@ def fish(scene):
 
 
 def robot(scene):
-    scene.set_offset(0.1, 0.03)
+    scene.set_offset(0.1, 0.3)
     scene.add_rect(0.0, 0.1, 0.3, 0.1, -1)
     scene.add_rect(0.0, 0.0, 0.05, 0.1, 0)
     scene.add_rect(0.05, 0.0, 0.05, 0.1, 1)
@@ -321,6 +322,47 @@ def robot(scene):
     scene.add_rect(0.25, 0.0, 0.05, 0.1, 3)
     scene.set_n_actuators(4)
 
+def arm(scene):
+    scene.set_offset(0.1, 0.3)
+    scene.add_rect(0.0, 0.0, 0.05, 0.1, 0)
+    scene.add_rect(0.05, 0.0, 0.05, 0.1, 1)
+    scene.add_rect(0.0, 0.1, 0.05, 0.1, -1)
+    scene.add_rect(0.05, 0.1, 0.05, 0.1, -1)
+    scene.add_rect(0.0, 0.2, 0.05, 0.1, 2)
+    scene.add_rect(0.05, 0.2, 0.05, 0.1, 3)
+    scene.add_rect(0.0, 0.3, 0.05, 0.1, -1)
+    scene.add_rect(0.05, 0.3, 0.05, 0.1, -1)
+    scene.add_rect(0.0, -0.1, 0.05, 0.1, -1)
+    scene.add_rect(0.05, -0.1, 0.05, 0.1, -1)
+    scene.set_n_actuators(4)
+
+def arm_from_image(scene):
+    global n_particles
+    im = imageio.v2.imread('./Taichi_simulator/pneunetsmall.png')[:, :, 0]
+    # convert to sparse occupancy matrix and material assignments
+    for i in range(im.shape[0]):
+        for j in range(im.shape[1]):
+            if im[i,j] == 0: #static material (black)
+                scene.x.append([
+                    (i + 0.5) * dx,
+                    (j + 0.5) * dx
+                ])
+                scene.actuator_id.append(-1)
+                scene.particle_type.append(1)
+                scene.n_particles += 1
+                scene.n_solid_particles += 1
+            elif im[i,j] == 183: #actuated material (gray)
+                scene.x.append([
+                    (i + 0.5) * dx,
+                    (j + 0.5) * dx
+                ])
+                scene.actuator_id.append(0)
+                scene.particle_type.append(1)
+                scene.n_particles += 1
+                scene.n_solid_particles += 1
+            else: #no material
+                pass
+    scene.set_n_actuators(1)
 
 gui = ti.GUI("Differentiable MPM", (640, 640), background_color=0xFFFFFF)
 
@@ -350,7 +392,8 @@ def main():
 
     # initialization
     scene = Scene()
-    robot(scene)
+    arm(scene)
+    # arm_from_image(scene)
     scene.finalize()
     allocate_fields()
 
@@ -368,16 +411,16 @@ def main():
     for iter in range(options.iters):
         with ti.ad.Tape(loss):
             forward()
-        l = loss[None]
-        losses.append(l)
-        print('i=', iter, 'loss=', l)
-        learning_rate = 0.1
+        # l = loss[None]
+        # losses.append(l)
+        # print('i=', iter, 'loss=', l)
+        # learning_rate = 0.1
 
-        for i in range(n_actuators):
-            for j in range(n_sin_waves):
-                # print(weights.grad[i, j])
-                weights[i, j] -= learning_rate * weights.grad[i, j]
-            bias[i] -= learning_rate * bias.grad[i]
+        # for i in range(n_actuators):
+        #     for j in range(n_sin_waves):
+        #         # print(weights.grad[i, j])
+        #         weights[i, j] -= learning_rate * weights.grad[i, j]
+        #     bias[i] -= learning_rate * bias.grad[i]
 
         if iter % 10 == 0:
             # visualize
