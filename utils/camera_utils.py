@@ -8,6 +8,10 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
+import os
+
+import torch
+import torchvision.utils
 
 from scene.cameras import Camera
 import numpy as np
@@ -40,6 +44,20 @@ def loadCam(args, id, cam_info, resolution_scale):
         resolution = (int(orig_w / scale), int(orig_h / scale))
 
     resized_image_rgb = PILtoTorch(cam_info.image, resolution)
+    resized_mask = None
+    if cam_info.mask is not None:
+        resized_mask = PILtoTorch(cam_info.mask, resolution)
+        if resized_mask.shape[0] != 1:
+            resized_mask = resized_mask[:1, ...]
+        resized_mask[resized_mask > 0] = 1.
+
+        masked_preview = torch.clone(resized_image_rgb)
+        masked_preview[0, resized_mask[0] == 0.] /= 4.
+        masked_preview[0, resized_mask[0] == 0.] += 0.75
+        preview_save_path = os.path.join(args.model_path, "mask_preview", cam_info.image_name.replace("/", "_"))
+        preview_save_path = preview_save_path + '.png'
+        os.makedirs(os.path.dirname(preview_save_path), exist_ok=True)
+        torchvision.utils.save_image(masked_preview, preview_save_path)
 
     gt_image = resized_image_rgb[:3, ...]
     loaded_mask = None
@@ -50,7 +68,7 @@ def loadCam(args, id, cam_info, resolution_scale):
     image_name = f'{cam_info.image_name}'
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
-                  image=gt_image, gt_alpha_mask=loaded_mask,
+                  image=gt_image, mask=resized_mask, gt_alpha_mask=loaded_mask,
                   image_name=image_name, uid=id, data_device=args.data_device)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):

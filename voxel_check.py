@@ -190,6 +190,40 @@ class camera:
             if (is_positive and distance < 0) or (not is_positive and distance > 0):
                 return False
         return True
+    
+    def visible_check(self,p,voxel_grid):
+        in_frustum = self.frustum_check(p)
+        if not in_frustum:
+            return False
+
+        aabb = voxel_grid.get_axis_aligned_bounding_box()
+        aabb = aabb.get_box_points()
+        aabb = np.asarray(aabb)
+        x_min = np.min(aabb[:,0])
+        x_max = np.max(aabb[:,0])
+
+        y_min = np.min(aabb[:,1])
+        y_max = np.max(aabb[:,1])
+
+        z_min = np.min(aabb[:,2])
+        z_max = np.max(aabb[:,2])
+
+        min_v = np.array([x_min,y_min,z_min])
+        max_v = np.array([x_max,y_max,z_max])
+        output = False
+        sample_density = 100
+        
+        if (p >= min_v).all() and (p <= max_v).all():
+            line_queries = np.linspace(p, self.camera_position, sample_density)
+            output_p = voxel_grid.check_if_included(o3d.utility.Vector3dVector(line_queries))
+            if any(output_p):
+                output = False
+            else:
+                output = True
+        else:
+            output = True
+        return output
+    
     @staticmethod
     def plane_equation(plane):
         points = np.array(plane)
@@ -306,11 +340,13 @@ def check_voxel(voxel_grid, queries, voxel_size=1):
     point_cloud.colors = o3d.utility.Vector3dVector(colors)
     return point_cloud, output
 
-def check_overlap(cameras, queries, occu_list = []):
+def check_visible_overlap(cameras, queries, voxel_grid, occu_list = [],filter_thres = 10):
+    
     vertices = []
     for cam in cameras:
         vertices += cam.frustum_vertices
     max_view = len(cameras)
+    filter_thres = min(filter_thres,max_view)
     vertices = np.array(vertices)
     
     x_min = np.min(vertices[:,0])
@@ -328,12 +364,12 @@ def check_overlap(cameras, queries, occu_list = []):
     
     for ind,p in enumerate(queries):
         if occu_list and occu_list[ind]:
-            output_list.append(max_view)
+            output_list.append(filter_thres)
             continue
         if (p >= min_v).all() and (p <= max_v).all():
             count = 0
             for cam in cameras:
-                if cam.frustum_check(p):
+                if cam.visible_check(p,voxel_grid):
                     count += 1
             #print(count)
             output_list.append(count)
@@ -344,7 +380,14 @@ def check_overlap(cameras, queries, occu_list = []):
     point_cloud = o3d.geometry.PointCloud()
     point_cloud.points = o3d.utility.Vector3dVector(queries)
     point_cloud.colors = o3d.utility.Vector3dVector(colors)
-    return point_cloud, output_list
+
+    #fitler
+    filter_points = np.array([p for ind,p in enumerate(queries) if output_list[ind]>filter_thres]) 
+    filter_pcd = o3d.geometry.PointCloud()
+    filter_pcd.points = o3d.utility.Vector3dVector(filter_points)
+    filter_pcd.paint_uniform_color([0.8, 0, 0])
+
+    return point_cloud, filter_pcd, output_list,
 
 if __name__ == '__main__':
 
@@ -367,11 +410,18 @@ if __name__ == '__main__':
     voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd,voxel_size=0.8)
 
     occu_pcd, occu_list = check_voxel(voxel_grid,center)
-    overlap_pcd, overlap_list = check_overlap(cameras,center,occu_list)
+    overlap_pcd, filter_pcd, overlap_list = check_visible_overlap(cameras, center, voxel_grid, occu_list)
+    
     overlap_voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(overlap_pcd,voxel_size=0.15)
-    all_vis = [voxel_grid, aabb,overlap_voxel_grid] + cam_points + frustums
+    filter_voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(filter_pcd,voxel_size=0.5)
+    
+    all_vis = [voxel_grid, aabb,overlap_voxel_grid, filter_voxel_grid] + cam_points + frustums 
     o3d.visualization.draw_geometries(all_vis)
 
+    file_path = "./occu_voxel.ply"  # 保存路径
+    o3d.io.write_voxel_grid(file_path, voxel_grid)
 
+    file_path = "./filter_voxel.ply"  # 保存路径
+    o3d.io.write_voxel_grid(file_path, filter_voxel_grid)
 
 

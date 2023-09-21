@@ -32,7 +32,9 @@ class CameraInfo(NamedTuple):
     FovY: np.array
     FovX: np.array
     image: np.array
+    mask: np.array
     image_path: str
+    mask_path: str
     image_name: str
     width: int
     height: int
@@ -98,14 +100,34 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         #image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_path = os.path.join(images_folder, extr.name)
-        # image_name = os.path.basename(image_path).split(".")[0]
-        image_name = os.path.basename(image_path)[:-4]
         #image_name = os.path.basename(image_path).split(".")[0]
         image_name = os.path.basename(image_path)[:-4]
         image = Image.open(image_path)
 
-        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=image_name, width=width, height=height)
+        mask = None
+        mask_path = None
+        mask_count = 0
+        possible_mask_path = os.path.join(images_folder, "{}_mask.png".format(extr.name[:-4]))
+        if os.path.exists(possible_mask_path):
+            mask = Image.open(possible_mask_path)
+            assert mask.size == image.size, "image dimension {} doesn't match to the mask {}".format(
+                image.size,
+                mask.size,
+            )
+            mask_path = possible_mask_path
+            mask_count += 1
+        else:
+            possible_mask_path = os.path.join(images_folder, "{}.npy".format(extr.name[:-4]))
+            if os.path.exists(possible_mask_path): 
+                mask = np.load(possible_mask_path) * 255
+                mask = mask.astype(np.uint8)
+                mask = Image.fromarray(mask)
+                mask_path = possible_mask_path
+                mask_count += 1
+        sys.stdout.write(f'     ...     Read {mask_count} masks.\n')
+
+        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image, mask=mask,
+                              image_path=image_path, mask_path=image_path, image_name=image_name, width=width, height=height)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
@@ -135,7 +157,7 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, left_start = [0], right_start = [0], cam_num = 18, llffhold=8):
+def readColmapSceneInfo(path, images, eval, left_start = [0], right_start = [0], llffhold=8, masks=None):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
