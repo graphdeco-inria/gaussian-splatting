@@ -7,7 +7,7 @@
 # under the terms of the LICENSE.md file.
 #
 # For inquiries contact  george.drettakis@inria.fr
-#
+# python render_trajectory.py --model_path ../data/919/1695112678.690786_dense/output_mask/ --source_path ../data/919/1695112678.690786_dense/
 
 import torch
 from scene import Scene

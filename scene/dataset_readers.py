@@ -116,6 +116,14 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             )
             mask_path = possible_mask_path
             mask_count += 1
+        else:
+            possible_mask_path = os.path.join(images_folder, "{}.npy".format(extr.name[:-4]))
+            if os.path.exists(possible_mask_path): 
+                mask = np.load(possible_mask_path) * 255
+                mask = mask.astype(np.uint8)
+                mask = Image.fromarray(mask)
+                mask_path = possible_mask_path
+                mask_count += 1
         sys.stdout.write(f'     ...     Read {mask_count} masks.\n')
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image, mask=mask,
