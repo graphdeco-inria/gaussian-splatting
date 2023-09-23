@@ -242,7 +242,7 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
     os.system(f'colmap feature_extractor --database_path {output_dbpath} --image_path {image_dir}')
     os.system(f'colmap point_triangulator --database_path {output_dbpath} --image_path {image_dir} --input_path {output_proj_path} --output_path {output_proj_path}')
     os.system(f'{cmdname} model_converter --input_path {output_proj_path} --output_path {output_proj_path} --output_type TXT')
-    return 0
+    return len(f_cams_selected)
     
 
 def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times, colmap_output, model_output, train = True, render = False):
@@ -273,31 +273,32 @@ def process_full_pipeline(start_group, end_group, proj_path, cam_infos, times, c
             # with open(f'/data/jianing/output_829/res_{start_group}_{end_group}.txt', 'a') as f:
             #     f.writelines(f'{i} {j} {area}\n')
 
-def process_full_pipeline_single(proj_path, cam_infos, times, colmap_output, model_output, train = True, render = False):
+def process_full_pipeline_single(proj_path, cam_infos, times, colmap_output, model_output, index = 0, train = True, render = False):
     
     selected_indices = []
-    selected_indices.append(times[0])
+    selected_indices.append(times[index])
     
-    colmap_dir = os.path.join(colmap_output,'0_0')
-    select_part_observes(proj_path, selected_indices, cam_infos, colmap_dir)
+    colmap_dir = os.path.join(colmap_output,f'{index}_{index}')
+    cam_num = select_part_observes(proj_path, selected_indices, cam_infos, colmap_dir)
     os.system(f'cp {colmap_dir}/sparse/0/points* {proj_path}/sparse/0')
-    
-    output = os.path.join(model_output,'colmap_0_0')
+    print(cam_num)
+    output = os.path.join(model_output,f'colmap_{index}_{index}')
     if train:
-        os.system(f'python /home/jianing/gaussian-splatting/train.py -s {proj_path} -m {output} --iterations 10000 --eval --ls 0 --rs 0')
+        os.system(f'python /home/jianing/gaussian-splatting/train.py -s {proj_path} -m {output} --iterations 10000 --eval --ls {index} --rs {index} --cam_num {cam_num}')
+        #os.system(f'python /home/jianing/gaussian-splatting/train.py -s {proj_path} -m {output} --iterations 10000')
     if render:
-        os.system(f'python /home/jianing/gaussian-splatting/render_depth.py -m {output} --ls 0 --rs 0 --eval')
+        os.system(f'python /home/jianing/gaussian-splatting/render_depth.py -m {output} --ls 0 --rs 0 --eval --cam_num {cam_num}')
 
 if __name__ == '__main__':
-    proj_path = '/data/jianing/dlf_result/proj_0904_all'
-    # img_path = '/data/jianing/data/img_904_1'
+    proj_path = '/data/jianing/dlf_result/proj_0913_11_all'
+    img_path = '/data/jianing/data/913/11'
     # dst_name = prepare_scene(img_path, proj_path,depth=2)
     # process(proj_path, os.path.join(proj_path,'images'))
-    # #img_path = '/data/xiaoyun/dlf_data_0829/colmap_00_03/images_all'
-    #proj_path = '/data/jianing/dlf_result/proj_0829_all'
+    
     times = []
     for i in os.listdir(os.path.join(proj_path, 'images')):
-        i = i.split('.')[0] + '.' + i.split('.')[1]
+        #i = i.split('.')[0] + '.' + i.split('.')[1]
+        i = i.split('.')[0]
         if i not in times :
             times.append(i)
     times = natsorted(times)
@@ -306,9 +307,10 @@ if __name__ == '__main__':
     ## load COLMAP results
     cam_infos = load_colmap_cameras(proj_path, os.path.join(proj_path, 'images'))
     ## select part results
-    colmap_output = '/data/jianing/dlf_result/colmap_904'
-    model_output = '/data/jianing/output_904'
-    process_full_pipeline_single(proj_path, cam_infos, times, colmap_output, model_output, True, True)
-    process_full_pipeline(1, 10, proj_path, cam_infos, times, colmap_output,model_output, True, True)
-    # process_full_pipeline(6, 12, proj_path, cam_infos, times, colmap_output,model_output)
+    colmap_output = '/data/jianing/dlf_result/colmap_913_11'
+    model_output = '/data/jianing/output_913_11'
+    for i in range(len(times)):
+        process_full_pipeline_single(proj_path, cam_infos, times, colmap_output, model_output, i, True, False)
+    # process_full_pipeline(1, 6, proj_path, cam_infos, times, colmap_output,model_output, True, True)
+    # process_full_pipeline(7, 12, proj_path, cam_infos, times, colmap_output,model_output)
     # process_full_pipeline(12, 18, proj_path, cam_infos, times, colmap_output,model_output)

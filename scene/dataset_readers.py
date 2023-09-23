@@ -183,7 +183,7 @@ def readColmapSceneInfo(path, images, eval, left_start = [0], right_start = [0],
     left = [f'cam_{i}' for i in left]
     right = [f'cam_{i}' for i in right]
     if eval:
-        cam_num = 18
+        #cam_num = 18
         print('left group: {}'.format(left_start))
         print('right group: {}'.format(right_start))
         group_left = []
