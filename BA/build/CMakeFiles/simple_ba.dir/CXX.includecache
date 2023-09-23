@@ -1,0 +1,20 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/xiaoyun/Code/gaussian-splatting/BA/simple_bundle_adjuster.cc
+cmath
+-
+cstdio
+-
+iostream
+-
+ceres/ceres.h
+/home/xiaoyun/Code/gaussian-splatting/BA/ceres/ceres.h
+ceres/rotation.h
+/home/xiaoyun/Code/gaussian-splatting/BA/ceres/rotation.h
+
