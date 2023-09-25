@@ -145,7 +145,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --debug_from
   Debugging is **slow**. You may specify an iteration (starting from 0) after which the above debugging becomes active.
   #### --iterations
-  Number of total iterations to train for, ```30_000``` by default.
+  Number of total iterations to train for, ```15_000``` by default.
   #### --ip
   IP to start GUI server on, ```127.0.0.1``` by default.
   #### --port 
@@ -169,7 +169,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --rotation_lr
   Rotation learning rate, ```0.001``` by default.
   #### --position_lr_max_steps
-  Number of steps (from 0) where position learning rate goes from ```initial``` to ```final```. ```30_000``` by default.
+  Number of steps (from 0) where position learning rate goes from ```initial``` to ```final```. ```15_000``` by default.
   #### --position_lr_init
   Initial 3D position learning rate, ```0.00016``` by default.
   #### --position_lr_final
