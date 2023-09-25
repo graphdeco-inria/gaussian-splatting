@@ -12,6 +12,7 @@
 import os
 import random
 import json
+from utils.graphics_utils import BasicPointCloud
 from utils.system_utils import searchForMaxIteration
 from scene.dataset_readers import sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
@@ -79,6 +80,11 @@ class Scene:
                                                            "point_cloud",
                                                            "iteration_" + str(self.loaded_iter),
                                                            "point_cloud.ply"))
+        # elif args.no_init_pcd:
+        #     # TODO: Random Sample 100k points within the bounding box
+        #     point_cloud = BasicPointCloud.blank()
+        #     self.gaussians.create_from_pcd(point_cloud, self.cameras_extent, args.no_init_pcd)
+        #     print("Not initializing point cloud!")
         else:
             self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
 
