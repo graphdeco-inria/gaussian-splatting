@@ -84,6 +84,10 @@ model_alignment_cmd = (colmap_command + " model_aligner \
     --alignment_max_error  " + "0.1" "\
     --alignment_type  " + "plane" "\
     --output_path " + args.source_path)
+exit_code = os.system(model_alignment_cmd)
+if exit_code != 0:
+    logging.error(f"Model aligner failed with code {exit_code}. Exiting.")
+    exit(exit_code)
 
 files = os.listdir(args.source_path + "/sparse")
 os.makedirs(args.source_path + "/sparse/0", exist_ok=True)
