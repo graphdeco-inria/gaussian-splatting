@@ -65,6 +65,18 @@ if not args.skip_matching:
         logging.error(f"Mapper failed with code {exit_code}. Exiting.")
         exit(exit_code)
 
+    ### Model alignment
+    model_alignment_cmd = (colmap_command + " model_aligner \
+        --input_path " + args.source_path + "/distorted/sparse/0 \
+        --database_path " + args.source_path + "/distorted/database.db \
+        --alignment_max_error  " + "0.1" "\
+        --alignment_type  " + "plane" "\
+        --output_path " + args.source_path + "/distorted/sparse/0")
+    exit_code = os.system(model_alignment_cmd)
+    if exit_code != 0:
+        logging.error(f"Model aligner failed with code {exit_code}. Exiting.")
+        exit(exit_code)
+
 ### Image undistortion
 ## We need to undistort our images into ideal pinhole intrinsics.
 img_undist_cmd = (colmap_command + " image_undistorter \
