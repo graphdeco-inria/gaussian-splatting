@@ -219,8 +219,8 @@ def select_part_observes(orig_proj_path, str_prefix, cam_infos, output_folder):
 
     with open(os.path.join(output_proj_path, 'images.txt'),'w') as f:
         f.writelines('# Image list with two lines of data per image:\n')
-        f.writelines('#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME\n')
-        f.writelines('#   POINTS2D[] as (X, Y, POINT3D_ID)\n')
+        f.writelines('# IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME\n')
+        f.writelines('# POINTS2D[] as (X, Y, POINT3D_ID)\n')
         f.writelines(f'# Number of images: {len(f_cams_selected)}\n')
         for idx in range(len(f_cams_selected)):
             imageid = f_cams_selected[idx].imageid
