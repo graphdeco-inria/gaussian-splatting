@@ -70,22 +70,23 @@ class PipelineParams(ParamGroup):
 
 class OptimizationParams(ParamGroup):
     def __init__(self, parser):
-        self.iterations = 15_000
-        self.position_lr_init = 0.00016
-        self.position_lr_final = 0.0000016
-        self.position_lr_delay_mult = 0.01
-        self.position_lr_max_steps = 30_000
-        self.feature_lr = 0.0025
-        self.opacity_lr = 0.05
-        self.scaling_lr = 0.005
-        self.rotation_lr = 0.001
-        self.percent_dense = 0.01
-        self.lambda_dssim = 0.2
-        self.densification_interval = 100
-        self.opacity_reset_interval = 3000
-        self.densify_from_iter = 500
-        self.densify_until_iter = 15_000
-        self.densify_grad_threshold = 0.0002
+        self.max_num_splats = 3_000_000 # Stop densifying after this number of splats is reached
+        self.iterations = 15_000 # [default 30_000] Each iteration corresponds to reconstructing 1 image. The number of points being optimized increases over
+        self.position_lr_init = 0.00016 # [default 0.00016] Learning rate should be smaller for more extensive scenes
+        self.position_lr_final = 0.0000016 # [default 0.0000016] Learning rate should be smaller for more extensive scenes
+        self.position_lr_delay_mult = 0.01 # [default 0.01]
+        self.position_lr_max_steps = 30_000 # [default 30_000]
+        self.feature_lr = 0.0025 # [default 0.0025]
+        self.opacity_lr = 0.05 # [default 0.05]
+        self.scaling_lr = 0.005 # [default 0.005]
+        self.rotation_lr = 0.001 # [default 0.001]
+        self.percent_dense = 0.01 # [default 0.01] percent_dense * scene_extent = threshold size to determine whether to split (current is too large) or clone (current is small) gaussian
+        self.lambda_dssim = 0.2 # [default 0.2] Loss = (1-lambda) * L1_loss + lambda * D-SSIM_Loss. L1 = abs(pred_pixel - true_pixel). SSIM = similarity between 2 images (luminance, contrast, structure)
+        self.densification_interval = 100 # [default 100] Increase this to avoid running out of memory (how many iterations in between densifying/splitting gaussians)
+        self.opacity_reset_interval = 1000 # [default 3000] Decrease all opacities (alpha) close to zero -> algo will automatically increase opacities again for important gaussians -> cull the rest
+        self.densify_from_iter = 500 # [default 500] After this many iterations, start densifying
+        self.densify_until_iter = 0.5 * self.iterations # [default 15_000] Decrease this to avoid running out of memory (after this many iterations, stop densifying)
+        self.densify_grad_threshold = 0.0002 # [default 0.0002; Section 5.2: tau_pos] Increase this to avoid running out of memory. If very high, no densification will occur
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):

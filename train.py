@@ -94,11 +94,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         with torch.no_grad():
             # Progress bar
             ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
+            num_gauss = len(gaussians._xyz)
             if iteration % 10 == 0:
-                progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}"})
+                progress_bar.set_postfix({'Loss': f"{ema_loss_for_log:.{7}f}",  'n': f"{num_gauss}"})
                 progress_bar.update(10)
             if iteration == opt.iterations:
                 progress_bar.close()
+            if iteration % 100 == 0:
+                print()
 
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
@@ -107,7 +110,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 scene.save(iteration)
 
             # Densification
-            if iteration < opt.densify_until_iter:
+            if iteration < opt.densify_until_iter and num_gauss < opt.max_num_splats:
                 # Keep track of max radii in image-space for pruning
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
