@@ -43,7 +43,7 @@ class CameraInfo(NamedTuple):
         T (np.array): The translation vector of the camera.
         FovY (np.array): The vertical field of view of the camera.
         FovX (np.array): The horizontal field of view of the camera.
-        image (np.array): The image data as a numpy array.
+        image (Any): Do no use this field directly, it is lazily loaded in the training loop.
         image_path (str): The path to the image file.
         image_name (str): The name of the image file.
         width (int): The width of the image in pixels.

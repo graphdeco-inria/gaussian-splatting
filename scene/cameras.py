@@ -11,8 +11,10 @@
 
 import numpy as np
 import torch
+from PIL import Image
 from torch import nn
 
+from utils.general_utils import PILtoTorch
 from utils.graphics_utils import getProjectionMatrix, getWorld2View2
 
 
@@ -24,13 +26,13 @@ class Camera(nn.Module):
         T,
         FoVx,
         FoVy,
-        image,
-        gt_alpha_mask,
+        image_path,
         image_name,
         uid,
         trans=np.array([0.0, 0.0, 0.0]),
         scale=1.0,
         data_device="cuda",
+        resolution=1.0,
     ):
         super(Camera, self).__init__()
 
@@ -40,7 +42,14 @@ class Camera(nn.Module):
         self.T = T
         self.FoVx = FoVx
         self.FoVy = FoVy
+        self.image_path = image_path
         self.image_name = image_name
+        self.resolution = resolution
+        self.image_height = None
+        self.image_width = None
+
+        with Image.open(self.image_path) as image:
+            self.image_width, self.image_height = image.size
 
         try:
             self.data_device = torch.device(data_device)
@@ -50,17 +59,6 @@ class Camera(nn.Module):
                 f"[Warning] Custom device {data_device} failed, fallback to default cuda device"
             )
             self.data_device = torch.device("cuda")
-
-        self.original_image = image.clamp(0.0, 1.0).to(self.data_device)
-        self.image_width = self.original_image.shape[2]
-        self.image_height = self.original_image.shape[1]
-
-        if gt_alpha_mask is not None:
-            self.original_image *= gt_alpha_mask.to(self.data_device)
-        else:
-            self.original_image *= torch.ones(
-                (1, self.image_height, self.image_width), device=self.data_device
-            )
 
         self.zfar = 100.0
         self.znear = 0.01
@@ -84,6 +82,27 @@ class Camera(nn.Module):
             )
         ).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
+
+    @property
+    def original_image(self):
+        image = Image.open(self.image_path)
+
+        image_tensor = PILtoTorch(image, self.resolution)
+        image.close()
+        image_tensor = image_tensor.clamp(0.0, 1.0).to(self.data_device)
+
+        alpha_mask = None
+        if image_tensor.shape[1] == 4:
+            alpha_mask = image_tensor[3:4, ...]
+
+        if alpha_mask:
+            image_tensor *= alpha_mask.to(self.data_device)
+        else:
+            image_tensor *= torch.ones(
+                (1, self.image_height, self.image_width), device=self.data_device
+            )
+
+        return image_tensor
 
 
 class MiniCam:

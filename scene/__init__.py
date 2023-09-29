@@ -12,9 +12,11 @@
 import json
 import os
 import random
+from typing import Dict, List
 
 from arguments import ModelParams
-from scene.dataset_readers import sceneLoadTypeCallbacks
+from scene.cameras import Camera
+from scene.dataset_readers import SceneInfo, sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
 from utils.camera_utils import camera_to_JSON, cameraList_from_camInfos
 from utils.graphics_utils import BasicPointCloud
@@ -48,10 +50,11 @@ class Scene:
                 self.loaded_iter = load_iteration
             print("Loading trained model at iteration {}".format(self.loaded_iter))
 
-        self.train_cameras = {}
-        self.test_cameras = {}
-        
+        self.train_cameras: Dict[str, List[Camera]] = {}
+        self.test_cameras: Dict[str, List[Camera]] = {}
+
         # * Load images
+        scene_info: SceneInfo = None
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](
                 args.source_path, args.images, args.eval
@@ -69,21 +72,21 @@ class Scene:
                 os.path.join(self.model_path, "input.ply"), "wb"
             ) as dest_file:
                 dest_file.write(src_file.read())
-            json_cams = []
-            camlist = []
-            if scene_info.test_cameras:
-                camlist.extend(scene_info.test_cameras)
-            if scene_info.train_cameras:
-                camlist.extend(scene_info.train_cameras)
-            for id, cam in enumerate(camlist):
-                json_cams.append(camera_to_JSON(id, cam))
-            with open(os.path.join(self.model_path, "cameras.json"), "w") as file:
-                json.dump(json_cams, file)
+            train_camlist = [
+                camera_to_JSON(idx, cam)
+                for idx, cam in enumerate(scene_info.train_cameras)
+            ]
+            test_camlist = [
+                camera_to_JSON(idx, cam)
+                for idx, cam in enumerate(scene_info.test_cameras)
+            ]
+            with open(os.path.join(self.model_path, "train_cameras.json"), "w") as file:
+                json.dump(train_camlist, file)
+            with open(os.path.join(self.model_path, "test_cameras.json"), "w") as file:
+                json.dump(test_camlist, file)
 
         if shuffle:
-            random.shuffle(
-                scene_info.train_cameras
-            )  # Multi-res consistent random shuffling
+            random.shuffle(scene_info.train_cameras)
 
         self.cameras_extent = scene_info.nerf_normalization["radius"]
 

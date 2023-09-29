@@ -15,12 +15,13 @@ from diff_gaussian_rasterization import (
     GaussianRasterizationSettings,
     GaussianRasterizer,
 )
+from scene.cameras import Camera
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 
 
 def render(
-    viewpoint_camera,
+    viewpoint_camera: Camera,
     pc: GaussianModel,
     pipe,
     bg_color: torch.Tensor,
