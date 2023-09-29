@@ -9,11 +9,12 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-import torch
+import random
 import sys
 from datetime import datetime
+
 import numpy as np
-import random
+import torch
 
 
 def inverse_sigmoid(x):

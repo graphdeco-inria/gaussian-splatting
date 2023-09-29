@@ -9,19 +9,20 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+import json
 import os
 import random
-import json
-from utils.graphics_utils import BasicPointCloud
-from utils.system_utils import searchForMaxIteration
+
+from arguments import ModelParams
 from scene.dataset_readers import sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
-from arguments import ModelParams
-from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
+from utils.camera_utils import camera_to_JSON, cameraList_from_camInfos
+from utils.graphics_utils import BasicPointCloud
+from utils.system_utils import searchForMaxIteration
 
 
 class Scene:
-    gaussians: GaussianModel
+    model: GaussianModel
 
     def __init__(
         self,
@@ -36,7 +37,7 @@ class Scene:
         """
         self.model_path = args.model_path
         self.loaded_iter = None
-        self.gaussians = gaussians
+        self.model = gaussians
 
         if load_iteration:
             if load_iteration == -1:
@@ -49,7 +50,8 @@ class Scene:
 
         self.train_cameras = {}
         self.test_cameras = {}
-
+        
+        # * Load images
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](
                 args.source_path, args.images, args.eval
@@ -96,7 +98,7 @@ class Scene:
             )
 
         if self.loaded_iter:
-            self.gaussians.load_ply(
+            self.model.load_ply(
                 os.path.join(
                     self.model_path,
                     "point_cloud",
@@ -110,13 +112,13 @@ class Scene:
         #     self.gaussians.create_from_pcd(point_cloud, self.cameras_extent, args.no_init_pcd)
         #     print("Not initializing point cloud!")
         else:
-            self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
+            self.model.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
 
     def save(self, iteration):
         point_cloud_path = os.path.join(
             self.model_path, "point_cloud/iteration_{}".format(iteration)
         )
-        self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
+        self.model.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
 
     def getTrainCameras(self, scale=1.0):
         return self.train_cameras[scale]

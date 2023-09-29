@@ -10,18 +10,20 @@
 #
 
 import os
-import torch
-from random import randint
-from utils.loss_utils import l1_loss, ssim
-from gaussian_renderer import render, network_gui
 import sys
-from scene import Scene, GaussianModel
-from utils.general_utils import safe_state
 import uuid
-from tqdm import tqdm
-from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
-from arguments import ModelParams, PipelineParams, OptimizationParams
+from random import randint
+
+import torch
+from tqdm import tqdm
+
+from arguments import ModelParams, OptimizationParams, PipelineParams
+from gaussian_renderer import network_gui, render
+from scene import GaussianModel, Scene
+from utils.general_utils import safe_state
+from utils.image_utils import psnr
+from utils.loss_utils import l1_loss, ssim
 
 # try:
 #     from torch.utils.tensorboard import SummaryWriter
@@ -256,7 +258,7 @@ def training_report(
                 psnr_test = 0.0
                 for idx, viewpoint in enumerate(config["cameras"]):
                     image = torch.clamp(
-                        renderFunc(viewpoint, scene.gaussians, *renderArgs)["render"],
+                        renderFunc(viewpoint, scene.model, *renderArgs)["render"],
                         0.0,
                         1.0,
                     )
@@ -296,10 +298,10 @@ def training_report(
 
         if tb_writer:
             tb_writer.add_histogram(
-                "scene/opacity_histogram", scene.gaussians.get_opacity, iteration
+                "scene/opacity_histogram", scene.model.get_opacity, iteration
             )
             tb_writer.add_scalar(
-                "total_points", scene.gaussians.get_xyz.shape[0], iteration
+                "total_points", scene.model.get_xyz.shape[0], iteration
             )
         torch.cuda.empty_cache()
 

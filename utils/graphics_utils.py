@@ -9,10 +9,11 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-import torch
 import math
-import numpy as np
 from typing import NamedTuple
+
+import numpy as np
+import torch
 
 
 class BasicPointCloud(NamedTuple):

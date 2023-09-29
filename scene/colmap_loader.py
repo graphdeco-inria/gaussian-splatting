@@ -9,9 +9,10 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-import numpy as np
 import collections
 import struct
+
+import numpy as np
 
 CameraModel = collections.namedtuple(
     "CameraModel", ["model_id", "model_name", "num_params"]
