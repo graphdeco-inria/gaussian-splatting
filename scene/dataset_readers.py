@@ -13,7 +13,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from typing import List, NamedTuple
 
 import numpy as np
 from PIL import Image
@@ -34,6 +34,22 @@ from utils.sh_utils import SH2RGB
 
 
 class CameraInfo(NamedTuple):
+    """
+    Represents the camera information for a single image in the dataset.
+
+    Attributes:
+        uid (int): The unique identifier for the camera.
+        R (np.array): The rotation matrix of the camera.
+        T (np.array): The translation vector of the camera.
+        FovY (np.array): The vertical field of view of the camera.
+        FovX (np.array): The horizontal field of view of the camera.
+        image (np.array): The image data as a numpy array.
+        image_path (str): The path to the image file.
+        image_name (str): The name of the image file.
+        width (int): The width of the image in pixels.
+        height (int): The height of the image in pixels.
+    """
+
     uid: int
     R: np.array
     T: np.array
@@ -78,7 +94,9 @@ def getNerfppNorm(cam_info):
     return {"translate": translate, "radius": radius}
 
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+def readColmapCameras(
+    cam_extrinsics, cam_intrinsics, images_folder
+) -> List[CameraInfo]:
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write("\r")
@@ -111,14 +129,13 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
-        image = Image.open(image_path)
         cam_info = CameraInfo(
             uid=uid,
             R=R,
             T=T,
             FovY=FovY,
             FovX=FovX,
-            image=image,
+            image=None,  # Lazily load the image in training loop
             image_path=image_path,
             image_name=image_name,
             width=width,
@@ -177,13 +194,14 @@ def readColmapSceneInfo(path, images, eval, llffhold=8) -> SceneInfo:
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
     reading_dir = "images" if images == None else images
-    cam_infos_unsorted = readColmapCameras(
+    cam_infos_unsorted: List[CameraInfo] = readColmapCameras(
         cam_extrinsics=cam_extrinsics,
         cam_intrinsics=cam_intrinsics,
         images_folder=os.path.join(path, reading_dir),
     )
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
+    # TODO: Add pointnerf train test split here
     if eval:
         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
         test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
