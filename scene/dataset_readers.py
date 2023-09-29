@@ -64,8 +64,8 @@ class CameraInfo(NamedTuple):
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
-    train_cameras: list
-    test_cameras: list
+    train_cameras: List[CameraInfo]
+    test_cameras: List[CameraInfo]
     nerf_normalization: dict
     ply_path: str
 
@@ -201,6 +201,8 @@ def readColmapSceneInfo(path, images, eval, llffhold=8) -> SceneInfo:
     )
     cam_infos = sorted(cam_infos_unsorted.copy(), key=lambda x: x.image_name)
 
+    train_cam_infos: List[CameraInfo] = []
+    test_cam_infos: List[CameraInfo] = []
     # TODO: Add pointnerf train test split here
     if eval:
         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
