@@ -9,9 +9,9 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-from argparse import ArgumentParser, Namespace
-import sys
 import os
+import sys
+from argparse import ArgumentParser, Namespace
 
 
 class GroupParams:
@@ -53,6 +53,7 @@ class ParamGroup:
 
 class ModelParams(ParamGroup):
     def __init__(self, parser, sentinel=False):
+        self.split_setting = "pointnerf"
         self.sh_degree = 3
         self._source_path = ""
         self._model_path = ""
