@@ -18,6 +18,7 @@ import shutil
 parser = ArgumentParser("Colmap converter")
 parser.add_argument("--no_gpu", action='store_true')
 parser.add_argument("--skip_matching", action='store_true')
+parser.add_argument("--skip_alignment", action='store_true')
 parser.add_argument("--source_path", "-s", required=True, type=str)
 parser.add_argument("--camera", default="OPENCV", type=str)
 parser.add_argument("--colmap_executable", default="", type=str)
@@ -64,6 +65,20 @@ if not args.skip_matching:
     if exit_code != 0:
         logging.error(f"Mapper failed with code {exit_code}. Exiting.")
         exit(exit_code)
+
+    if not args.skip_alignment:
+        ### Model alignment
+        # Aligns the scene so that +Z axis is up. 
+        model_alignment_cmd = (colmap_command + " model_aligner \
+            --input_path " + args.source_path + "/distorted/sparse/0 \
+            --database_path " + args.source_path + "/distorted/database.db \
+            --alignment_max_error  " + "0.1" "\
+            --alignment_type  " + "plane" "\
+            --output_path " + args.source_path + "/distorted/sparse/0")
+        exit_code = os.system(model_alignment_cmd)
+        if exit_code != 0:
+            logging.error(f"Model aligner failed with code {exit_code}. Exiting.")
+            exit(exit_code)
 
 ### Image undistortion
 ## We need to undistort our images into ideal pinhole intrinsics.
