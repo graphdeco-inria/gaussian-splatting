@@ -23,17 +23,13 @@ from argparse import ArgumentParser
 
 
 def readImages(renders_dir, gt_dir):
-    renders = []
-    gts = []
-    image_names = []
     for fname in os.listdir(renders_dir):
         render = Image.open(renders_dir / fname)
         gt = Image.open(gt_dir / fname)
-        renders.append(tf.to_tensor(render).unsqueeze(0)[:, :3, :, :])
-        gts.append(tf.to_tensor(gt).unsqueeze(0)[:, :3, :, :])
-        image_names.append(fname)
-    return renders, gts, image_names
 
+        render_image = tf.to_tensor(render).unsqueeze(0)[:, :3, :, :]
+        gt_image = tf.to_tensor(gt).unsqueeze(0)[:, :3, :, :]
+        yield render_image, gt_image, fname
 
 def evaluate(model_paths):
     full_dict = {}
@@ -63,18 +59,21 @@ def evaluate(model_paths):
                 method_dir = test_dir / method
                 gt_dir = method_dir / "gt"
                 renders_dir = method_dir / "renders"
-                renders, gts, image_names = readImages(renders_dir, gt_dir)
+                n_render = len(os.listdir(renders_dir))
+                it = readImages(renders_dir, gt_dir)
 
                 ssims = []
                 psnrs = []
                 lpipss = []
-
-                for idx in tqdm(range(len(renders)), desc="Metric evaluation progress"):
-                    ssims.append(ssim(renders[idx].cuda(), gts[idx].cuda()))
-                    psnrs.append(psnr(renders[idx].cuda(), gts[idx].cuda()))
+                image_names = []
+                for idx in tqdm(range(n_render), desc="Metric evaluation progress"):
+                    render, gt, image_name = next(it) 
+                    ssims.append(ssim(render.cuda(), gt.cuda()))
+                    psnrs.append(psnr(render.cuda(), gt.cuda()))
                     lpipss.append(
-                        lpips(renders[idx].cuda(), gts[idx].cuda(), net_type="vgg")
+                        lpips(render.cuda(), gt.cuda(), net_type="vgg")
                     )
+                    image_names.append(image_name)
 
                 print("  SSIM : {:>12.7f}".format(torch.tensor(ssims).mean(), ".5"))
                 print("  PSNR : {:>12.7f}".format(torch.tensor(psnrs).mean(), ".5"))
