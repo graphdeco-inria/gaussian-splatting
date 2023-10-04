@@ -9,6 +9,7 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+import glob
 import json
 import os
 import sys
@@ -19,6 +20,7 @@ import numpy as np
 from PIL import Image
 from plyfile import PlyData, PlyElement
 
+from arguments import ModelParams
 from scene.colmap_loader import (
     qvec2rotmat,
     read_extrinsics_binary,
@@ -95,9 +97,15 @@ def getNerfppNorm(cam_info):
 
 
 def readColmapCameras(
-    cam_extrinsics, cam_intrinsics, images_folder
+    args: ModelParams, cam_extrinsics, cam_intrinsics, images_folder
 ) -> List[CameraInfo]:
     cam_infos = []
+    pose_path = None
+    if args.use_ground_truth_pose:
+        print("Using ground truth pose")
+        pose_path = args.pose_path
+        # trans, scale = align_trajectory(pose_path, cam_extrinsics)
+
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write("\r")
         # the exact output you're looking for:
@@ -110,8 +118,24 @@ def readColmapCameras(
         width = intr.width
 
         uid = intr.id
-        R = np.transpose(qvec2rotmat(extr.qvec))
-        T = np.array(extr.tvec)
+
+        if args.use_ground_truth_pose:
+            # TODO: Find how to convert C2W to W2C from ScanNet
+            c2w = np.loadtxt(os.path.join(pose_path, extr.name.replace(".jpg", ".txt")))
+
+            # change from OpenGL/Blender camera axes (Y up, Z back) to COLMAP (Y down, Z forward)
+            # c2w[:3, 1:3] *= -1
+
+            # get the world-to-camera transform and set R, T
+            w2c = np.linalg.inv(c2w)
+            R = np.transpose(
+                w2c[:3, :3]
+            )  # R is stored transposed due to 'glm' in CUDA code
+            T = w2c[:3, 3]
+        else:
+            # Colmap outputs the camera-to-world transform, we need the world-to-camera transform
+            R = np.transpose(qvec2rotmat(extr.qvec))
+            T = np.array(extr.tvec)
 
         if intr.model == "SIMPLE_PINHOLE":
             focal_length_x = intr.params[0]
@@ -146,12 +170,21 @@ def readColmapCameras(
     return cam_infos
 
 
-def fetchPly(path):
+def fetchPly(path, mask=False):
     plydata = PlyData.read(path)
     vertices = plydata["vertex"]
     positions = np.vstack([vertices["x"], vertices["y"], vertices["z"]]).T
+    if mask:
+        lb, ub = [-10.0, -10.0, -10.0], [10.0, 10.0, 10.0]
+        positions = positions[
+            np.prod(np.logical_and((positions > lb), (positions < ub)), axis=-1)
+        ]
     colors = np.vstack([vertices["red"], vertices["green"], vertices["blue"]]).T / 255.0
-    normals = np.vstack([vertices["nx"], vertices["ny"], vertices["nz"]]).T
+    try:
+        normals = np.vstack([vertices["nx"], vertices["ny"], vertices["nz"]]).T
+    except:
+        normals = np.zeros_like(positions)
+
     return BasicPointCloud(points=positions, colors=colors, normals=normals)
 
 
@@ -181,7 +214,7 @@ def storePly(path, xyz, rgb):
     ply_data.write(path)
 
 
-def readColmapSceneInfo(args, path, images, eval, llffhold=8) -> SceneInfo:
+def readColmapSceneInfo(args: ModelParams, path, images, eval, llffhold=8) -> SceneInfo:
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
@@ -195,6 +228,7 @@ def readColmapSceneInfo(args, path, images, eval, llffhold=8) -> SceneInfo:
 
     reading_dir = "images" if images == None else images
     cam_infos_unsorted: List[CameraInfo] = readColmapCameras(
+        args=args,
         cam_extrinsics=cam_extrinsics,
         cam_intrinsics=cam_intrinsics,
         images_folder=os.path.join(path, reading_dir),
@@ -237,8 +271,16 @@ def readColmapSceneInfo(args, path, images, eval, llffhold=8) -> SceneInfo:
         except:
             xyz, rgb, _ = read_points3D_text(txt_path)
         storePly(ply_path, xyz, rgb)
+
+    if args.use_ground_truth_pose:
+        ply_path = glob.glob(os.path.join(path, "pcd.ply"))
+        if not len(ply_path):
+            raise FileNotFoundError
+        ply_path = ply_path[0]
+
+        print(f"Using ground truth point cloud from {ply_path}")
     try:
-        pcd = fetchPly(ply_path)
+        pcd = fetchPly(ply_path, mask=args.use_ground_truth_pose)
     except:
         pcd = None
 
