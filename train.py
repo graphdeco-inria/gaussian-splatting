@@ -42,11 +42,12 @@ def training(
     checkpoint_iterations,
     checkpoint,
     debug_from,
+    shuffle_train = True,
 ):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree)
-    scene = Scene(dataset, gaussians)
+    scene = Scene(dataset, gaussians, shuffle=shuffle_train)
     gaussians.training_setup(opt)
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
@@ -317,14 +318,21 @@ if __name__ == "__main__":
     parser.add_argument("--debug_from", type=int, default=-1)
     parser.add_argument("--detect_anomaly", action="store_true", default=False)
     parser.add_argument(
-        "--test_iterations", nargs="+", type=int, default=[7_000, 30_000]
+        "--test_iterations",
+        nargs="+",
+        type=int,
+        default=[7_000, 30_000, 60_000, 90_000, 120_000],
     )
     parser.add_argument(
-        "--save_iterations", nargs="+", type=int, default=[7_000, 30_000]
+        "--save_iterations",
+        nargs="+",
+        type=int,
+        default=[7_000, 30_000, 60_000, 90_000, 120_000],
     )
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default=None)
+    parser.add_argument("--no_shuffle_train", action="store_true")
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
 
@@ -342,9 +350,10 @@ if __name__ == "__main__":
         pp.extract(args),
         args.test_iterations,
         args.save_iterations,
-        args.checkpoint_iterations,
+        args.save_iterations,
         args.start_checkpoint,
         args.debug_from,
+        not args.no_shuffle_train,
     )
 
     # All done
