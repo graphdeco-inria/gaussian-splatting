@@ -69,8 +69,7 @@ def render_sets_from_file(dataset : ModelParams, iteration : int, pipeline : Pip
         makedirs(gts_path, exist_ok=True)
         makedirs(depth_path, exist_ok=True)
 
-        # views = load_views_from_lookat_torch('./tools/cameras.lookat')
-        views = load_views_from_lookat_torch_w_spline_interpolation('./tools/cameras.lookat', 100)
+        views = load_views_from_lookat_torch_w_spline_interpolation('/home/luvision/Code/Data/output_927/25-2/cam1.lookat', 100)
 
         for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
             results = render(view, gaussians, pipeline, background)
@@ -97,7 +96,4 @@ if __name__ == "__main__":
 
     # Initialize system state (RNG)
     safe_state(args.quiet)
-
-    # render_sets_from_file(model.extract(args), args.iteration, pipeline.extract(args), 'interactive_path')
-
-    render_sets(model.extract(args), args.iteration, pipeline.extract(args), 'interactive_path')
+    render_sets_from_file(model.extract(args), args.iteration, pipeline.extract(args), 'lightfield')
