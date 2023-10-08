@@ -1,4 +1,4 @@
-name: gaussian_splatting
+name: dlf
 channels:
   - pytorch
   - conda-forge
