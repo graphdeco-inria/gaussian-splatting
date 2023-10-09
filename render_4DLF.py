@@ -22,7 +22,7 @@ from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
 import numpy as np
 
-from tools.camera_tool import load_views_from_lookat_torch, load_views_from_lookat_torch_w_spline_interpolation, interpolate_cameras
+from tools.camera_tool import load_views_from_lookat_torch, load_views_from_lookat_torch_w_spline_interpolation, interpolate_cameras, generate_LF_cameras
 
 def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, name):
     with torch.no_grad():
@@ -69,7 +69,8 @@ def render_sets_from_file(dataset : ModelParams, iteration : int, pipeline : Pip
         makedirs(gts_path, exist_ok=True)
         makedirs(depth_path, exist_ok=True)
 
-        views = load_views_from_lookat_torch_w_spline_interpolation('/home/luvision/Code/Data/output_927/25-2/cam1.lookat', 100)
+        view_center = load_views_from_lookat_torch('/home/luvision/Code/Data/output_927/25-2/cam1.lookat')
+        views = generate_LF_cameras(view_center[0], 5, 0.2)
 
         for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
             results = render(view, gaussians, pipeline, background)
@@ -97,3 +98,4 @@ if __name__ == "__main__":
     # Initialize system state (RNG)
     safe_state(args.quiet)
     render_sets_from_file(model.extract(args), args.iteration, pipeline.extract(args), 'lightfield')
+    # render_sets(model.extract(args), args.iteration, pipeline.extract(args), 'interpolation_train')

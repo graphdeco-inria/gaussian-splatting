@@ -149,7 +149,7 @@ def look_at_to_rt(eye, target, up):
     return rt_matrix, rotation_matrix, translation_vector
 
 def load_views_from_lookat_torch(filename):
-    glcams = load_params_from_file('./tools/cameras3.lookat')
+    glcams = load_params_from_file(filename=filename)
     views = []
     for idx in range(len(glcams['eye'])):
         view = ViewpointCamera()
@@ -158,7 +158,7 @@ def load_views_from_lookat_torch(filename):
     return views
 
 def load_views_from_lookat_torch_w_spline_interpolation(filename, inter_num = 100):
-    glcams = load_params_from_file('./tools/cameras3.lookat')
+    glcams = load_params_from_file(filename=filename)
     Rs = []
     Ts = []
     for idx in range(len(glcams['eye'])):
@@ -186,6 +186,43 @@ def interpolate_cameras(cameras, inter_num):
     for idx in range(Rs_inter.shape[0]):
         view = ViewpointCamera()
         view.load_extrinsic2(Rs_inter[idx, :, :], Ts_inter[idx, :], 0.01, 100)
+        views.append(view)
+
+    return views
+
+def generate_LF_cameras(camera_center, cam_num, baseline):
+    # views = []
+    # views.append(camera_center)
+    # return views
+    # get rotation and translation matrix from camera
+    R_center = camera_center.R
+    T_center = camera_center.T
+    # combine the rotation and translation into an RT matrix (4x4).
+    rt_matrix = np.identity(4)
+    rt_matrix[:3, :3] = R_center
+    rt_matrix[:3, 3] = T_center
+    lf_rt_matrices = []
+    # extract the camera's up, right, and view directions
+    up_direction = rt_matrix[:3, 1]  # Second column
+    right_direction = rt_matrix[:3, 0]  # First column
+    view_direction = -rt_matrix[:3, 2]  # Negative of third column
+    # move cameras to generate LF cameras
+    cam_num_half = cam_num // 2 
+    for j in range(-cam_num_half, cam_num_half + 1, 1):
+        for i in range(-cam_num_half, cam_num_half + 1, 1):
+            shift = (up_direction * j + right_direction * i) * baseline
+            trans_matrix_ = np.identity(4)
+            trans_matrix_[:3, 3] = shift 
+            new_camera_matrix = np.dot(rt_matrix, trans_matrix_)
+            lf_rt_matrices.append(new_camera_matrix)
+    # return views
+    views = []
+    for idx in range(len(lf_rt_matrices)):
+        view = ViewpointCamera(image_width=1280, image_height=720, fx = 1100, fy = 1100)
+        rt_matrix_ = lf_rt_matrices[idx]
+        R_center = rt_matrix_[:3, :3]
+        T_center = rt_matrix_[:3, 3]
+        view.load_extrinsic2(R_center, T_center, 0.01, 100)
         views.append(view)
 
     return views
