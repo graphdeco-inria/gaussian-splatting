@@ -31,6 +31,8 @@ def readImages(renders_dir, gt_dir):
         renders.append(tf.to_tensor(render).unsqueeze(0)[:, :3, :, :].cuda())
         gts.append(tf.to_tensor(gt).unsqueeze(0)[:, :3, :, :].cuda())
         image_names.append(fname)
+        gt.close()
+        render.close()
     return renders, gts, image_names
 
 def evaluate(model_paths):
