@@ -241,7 +241,19 @@ python metrics.py -m <path to pre-trained model>
   #### --convert_cov3D_python
   Flag to make pipeline render with computed 3D covariance from PyTorch instead of ours.
 
+  **The below parameters are used for rendering a custom trajectory**
+  #### --camera_trajectory
+  Path to the trajectory file, a torch tensor in shape [N, 4, 4]
+  #### --camera_parameters
+  width, height, and focal length of rendering as specified, example like "976,544,581.743" (comma separated, no space between)
+
 </details>
+
+Additionally, `render.py` also allows to render a custom trajectory with a simple camera pinhole (by optionally specifying width, height, and focal):
+```shell
+python render.py -m <path to pre-trained model> -s <path to colmap dataset> --camera_trajectory path.pt --camera_parameters 1080,960,1000
+```
+where `path.pt` is a `[N, 4, 4]` torch tensor, each 4x4 matrix is the transform from camera to world created via `torch.save(path, "path.pt")`.
 
 <details>
 <summary><span style="font-weight: bold;">Command Line Arguments for metrics.py</span></summary>
