@@ -10,7 +10,7 @@ cd ceres-solver
 git checkout $(git describe --tags) # Checkout the latest release
 mkdir build
 cd build
-cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_CUDA_ARCHITECTURES=native #-DUSE_CUDA=OFF 
+cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_CUDA_ARCHITECTURES=60;70;80 #-DUSE_CUDA=OFF 
 
 
 make
@@ -24,7 +24,7 @@ cd colmap
 git checkout dev
 mkdir build
 cd build
-cmake .. -DCMAKE_CUDA_ARCHITECTURES=native #-DCUDA_ENABLED=OFF 
+cmake .. -DCMAKE_CUDA_ARCHITECTURES=60;70;80 #-DCUDA_ENABLED=OFF 
 make
 sudo make install
 CC=/usr/bin/gcc-6 CXX=/usr/bin/g++-6 cmake ..
