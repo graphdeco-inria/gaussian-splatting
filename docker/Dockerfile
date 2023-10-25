@@ -1,6 +1,8 @@
 #FROM tensorflow/tensorflow:latest-gpu
 FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
+ENV DEBIAN_FRONTEND noninteractive
+
 ARG user_id
 ARG root_psw="12345678"
 ARG user_psw="ok"
