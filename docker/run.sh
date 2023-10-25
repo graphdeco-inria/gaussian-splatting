@@ -12,7 +12,7 @@ mkdir -p $1-data/output
 FPS="5" #<-change this to change framerate
 
 
-if [ -f $1-data/input/0000.jpg ]
+if [ -f $1-data/input/0001.jpg ]
 then
   echo "File $1 appears to have already been split .."
 else
