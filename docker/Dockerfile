@@ -13,6 +13,8 @@ RUN \
 			vim \
             build-essential \
             cmake \
+            ffmpeg \
+            freeglut3-dev \
             libopencv-dev \
             libjpeg-dev \
             libpng-dev \
@@ -20,6 +22,8 @@ RUN \
             libpthread-stubs0-dev \
 			git \
 			virtualenv \
+            sqlite3 \
+            libsqlite3-dev \
 			time \
 			sudo \
 			wget \
