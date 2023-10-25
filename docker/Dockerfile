@@ -24,7 +24,6 @@ RUN \
 			sudo \
 			wget \
 			nano \
-            python3.8-venv \
             libboost-program-options-dev \
             libboost-filesystem-dev \
             libboost-graph-dev \
