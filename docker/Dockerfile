@@ -67,5 +67,5 @@ WORKDIR /home/${user_name}/
 
 
 RUN git config --global http.sslverify false
-RUN cd /home/${user_name}/workspace && git clone --recursive https://github.com/graphdeco-inria/gaussian-splatting && cd gaussian-splatting && ./docker/initialize.sh
+RUN cd /home/${user_name}/workspace && git clone --recursive https://github.com/graphdeco-inria/gaussian-splatting && cd gaussian-splatting && docker/initialize.sh
 
