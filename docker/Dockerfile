@@ -1,4 +1,5 @@
-FROM tensorflow/tensorflow:latest-gpu
+#FROM tensorflow/tensorflow:latest-gpu
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 ARG user_id
 ARG root_psw="12345678"
@@ -9,7 +10,7 @@ ARG user_name=user
 RUN \
 	echo "**** packages installation ****" \
 		&& apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/3bf863cc.pub \
-		&& apt-get update && apt-get install -y \
+		&& apt-get update && apt-get dist-upgrade -y && apt-get install -y \
 			vim \
             build-essential \
             cmake \
@@ -48,6 +49,10 @@ RUN \
             libflann-dev \
             libatlas-base-dev \
             libsuitesparse-dev \
+            libcufft10 \
+            libcusparse11 \
+            libcublas11 \
+            libcublaslt11 \
 	&& echo "**** python pip update ****" \
 		&& /usr/bin/python3 -m pip install --upgrade pip \
 	&& echo "**** aliases for l and ll commands creation ****" \

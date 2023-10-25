@@ -11,6 +11,8 @@ git checkout $(git describe --tags) # Checkout the latest release
 mkdir build
 cd build
 cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DUSE_CUDA=OFF #-DCMAKE_CUDA_ARCHITECTURES=native
+
+
 make
 sudo make install
 cd ..
