@@ -12,7 +12,7 @@ REPOSITORY=`pwd`
 
 cd "$DIR"
 
-NAME="mocapnet"
+NAME="gaussian-splatting"
 dockerfile_pth="$DIR"
 mount_pth="$REPOSITORY"
 
@@ -36,7 +36,7 @@ docker run -d \
 
 docker ps -a
 
-OUR_DOCKER_ID=`docker ps -a | grep mocapnet | cut -f1 -d' '`
+OUR_DOCKER_ID=`docker ps -a | grep gaussian-splatting | cut -f1 -d' '`
 echo "Our docker ID is : $OUR_DOCKER_ID"
 echo "Attaching it using : docker attach $OUD_DOCKER_ID"
 docker attach $OUR_DOCKER_ID

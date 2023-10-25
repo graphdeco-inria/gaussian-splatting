@@ -65,10 +65,7 @@ RUN \
 
 USER ${user_name} 
 WORKDIR /home/${user_name}/
- 
 
-#Read/Write: git clone ssh://ics\\ammarkov@cvrlcode.ics.forth.gr:29418/users/ammarkov/ammarkov.git
-#Read only: git clone https://ics\\ammarkov@cvrlcode.ics.forth.gr:8443/r/users/ammarkov/ammarkov.git
 
 RUN git config --global http.sslverify false
 RUN cd /home/${user_name}/workspace && git clone --recursive https://github.com/graphdeco-inria/gaussian-splatting && cd gaussian-splatting && ./docker/initialize.sh
