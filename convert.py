@@ -8,7 +8,7 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
-# xvdp removed magick, it is 3x slower than single threaded PIL for resizing
+# xvdp removed magick, even single threaded PIL resizes 4X faster
 
 
 import os
@@ -106,6 +106,6 @@ if args.resize:
         logging.info(f"processing image [{j}/{len(files)}] {source_file}")
         for div in [2,4,8]:
             destination_file = os.path.join(args.source_path, f"images_{div}", file)
-            im.resize([round(i/div) for i in im.size], Image.BICUBIC).save(destination_file)
+            im.resize([round(i/div) for i in im.size], Image.BICUBIC).save(destination_file, quality=100)
 
 print("Done.")
