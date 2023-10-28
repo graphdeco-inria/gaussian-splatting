@@ -17,6 +17,7 @@ RUN \
             build-essential \
             cmake \
             ffmpeg \
+            imagemagick \
             unzip \
             freeglut3-dev \
             libopencv-dev \

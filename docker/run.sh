@@ -21,10 +21,10 @@ fi
 
 
 python3.10 convert.py -s $1-data/ #--no_gpu
-python3.10 train.py -s $1-data/  --model_path=$1-data/output/ #-r 1
+python3.10 train.py -s $1-data/ -r 1 #--model_path=$1-data/output/ #
 
 #pack it in
-tar cvfjh "$1.tar.bz2" $1-data/
+#tar cvfjh "$1.tar.bz2" $1-data/
 
 
 exit 0
