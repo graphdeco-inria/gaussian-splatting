@@ -5,6 +5,13 @@
 #cd cuda-samples
 
 
+#also get add-ons
+git clone https://github.com/antimatter15/splat
+git clone https://github.com/ReshotAI/gaussian-splatting-blender-addon/
+
+
+
+
 git clone https://ceres-solver.googlesource.com/ceres-solver
 cd ceres-solver
 git checkout $(git describe --tags) # Checkout the latest release
