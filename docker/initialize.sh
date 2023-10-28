@@ -14,7 +14,7 @@ git clone https://github.com/ReshotAI/gaussian-splatting-blender-addon/
 
 git clone https://ceres-solver.googlesource.com/ceres-solver
 cd ceres-solver
-git checkout $(git describe --tags) # Checkout the latest release
+#git checkout $(git describe --tags) # Checkout the latest release
 mkdir build
 cd build
 cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_CUDA_ARCHITECTURES="60;70;80" #-DUSE_CUDA=OFF 
@@ -26,7 +26,7 @@ cd ..
 
 git clone https://github.com/colmap/colmap
 cd colmap
-git checkout dev
+#git checkout dev
 mkdir build
 cd build
 cmake .. -DCMAKE_CUDA_ARCHITECTURES="60;70;80" #-DCUDA_ENABLED=OFF 

@@ -20,7 +20,7 @@ else
 fi
 
 
-python3.10 convert.py -s $1-data/ #--no_gpu
+python3.10 convert.py -s $1-data/ #--skip_matching #--no_gpu
 python3.10 train.py -s $1-data/ -r 1 #--model_path=$1-data/output/ #
 
 #pack it in
