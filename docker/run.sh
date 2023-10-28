@@ -21,6 +21,6 @@ fi
 
 
 python3.10 convert.py -s $1-data/ #--no_gpu
-python3.10 train.py -s $1-data/ -r 1 --model_path=$1-data/output/
+python3.10 train.py -s $1-data/  --model_path=$1-data/output/ #-r 1
 
 exit 0
