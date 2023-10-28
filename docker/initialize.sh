@@ -29,8 +29,8 @@ cd ..
 cd ..
 
 
-sudo apt-get -y install cuda
-sudo apt -y install nvidia-cuda-toolkit
+#sudo apt-get -y install cuda
+#sudo apt -y install nvidia-cuda-toolkit
 
 python3.10 -m pip install plyfile tqdm
 python3.10 -m pip install  https://huggingface.co/camenduru/gaussian-splatting/resolve/main/diff_gaussian_rasterization-0.0.0-cp310-cp310-linux_x86_64.whl
