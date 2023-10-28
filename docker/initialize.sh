@@ -32,10 +32,13 @@ cd ..
 cd ..
 
 
-pip install -q plyfile 
+sudo apt-get -y install cuda
+sudo apt install nvidia-cuda-toolkit
 
-python3.10 -m pip install -q https://huggingface.co/camenduru/gaussian-splatting/resolve/main/diff_gaussian_rasterization-0.0.0-cp310-cp310-linux_x86_64.whl
-python3.10 -m pip install -q https://huggingface.co/camenduru/gaussian-splatting/resolve/main/simple_knn-0.0.0-cp310-cp310-linux_x86_64.whl
+pip install  plyfile tqdm
+
+python3.10 -m pip install  https://huggingface.co/camenduru/gaussian-splatting/resolve/main/diff_gaussian_rasterization-0.0.0-cp310-cp310-linux_x86_64.whl
+python3.10 -m pip install  https://huggingface.co/camenduru/gaussian-splatting/resolve/main/simple_knn-0.0.0-cp310-cp310-linux_x86_64.whl
 
 
 ln -s docker/run.sh ./run.sh
