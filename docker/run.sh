@@ -21,7 +21,7 @@ fi
 
 
 python3.10 convert.py -s $1-data/ #--skip_matching #--no_gpu
-python3.10 train.py -s $1-data/ -r 1 #--model_path=$1-data/output/ #
+python3.10 train.py -s $1-data/ -r 1 --model_path=$1-data/output/ #
 
 #pack it in
 #tar cvfjh "$1.tar.bz2" $1-data/
