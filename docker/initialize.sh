@@ -11,7 +11,7 @@ git checkout $(git describe --tags) # Checkout the latest release
 mkdir build
 cd build
 cmake .. -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF -DCMAKE_CUDA_ARCHITECTURES="60;70;80" #-DUSE_CUDA=OFF 
-make
+make -j8
 sudo make install
 cd ..
 cd ..
@@ -23,7 +23,7 @@ git checkout dev
 mkdir build
 cd build
 cmake .. -DCMAKE_CUDA_ARCHITECTURES="60;70;80" #-DCUDA_ENABLED=OFF 
-make
+make -j8
 sudo make install
 cd ..
 cd ..
