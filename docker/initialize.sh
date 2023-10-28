@@ -44,6 +44,14 @@ python3.10 -m pip install torchvision
 
 ln -s docker/run.sh ./run.sh
 
+#Build viewer
+#sudo apt install -y libimgui-dev libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libopencv-dev libglfw3-dev libavdevice-dev libavcodec-dev libeigen3-dev libxxf86vm-dev libembree-dev
+#git clone https://github.com/JayFoxRox/SIBR_viewers
+#cd SIBR_viewers
+#cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release -DASSIMP_LIBRARY=/usr/lib/x86_64-linux-gnu/libassimp.so
+#cmake --build build -j24 --target install
+#cd ..
+
 #sudo apt-get -y install cuda
 sudo apt -y install nvidia-cuda-toolkit
 
