@@ -4,7 +4,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
 
-cd ..
+#cd ..
 
 mkdir -p $1-data/input
 mkdir -p $1-data/output
