@@ -334,10 +334,15 @@ git checkout fossa_compatibility
 #### Arch Linux
 
 ```shell
-sudo pacman -S cmake glew assimp boost gtk3 opencv glfw-x11 ffmpeg eigen libxxf86vm embree3
+# Dependencies
+sudo pacman -S cmake glew assimp boost gtk3 opencv glfw-x11 ffmpeg4.4 hdf5 fmt vtk eigen libxxf86vm embree3
+# Project setup
+cd SIBR_viewers
+export CC=$(which gcc-12) CXX=$(which g++-12) # use gcc-12 and g++-12
+export CMAKE_PREFIX_PATH="/usr/lib/ffmpeg4.4:/usr/include/ffmpeg4.4" # use ffmpeg4.4
+cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
+cmake --build build -j24 --target install
 ```
-
-The setup step is the same as Ubuntu.
 
 ### Navigation in SIBR Viewers
 
