@@ -305,6 +305,8 @@ We provide pre-built binaries for Windows [here](https://repo-sam.inria.fr/fungr
 ### Installation from Source
 If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers```. The network viewer runs within the SIBR framework for Image-based Rendering applications.
 
+Note that if you encounter an error when compiling using gcc-13, try to comment the method `getModeIndice` on line 938 of the file `VideoUtils.hpp`.
+
 #### Windows
 CMake should take care of your dependencies.
 ```shell
@@ -338,7 +340,7 @@ git checkout fossa_compatibility
 sudo pacman -S cmake glew assimp boost gtk3 opencv glfw-x11 ffmpeg4.4 hdf5 fmt vtk eigen libxxf86vm embree3
 # Project setup
 cd SIBR_viewers
-export CC=$(which gcc-12) CXX=$(which g++-12) # use gcc-12 and g++-12
+# export CC=$(which gcc-12) CXX=$(which g++-12) # optional, gcc-12 will ignore the error mentioned in section #[Installation from Source]
 export CMAKE_PREFIX_PATH="/usr/lib/ffmpeg4.4:/usr/include/ffmpeg4.4" # use ffmpeg4.4
 cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
 cmake --build build -j24 --target install
