@@ -96,7 +96,9 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
-        image = Image.open(image_path)
+        image_fs = Image.open(image_path)
+        image = image_fs.copy()
+        image_fs.close()
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height)
@@ -199,6 +201,9 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
 
             image_path = os.path.join(path, cam_name)
             image_name = Path(cam_name).stem
+            image_fs = Image.open(image_path)
+            image = image_fs.copy()
+            image_fs.close()
             image = Image.open(image_path)
 
             im_data = np.array(image.convert("RGBA"))
