@@ -23,6 +23,9 @@ fi
 python3.10 convert.py -s $1-data/ --camera SIMPLE_RADIAL --no_gpu #GPU produces worse results (?)
 python3.10 train.py -s $1-data/ -r 1 --model_path=$1-data/output/ --position_lr_init 0.000016 --scaling_lr 0.001 --iterations 100000 #Test more training budget
 
+python3.10 3dgsconverter/3dgsconverter.py -i $1-data/output/point_cloud/iteration_30000/point_cloud.ply -o $1-data/output/point_cloud/iteration_30000/output_cc.ply -f cc --rgb --density_filter --remove_flyers
+python3.10 3dgsconverter/3dgsconverter.py -i $1-data/output/output/point_cloud/iteration_30000/output_cc.ply  -o $1-data/output/output/point_cloud/iteration_30000/point_cloud_clean.ply -f 3dgs
+
 #pack it in
 #tar cvfjh "$1.tar.bz2" $1-data/
 
