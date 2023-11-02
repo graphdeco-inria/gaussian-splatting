@@ -21,7 +21,7 @@ fi
 
 
 python3.10 convert.py -s $1-data/ --camera SIMPLE_RADIAL --no_gpu #GPU produces worse results (?)
-python3.10 train.py -s $1-data/ -r 1 --model_path=$1-data/output/ #
+python3.10 train.py -s $1-data/ -r 1 --model_path=$1-data/output/ --position_lr_init 0.000016 --scaling_lr 0.001 --iterations 100000 #Test more training budget
 
 #pack it in
 #tar cvfjh "$1.tar.bz2" $1-data/
