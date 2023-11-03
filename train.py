@@ -29,8 +29,9 @@ except ImportError:
     TENSORBOARD_FOUND = False
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
-    bestLossEncountered     = 1000000
-    pickBetweenFinalNLosses = 10 
+    bestLossEncountered      = 1000000
+    bestIterationEncountered = 0
+    pickBetweenFinalNLosses  = 10 
 
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
@@ -107,7 +108,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 progress_bar.close()
 
             if  (bestLossEncountered>ema_loss_for_log) and (pickBetweenFinalNLosses+iteration > opt.iterations):
-                     print("\n[ITER {}] Also remembering this iteration..".format(iteration))
+                     if (bestIterationEncountered!=0):
+                         print("\n[ITER {}] Erasing this iteration..".format(bestIterationEncountered))
+                         os.system("rm point_cloud/iteration_%u/*.ply && rmdir point_cloud/iteration_%u/"%iteration)
+                     bestLossEncountered      = ema_loss_for_log
+                     bestIterationEncountered = iteration
+                     print("\n[ITER {}] Now remembering this iteration..".format(iteration))
                      saving_iterations.append(iteration)
 
             # Log and save
