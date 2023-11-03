@@ -29,6 +29,9 @@ except ImportError:
     TENSORBOARD_FOUND = False
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+    bestLossEncountered     = 1000000
+    pickBetweenFinalNLosses = 10 
+
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree)
@@ -102,6 +105,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 progress_bar.update(10)
             if iteration == opt.iterations:
                 progress_bar.close()
+
+            if  (bestLossEncountered>ema_loss_for_log) and (pickBetweenFinalNLosses+iteration > opt.iterations):
+                     print("\n[ITER {}] Also remembering this iteration..".format(iteration))
+                     saving_iterations.append(iteration)
 
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
