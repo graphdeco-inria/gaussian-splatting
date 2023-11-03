@@ -31,7 +31,7 @@ except ImportError:
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     bestLossEncountered      = 1000000
     bestIterationEncountered = 0
-    pickBetweenFinalNLosses  = 10 
+    pickBetweenFinalNLosses  = 500 #Closely monitor last 500 solutions 
 
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
