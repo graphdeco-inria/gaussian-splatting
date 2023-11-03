@@ -111,7 +111,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if  (bestLossEncountered>ema_loss_for_log) and (goodLossThreshold > ema_loss_for_log):
                      if (bestIterationEncountered!=0):
                          print("\n[GOOD ITER {}] Erasing previous best iteration..".format(bestIterationEncountered))
-                         os.system("rm point_cloud/iteration_%u/*.ply && rmdir point_cloud/iteration_%u/"%bestIterationEncountered)
+                         os.system("rm point_cloud/iteration_%u/*.ply && rmdir point_cloud/iteration_%u/"%(bestIterationEncountered,bestIterationEncountered))
                      bestLossEncountered      = ema_loss_for_log
                      bestIterationEncountered = iteration
                      print("\n[GOOD ITER {}] Now remembering this iteration..".format(iteration))
