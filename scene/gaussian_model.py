@@ -60,7 +60,7 @@ class GaussianModel:
 
 
     def __repr__(self):
-        format_string = self.__class__.__name__ + '()'
+        format_string = self.__class__.__name__ + '()\n'
         for k, v in self.__dict__.items():
             if torch.is_tensor(v):
                 format_string +=f"  {k}:\t{tuple(v.shape)}\n"
@@ -84,7 +84,7 @@ class GaussianModel:
             self.optimizer.state_dict(),
             self.spatial_lr_scale,
         )
-    
+
     def restore(self, model_args, training_args):
         (self.active_sh_degree, 
         self._xyz, 
