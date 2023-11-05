@@ -18,13 +18,15 @@ import random
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
 
-def PILtoTorch(pil_image, resolution):
+def PILtoTorch(pil_image, resolution, pin_memory=True):
     resized_image_PIL = pil_image.resize(resolution)
-    resized_image = torch.from_numpy(np.array(resized_image_PIL)) / 255.0
-    if len(resized_image.shape) == 3:
-        return resized_image.permute(2, 0, 1)
-    else:
-        return resized_image.unsqueeze(dim=-1).permute(2, 0, 1)
+    resized_image = torch.from_numpy(np.array(resized_image_PIL, dtype=np.float32)) / 255.0
+    if resized_image.ndim == 2:
+        resized_image = resized_image[None]
+    resized_image = resized_image.permute(2, 0, 1).contiguous()
+    if pin_memory:
+        resized_image.pin_memory = True
+    return resized_image
 
 def get_expon_lr_func(
     lr_init, lr_final, lr_delay_steps=0, lr_delay_mult=1.0, max_steps=1000000
