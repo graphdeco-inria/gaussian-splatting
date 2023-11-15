@@ -337,7 +337,7 @@ git checkout fossa_compatibility
 
 ```shell
 # Dependencies
-sudo pacman -S cmake glew assimp boost gtk3 opencv glfw-x11 ffmpeg4.4 hdf5 fmt vtk eigen libxxf86vm embree3
+sudo pacman -S base-devel cmake glew assimp boost gtk3 opencv glfw-x11 ffmpeg4.4 hdf5 fmt vtk eigen libxxf86vm embree3
 # Project setup
 cd SIBR_viewers
 # export CC=$(which gcc-12) CXX=$(which g++-12) # optional, gcc-12 will ignore the error mentioned in section #[Installation from Source]
