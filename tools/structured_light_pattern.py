@@ -1,6 +1,8 @@
 import sys
+import csv
 import numpy as np
 from PIL import Image
+import matplotlib.pyplot as plt
 
 def de_bruijn(k, n):
     """
@@ -38,18 +40,19 @@ def get_2d_PRBA(k1, k2, n1, n2):
     PRBA = np.zeros((n1, n2))
     n = k1 * k2
     _, seq = de_bruijn(2, n)
+    shifted_sequence = np.roll(seq, len(seq) // 4)
     row = 0
     col = 0
     for idx in range(1, len(seq)):
-        PRBA[row, col] = seq[idx] * 255
+        PRBA[row, col] = shifted_sequence[idx] * 255
         row = (row + 1) % n1
         col = (col + 1) % n2
     return PRBA.astype(np.uint8)
 
 def get_img_from_PRBA(PRBA_mat):
-    cell_size = 11 
+    cell_size = 5
     center_pos = cell_size // 2
-    center_size = 3
+    center_size = 1
     center_size_half = center_size // 2
     height = PRBA_mat.shape[0] * cell_size
     width = PRBA_mat.shape[1] * cell_size
@@ -62,6 +65,32 @@ def get_img_from_PRBA(PRBA_mat):
             PRBA_img[r_pos-center_size_half:r_pos+center_size_half+1, c_pos-center_size_half:c_pos+center_size_half+1] = PRBA_mat[r, c]
     
     return PRBA_img
+
+def convert_img2positions(img):
+    csv_array = []
+    x_array = []
+    y_array = []
+    for r in range(img.shape[0]):
+        for c in range(img.shape[1]):
+            if img[r, c] == 255:
+                csv_array.append([c*10 + 5, r*10 + 5])
+                x_array.append(c*10 + 5)
+                y_array.append(r*10 + 5)
+    
+    # Plotting dots
+    plt.scatter(x_array, y_array, color='blue', label='Dots')
+
+    # Adding labels and title
+    plt.xlabel('X-axis')
+    plt.ylabel('Y-axis')
+    plt.title('Scatter Plot of Dots')
+
+    # Displaying the plot
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    
+    return csv_array
 
 if __name__ == "__main__":
 
@@ -77,3 +106,9 @@ if __name__ == "__main__":
     PRBA_img = get_img_from_PRBA(PRBA_mat)
     PRBA_img_PIL = Image.fromarray(PRBA_img)
     PRBA_img_PIL.save("./Pattern_img.png")
+
+    cvs_array = convert_img2positions(PRBA_img)
+    file_path = 'Pattern_img.csv'
+    with open(file_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(cvs_array)
