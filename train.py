@@ -22,6 +22,7 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+from robust_loss import calculate_mask
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -88,6 +89,21 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
+
+        print(viewpoint_cam)
+        
+        residuals = torch.linalg.vector_norm(image - gt_image, dim=(0))
+        mask = calculate_mask(residuals)
+        print('##############')
+        print(gt_image.shape)
+        print(image.shape)
+        gt_image = gt_image * mask
+        image = image * mask
+        print('##############')
+        print(gt_image.shape)
+        print(image.shape)
+
+
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss.backward()
