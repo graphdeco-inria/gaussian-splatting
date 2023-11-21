@@ -29,7 +29,7 @@ def calculate_mask(residuals):
     else:
         pad_w = 8
 
-    padding = (math.ceil(pad_h/2), math.floor(pad_h/2), math.ceil(pad_w/2), math.floor(pad_w/2))
+    padding = (math.ceil(pad_w/2), math.floor(pad_w/2), math.ceil(pad_h/2), math.floor(pad_h/2))
     padded_weights = torch.nn.functional.pad(has_inlier_neighbors, padding, mode = "replicate").cuda()
 
     is_inlier_patch = torch.nn.functional.conv2d(padded_weights.unsqueeze(0), kernel_16, stride = 8)
@@ -37,7 +37,7 @@ def calculate_mask(residuals):
     is_inlier_patch = torch.nn.functional.interpolate(is_inlier_patch, scale_factor = 8)
     is_inlier_patch = is_inlier_patch.squeeze()
 
-    padding_indexing = [padding[0]-4,-(padding[1]-4), padding[2]-4,-(padding[3]-4)]
+    padding_indexing = [padding[2]-4,-(padding[3]-4), padding[0]-4,-(padding[1]-4)]
 
     if padding_indexing[1] == 0:
         padding_indexing[1] = has_inlier_neighbors.shape[1]

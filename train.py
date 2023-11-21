@@ -45,10 +45,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
-    viewpoint_stack = None
+    viewpoint_stack = scene.getTrainCameras().copy()
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
+
+    # init masks
+    all_masks = torch.ones((len(viewpoint_stack), viewpoint_stack[0].image_height, viewpoint_stack[0].image_width), dtype=torch.float32, device="cuda")
+    
+
     for iteration in range(first_iter, opt.iterations + 1):        
         if network_gui.conn == None:
             network_gui.try_connect()
@@ -89,25 +94,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
-
-        print(viewpoint_cam)
         
         residuals = torch.linalg.vector_norm(image - gt_image, dim=(0))
         mask = calculate_mask(residuals)
-        print('##############')
-        print(gt_image.shape)
-        print(image.shape)
-        gt_image = gt_image * mask
-        image = image * mask
-        print('##############')
-        print(gt_image.shape)
-        print(image.shape)
+        old_mask = all_masks[viewpoint_cam.uid]
+        gt_image = gt_image * old_mask
+        image = image * old_mask
 
+        
 
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss.backward()
-
+        all_masks[viewpoint_cam.uid] = mask
         iter_end.record()
 
         with torch.no_grad():
