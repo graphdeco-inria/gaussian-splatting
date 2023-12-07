@@ -448,7 +448,6 @@ If you have your own COLMAP dataset without undistortion (e.g., using ```OPENCV`
 |   |---<image 1>
 |   |---...
 |---distorted
-    |---database.db
     |---sparse
         |---0
             |---...
