@@ -75,7 +75,7 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 - 24 GB VRAM (to train to paper evaluation quality)
 - Please see FAQ for smaller VRAM configurations
 
-PS: 24 GB VRAM is not the minimum configuration. When using `--data_devie cpu` to lazy load image, 8GB VRAM is already sufficient to handle most scenarios.
+PS: 24 GB VRAM is not the minimum configuration. When using `--data_device cpu` to lazy load image, 8GB VRAM is already sufficient to handle most scenarios.
 
 ### Software Requirements
 - Conda (recommended for easy setup)
