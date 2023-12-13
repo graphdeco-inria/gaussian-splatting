@@ -23,7 +23,7 @@ conda activate gaussian_splatting
 
 # Run Python script
 python train.py \
-    --path "data/colmap_train" \
-    --model-path "$OUTPUT_PATH" \
+    --source_path "$INPUT_PATH" \
+    --model_path "$OUTPUT_PATH" \
     --iterations "$ITERATIONS" \
     --save_iterations "$ITERATIONS"
