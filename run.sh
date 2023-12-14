@@ -21,7 +21,11 @@ source /opt/conda/etc/profile.d/conda.sh
 conda init bash
 conda activate gaussian_splatting
 
-# Run Python script
+# Run scene optimizer
+python convert.py \
+    --source_path "$INPUT_PATH"
+
+# Run training
 python train.py \
     --source_path "$INPUT_PATH" \
     --model_path "$OUTPUT_PATH" \
