@@ -1,4 +1,20 @@
-# 3D Gaussian Splatting for Real-Time Radiance Field Rendering
+# Gaussian Splatting Streamer
+
+This repository is built on-top of the original "3D Gaussian Splatting for Real-Time Radiance Field Rendering" implementation.
+The objective is to create a simple framework to interact with Gaussian Splats and develop downstream applications.
+This minimal implementation will make certain modifications to the original source-code for simplicity sake. 
+Thus certain functionality of the original forked repo may not be working (i.e., evaluation and training)... Please be advised.
+
+This streamer is essentially a wrapper about the original render.py thus the render_wrapper.py.
+The only requirement the output of the trained model outputs (i.e., checkpoints and cfg_args).
+
+
+
+
+
+We acknowledge and thank the original authors for their work and releasing their code...
+
+# 3D Gaussian Splatting for Real-Time Radiance Field Rendering (Original README)
 Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) | [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |<br>
 | [T&T+DB COLMAP (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Viewers for Windows (60MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip) | [Evaluation Images (7 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip) |<br>

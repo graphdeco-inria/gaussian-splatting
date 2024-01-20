@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Flask SocketIO Registration</h1>
+
+    <form method="post" class="buttons">
+        <h3>Please Enter Email:</h3>
+        <div>
+            <label>Name:</label>
+            <input type="text" placeholder="something@gmail.com" name="name" value="{{ name }}"/>
+        </div>
+        <div class="join">
+            <input type="text" placeholder="Enter Model Index" name="code" value="{{ code }}"/>
+            <button type="submit" name="join">Connect</button>
+        </div>
+    </form>
+
+    {% if error %}
+    <ul>
+        <li>{{error}}</li>
+    </ul>
+    {% endif %}
+
+
+
+{% endblock %}
+
+
+
+
+
+
