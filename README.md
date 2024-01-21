@@ -2,17 +2,24 @@
 
 This repository is built on-top of the original "3D Gaussian Splatting for Real-Time Radiance Field Rendering" implementation.
 The objective is to create a simple framework to interact with Gaussian Splats and develop downstream applications.
-This minimal implementation will make certain modifications to the original source-code for simplicity sake. 
-Thus certain functionality of the original forked repo may not be working (i.e., evaluation and training)... Please be advised.
 
-This streamer is essentially a wrapper about the original render.py thus the render_wrapper.py.
-The only requirement the output of the trained model outputs (i.e., checkpoints and cfg_args).
+This streamer is essentially a wrapper about the original render.py thus the render_wrapper.py. 
+The only requirement should be the output of the trained model outputs (i.e., checkpoints and cfg_args).
 
+## Usage:
 
+To launch the flask app simply run...
+``` bash
+python main.py
+```
 
+## TODO
 
+- [ ] Loading the Gaussian Model is slow since scene object requires loading train/test images
+- [ ] Update viewer canvas based on keyboard commands
+- [ ] Create and tune a speed setting UI in viewer
 
-We acknowledge and thank the original authors for their work and releasing their code...
+# Original Paper
 
 # 3D Gaussian Splatting for Real-Time Radiance Field Rendering (Original README)
 Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
