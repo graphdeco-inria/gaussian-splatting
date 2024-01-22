@@ -39,8 +39,19 @@ def home():
             if not code:
                 return render_template("home.html", error="Please enter model index.", code=code, name=name)
 
+        if code == "1":
+            R_mat = np.array([[-0.8145390529478596, 0.09889517829114354, 0.5798009170915043],
+                              [-0.09778674725285423, 0.98069508920201, -0.16933662945969005],
+                              [-0.571807557911322, -0.19462814352607866, -0.7969667511653681]]),
+            T_vec = np.array([-2.7518888678267177, 0.5298969558367272, 4.8760898433256425])
+
+            init_pose = camera.compose_44(R_mat, T_vec)
+        else:
+            init_pose = np.eye(4)
+
         session["name"] = name
         session["code"] = code
+        session["pose"] = init_pose.tolist()
         return redirect(url_for("viewer"))
 
     return render_template("home.html")
@@ -66,6 +77,8 @@ def key_control(key):
     """
     code = session.get("code")
     name = session.get("name")
+    pose = session.get("pose")
+    pose = np.array(pose)
     print(f'{name} pressed {key["key"]} in model {code}')
 
     # Calculate the new pose
@@ -92,6 +105,8 @@ def connect():
     """
     code = session.get("code")
     name = session.get("name")
+    pose = session.get("pose")
+
     print(f'User {name} has requested model {code}.')
 
     if not code or not name:
@@ -100,18 +115,10 @@ def connect():
     if int(code) not in idxs:
         return
 
-    #TODO: modifiy this to render from Gaussian Splats
     #TODO: support NeRF studio as well
 
-    # Load initial image
-    #with open('test_data/celltower_'+code+'.jpg', 'rb') as f:
-    #    img_data = f.read()
-
-    img1 = model_1.render_view(R_mat=np.array([[-0.8145390529478596, 0.01889517829114354, 0.5798009170915043],
-                                                      [-0.09778674725285423, 0.98069508920201, -0.16933662945969005],
-                                                      [-0.571807557911322, -0.19462814352607866, -0.7969667511653681]]),
-                        T_vec=np.array([-2.7518888678267177, 0.5298969558367272, 4.8760898433256425]),
-                        img_width=1440, img_height=1920, save=True)
+    R, T = camera.decompose_44(np.array(pose))
+    img1 = model_1.render_view(R_mat=R, T_vec=T, img_width=1440, img_height=1920, save=False)
     img_data = io.BytesIO()
     img1.save(img_data, "JPEG")
 

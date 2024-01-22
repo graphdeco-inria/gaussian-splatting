@@ -5,6 +5,14 @@ Adapted from https://antimatter15.com/splat/
 import numpy as np
 
 
+def compose_44(r, t):
+    return np.vstack((np.hstack((np.reshape(r, (3, 3)), np.reshape(t, (3, 1)))), np.array([0, 0, 0, 1])))
+
+
+def decompose_44(a):
+    return a[:3, :3], a[:3, 3]
+
+
 def rotate4(a, rad, x, y, z):
     """
     Rotates camera about the specified axis by radians
@@ -40,6 +48,7 @@ def rotate4(a, rad, x, y, z):
     ])
 
     return np.matmul(a, rotation_matrix)
+
 
 def translate4(a, x, y, z):
     """
