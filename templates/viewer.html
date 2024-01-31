@@ -40,10 +40,18 @@
             img1.src = img1_url
     });
 
+    let lastKeyPressedTime = 0;
+
     window.addEventListener("keypress", keyEventHandler, false);
     function keyEventHandler(event){
-        socket.emit("key_control", {key: event.key})
-        console.log(event);
+        const currentTime = new Date().getTime();
+        if (currentTime - lastKeyPressedTime > 1000) { // 1000ms = 1 second
+            lastKeyPressedTime = currentTime;
+            socket.emit("key_control", {key: event.key})
+            console.log(event);
+        } else {
+            console.log("Too many requests!");
+        }
     }
 
     // Set initial drawing state
