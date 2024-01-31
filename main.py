@@ -25,6 +25,12 @@ idxs = {1, 2, 3}
 model_1 = []
 
 
+M = np.eye(4, dtype=np.float64)
+M[1, 1] = -1
+M[2, 2] = -1
+
+M_inv = np.linalg.inv(M)
+
 @app.route('/', methods=["POST", "GET"])
 def home():
     session.clear()
@@ -43,9 +49,7 @@ def home():
                 return render_template("home.html", error="Please enter model index.", code=code, name=name)
 
         if code == "1":
-            R_mat = np.array([[-0.8210050288356835, -0.17857461458472693, 0.5422746994397166],
-                              [0.1249652793099283, 0.8705835196074918, 0.47588655618206266],
-                              [-0.5570766747885881, 0.45847076505896, -0.6924378210299766]])
+            R_mat = np.array([[-0.8210050288356835, -0.17857461458472693, 0.5422746994397166], [0.1249652793099283, 0.8705835196074918, 0.47588655618206266], [-0.5570766747885881, 0.45847076505896, -0.6924378210299766]])
             T_vec = np.array([-1.8636133065164748, 2.1165406815192687, 3.141789771805336])
             init_pose = camera.compose_44(R_mat, T_vec)
         else:
@@ -92,6 +96,7 @@ def key_control(key):
     Left-Hand Camera Translation: a,d (left right), e,f (forward back), q,e (up down)
     We should also handle pressing multiple keys at the same time...
     """
+
     # Calculate the new pose
     if key["key"] == "d":
         pose = camera.translate4(pose, -0.1, 0, 0)
@@ -106,21 +111,22 @@ def key_control(key):
     elif key["key"] == "q":
         pose = camera.translate4(pose, 0, -0.1, 0)
     elif key["key"] == "j":
-        pose = camera.rotate4(pose, np.radians(5), 0, 1, 0)
+        pose = camera.rotate4(pose, np.radians(1), 0, 1, 0)
     elif key["key"] == "l":
-        pose = camera.rotate4(pose, np.radians(-5), 0, 1, 0)
+        pose = camera.rotate4(pose, np.radians(-1), 0, 1, 0)
     elif key["key"] == "k":
-        pose = camera.rotate4(pose, np.radians(5), 1, 0, 0)
+        pose = camera.rotate4(pose, np.radians(1), 1, 0, 0)
     elif key["key"] == "i":
-        pose = camera.rotate4(pose, np.radians(-5), 1, 0, 0)
+        pose = camera.rotate4(pose, np.radians(-1), 1, 0, 0)
     elif key["key"] == "u":
-        pose = camera.rotate4(pose, np.radians(5), 0, 0, 1)
+        pose = camera.rotate4(pose, np.radians(1), 0, 0, 1)
     elif key["key"] == "o":
-        pose = camera.rotate4(pose, np.radians(-5), 0, 0, 1)
+        pose = camera.rotate4(pose, np.radians(-1), 0, 0, 1)
     else:
         pose = pose
 
     # Render the new view (img)
+    #R, T = camera.decompose_44(np.linalg.inv(np.array(pose)))
     R, T = camera.decompose_44(np.array(pose))
     img1 = model_1.render_view(R_mat=R, T_vec=T, img_width=720, img_height=990, save=False)
     torch.cuda.empty_cache()  # This should be done periodically... (not everytime)
@@ -178,5 +184,5 @@ def disconnect():
 
 
 if __name__ == '__main__':
-    model_1 = GS_Model(model_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1")
+    model_1 = GS_Model(model_path="/home/cviss/PycharmProjects/GS_Stream/output/566ecd8e-c")
     socketio.run(app, debug=False, allow_unsafe_werkzeug=True)
