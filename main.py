@@ -5,10 +5,11 @@ from flask import Flask, render_template, request, session, redirect, url_for
 from flask_socketio import join_room, leave_room, send, SocketIO
 import time
 
+from render_wrapper import DummyCamera, GS_Model
+
 """
 Import to load GS_Model from render_wrapper.py
 """
-from render_wrapper import GS_Model
 import camera_pos_utils as camera
 import io
 import numpy as np
@@ -23,13 +24,6 @@ Available models (scenes) that we can load
 """
 idxs = {1, 2, 3}
 model_1 = []
-
-
-M = np.eye(4, dtype=np.float64)
-M[1, 1] = -1
-M[2, 2] = -1
-
-M_inv = np.linalg.inv(M)
 
 @app.route('/', methods=["POST", "GET"])
 def home():
@@ -49,8 +43,12 @@ def home():
                 return render_template("home.html", error="Please enter model index.", code=code, name=name)
 
         if code == "1":
-            R_mat = np.array([[-0.8210050288356835, -0.17857461458472693, 0.5422746994397166], [0.1249652793099283, 0.8705835196074918, 0.47588655618206266], [-0.5570766747885881, 0.45847076505896, -0.6924378210299766]])
-            T_vec = np.array([-1.8636133065164748, 2.1165406815192687, 3.141789771805336])
+            R_mat = np.array([[-0.70811329, -0.21124761, 0.67375813],
+                              [0.16577646, 0.87778949, 0.4494483],
+                              [-0.68636268, 0.42995355, -0.58655453]])
+            T_vec = np.array([-0.32326042, -3.65895232, 2.27446875])
+            #R_mat = np.array([[-0.8210050288356835, -0.17857461458472693, 0.5422746994397166], [0.1249652793099283, 0.8705835196074918, 0.47588655618206266], [-0.5570766747885881, 0.45847076505896, -0.6924378210299766]])
+            #T_vec = np.array([-1.8636133065164748, 2.1165406815192687, 3.141789771805336])
             init_pose = camera.compose_44(R_mat, T_vec)
         else:
             init_pose = np.eye(4)
@@ -96,45 +94,54 @@ def key_control(key):
     Left-Hand Camera Translation: a,d (left right), e,f (forward back), q,e (up down)
     We should also handle pressing multiple keys at the same time...
     """
+    # Initialize C2C Transform Matricies
+    C2C_Rot = np.eye(4, dtype=np.float32)
+    C2C_T = np.eye(4, dtype=np.float32)
 
     # Calculate the new pose
     if key["key"] == "d":
-        pose = camera.translate4(pose, -0.1, 0, 0)
+        C2C_T = camera.translate4(-0.1, 0, 0)
     elif key["key"] == "a":
-        pose = camera.translate4(pose, 0.1, 0, 0)
+        C2C_T = camera.translate4(0.1, 0, 0)
     elif key["key"] == "s":
-        pose = camera.translate4(pose, 0, 0, 0.1)
+        C2C_T = camera.translate4(0, 0, 0.1)
     elif key["key"] == "w":
-        pose = camera.translate4(pose, 0, 0, -0.1)
+        C2C_T = camera.translate4(0, 0, -0.1)
     elif key["key"] == "e":
-        pose = camera.translate4(pose, 0, 0.1, 0)
+        C2C_T = camera.translate4(0, 0.1, 0)
     elif key["key"] == "q":
-        pose = camera.translate4(pose, 0, -0.1, 0)
-    elif key["key"] == "j":
-        pose = camera.rotate4(pose, np.radians(1), 0, 1, 0)
-    elif key["key"] == "l":
-        pose = camera.rotate4(pose, np.radians(-1), 0, 1, 0)
-    elif key["key"] == "k":
-        pose = camera.rotate4(pose, np.radians(1), 1, 0, 0)
-    elif key["key"] == "i":
-        pose = camera.rotate4(pose, np.radians(-1), 1, 0, 0)
-    elif key["key"] == "u":
-        pose = camera.rotate4(pose, np.radians(1), 0, 0, 1)
-    elif key["key"] == "o":
-        pose = camera.rotate4(pose, np.radians(-1), 0, 0, 1)
+        C2C_T = camera.translate4(0, -0.1, 0)
     else:
-        pose = pose
+        C2C_T = np.eye(4, dtype=np.float32)
 
-    # Render the new view (img)
-    #R, T = camera.decompose_44(np.linalg.inv(np.array(pose)))
+    if key["key"] == "j":
+        C2C_Rot = camera.rotate4(np.radians(1), 0, 1, 0)
+    elif key["key"] == "l":
+        C2C_Rot = camera.rotate4(np.radians(-1), 0, 1, 0)
+    elif key["key"] == "k":
+        C2C_Rot = camera.rotate4(np.radians(1), 1, 0, 0)
+    elif key["key"] == "i":
+        C2C_Rot = camera.rotate4(np.radians(-1), 1, 0, 0)
+    elif key["key"] == "u":
+        C2C_Rot = camera.rotate4(np.radians(1), 0, 0, 1)
+    elif key["key"] == "o":
+        C2C_Rot = camera.rotate4(np.radians(-1), 0, 0, 1)
+    else:
+        C2C_Rot = np.eye(4, dtype=np.float32)
+
+    # Decompose the current pose
     R, T = camera.decompose_44(np.array(pose))
-    img1 = model_1.render_view(R_mat=R, T_vec=T, img_width=720, img_height=990, save=False)
+    cam = DummyCamera(R=R, T=T, W=800, H=600, FoVx=1.4261863218, FoVy=1.150908963, C2C_Rot=C2C_Rot, C2C_T=C2C_T)
+
+    img1 = model_1.render_view(cam=cam)
+
     torch.cuda.empty_cache()  # This should be done periodically... (not everytime)
     img_data = io.BytesIO()  # This is probably also not very efficient
     img1.save(img_data, "JPEG")
 
     # Emit the image to topic img1
     socketio.emit("img1", {'image': img_data.getvalue()})
+    pose = cam.get_new_pose()
     session["pose"] = pose.tolist()  # This might be slow
 
 
@@ -170,7 +177,8 @@ def connect():
     # TODO: support NeRF studio as well
 
     R, T = camera.decompose_44(np.array(pose))
-    img1 = model_1.render_view(R_mat=R, T_vec=T, img_width=720, img_height=990, save=False)
+    cam = DummyCamera(R=R, T=T, W=800, H=600, FoVx=1.4261863218, FoVy=1.150908963)
+    img1 = model_1.render_view(cam=cam)
     img_data = io.BytesIO()
     img1.save(img_data, "JPEG")
 
@@ -180,9 +188,10 @@ def connect():
 
 @socketio.on("disconnect")
 def disconnect():
-    print('disconnected')
+    name = session.get("name")
+    print(f'User {name} has disconnected.')
 
 
 if __name__ == '__main__':
-    model_1 = GS_Model(model_path="/home/cviss/PycharmProjects/GS_Stream/output/566ecd8e-c")
+    model_1 = GS_Model(ply_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply")
     socketio.run(app, debug=False, allow_unsafe_werkzeug=True)

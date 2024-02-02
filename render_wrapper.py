@@ -1,46 +1,74 @@
-from argparse import ArgumentParser, Namespace
-import os
-
-import numpy as np
 import torch
-import torchvision
-
-from arguments import GroupParams, ModelParams
-from gaussian_renderer import GaussianModel
 from gaussian_renderer import render
-from scene import Scene
-from scene.cameras import Camera_Simple
-from utils.general_utils import safe_state
+import torchvision
+from gaussian_renderer import GaussianModel
+from camera_pos_utils import *
+
+from utils.graphics_utils import getWorld2View2, getProjectionMatrix
+
+
+class DummyPipeline:
+    convert_SHs_python = False
+    compute_cov3D_python = False
+    debug = False
+
+
+class DummyCamera:
+    def __init__(self, R, T, FoVx, FoVy, W, H, C2C_Rot=np.eye(4, dtype=np.float32), C2C_T=np.eye(4, dtype=np.float32)):
+        self.projection_matrix = getProjectionMatrix(znear=0.01, zfar=100.0, fovX=FoVx, fovY=FoVy).transpose(0,
+                                                                                                             1).cuda()
+        self.R = R
+        self.T = T
+
+        world2View2 = getWorld2View2(self.R, self.T, np.array([0, 0, 0]), 1.0)
+
+        world2View2 = C2C_Rot @ world2View2
+        world2View2 = C2C_T @ world2View2
+
+        self.world_view_transform = torch.tensor(world2View2).transpose(0, 1).cuda()
+        self.full_proj_transform = (
+            self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
+        self.camera_center = self.world_view_transform.inverse()[3, :3]
+        self.image_width = W
+        self.image_height = H
+        self.FoVx = FoVx
+        self.FoVy = FoVy
+
+    def get_new_pose(self):
+        """
+        Use this function to get the update pose cuz world_view_transform uses the OpenGL view matrix convention
+        i.e.,
+        [[Right_x, Right_y, Right_z, 0],
+        [Up_x, Up_y, Up_z, 0],
+        [Look_x, Look_y, Look_z, 0],
+        [Position_x, Position_y, Position_z, 0]]
+        Or [R|0]
+           [T|1] so we need to rearrange before returning back to keep conventions consistent
+        """
+        world_view_transform = self.world_view_transform.cpu()
+        pose = np.eye(4, dtype=np.float32)
+        pose[0:3, 0:3] = world_view_transform[0:3, 0:3]
+        pose[:3, 3] = np.transpose(world_view_transform[3, :3])
+        return pose
 
 
 class GS_Model():
-    def __init__(self, model_path="/home/cviss/PycharmProjects/gaussian-splatting/output/1e5592be-5"):
-        device = torch.device("cuda:0")
+    def __init__(self,
+                 ply_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply",
+                 device="cuda:0"):
+        # First Set GPU Context (i.e., we can put different models on different GPUs if needed)
+        device = torch.device(device)
         torch.cuda.set_device(device)
 
-        self.model_path = model_path
-        parser = ArgumentParser(description="Testing script parameters")
-        model = ModelParams(parser, sentinel=True)
+        self.pipeline = DummyPipeline()
 
-        args = self.get_combined_args(model_path)
+        self.gaussians = GaussianModel(3)  # 3 is the default sh-degree
+        self.gaussians.load_ply(ply_path)
 
-        # Initialize system state (RNG)
-        safe_state(True)
+        bg_color = [1, 1, 1]
+        self.background = torch.tensor(bg_color, dtype=torch.float32, device=device)
 
-        dataset = model.extract(args)
-
-        '''This replaces the PipelineParams Object'''
-        self.pipeline = GroupParams()
-        self.pipeline.compute_cov3D_python = False
-        self.pipeline.convert_SHs_python = False
-        self.pipeline.debug = False
-
-        self.gaussians = GaussianModel(3)
-        self.scene = Scene(dataset, self.gaussians, load_iteration=-1, shuffle=False)
-        self.bg_color = [1, 1, 1]
-        self.background = torch.tensor(self.bg_color, dtype=torch.float32, device="cuda")
-
-    def render_view(self, R_mat, T_vec, img_width, img_height, save=False):
+    def render_view(self, cam, save=False, out_path="./test.jpg"):
         '''
         Call this method to render a new view from the scene by inputting new pose and desired image width and height
         Note: The FoVx and FoVy can be changed please see utils.graphics_utils.fov2focal and focal2fov methods
@@ -50,35 +78,29 @@ class GS_Model():
         @param img_height: image height pixels
         @return rendered PIL image
         '''
-        view = Camera_Simple(colmap_id=0, R=R_mat, T=T_vec, img_width=img_width, img_height=img_height,
-                             FoVx=1.0, FoVy=1.0, uid=None)
 
-        rendering = render(view, self.gaussians, self.pipeline, self.background)["render"]
-        rendering = torchvision.transforms.ToPILImage()(rendering)
+        result = render(cam, self.gaussians, self.pipeline, self.background)["render"]
+
+        result = torchvision.transforms.ToPILImage()(result)
+
         if save:
-            #torchvision.utils.save_image(rendering, "test.png")
-            rendering.save('test.jpg')
-        return rendering
+            result.save(out_path)
 
-    def get_combined_args(self, model_path):
-        try:
-            cfgfilepath = os.path.join(model_path, "cfg_args")
-            print("Looking for config file in", cfgfilepath)
-            with open(cfgfilepath) as cfg_file:
-                print("Config file found: {}".format(cfgfilepath))
-                cfgfile_string = cfg_file.read()
-        except TypeError:
-            print("Config file not found at")
-            pass
-        args_cfgfile = eval(cfgfile_string)
+        return result
 
-        merged_dict = vars(args_cfgfile).copy()
-        return Namespace(**merged_dict)
 
-#if __name__ == '__main__':
-#    model_1 = GS_Model(model_path="/home/cviss/PycharmProjects/gaussian-splatting/output/1e5592be-5")
-#    model_1.render_view(R_mat=np.array([[-0.8145390529478596, 0.01889517829114354, 0.5798009170915043],
-#                                                      [-0.09778674725285423, 0.98069508920201, -0.16933662945969005],
-#                                                      [-0.571807557911322, -0.19462814352607866, -0.7969667511653681]]),
-#                        T_vec=np.array([-2.7518888678267177, 0.5298969558367272, 4.8760898433256425]),
-#                        img_width=1440, img_height=1920, save=True)
+if __name__ == '__main__':
+    model1 = GS_Model(
+        ply_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply")
+    R_mat = np.array([[-0.70811329, -0.21124761, 0.67375813],
+                      [0.16577646, 0.87778949, 0.4494483],
+                      [-0.68636268, 0.42995355, -0.58655453]])
+    T_vec = np.array([-0.32326042, -3.65895232, 2.27446875])
+
+    C2C_Rot = rotate4(np.radians(90), 0, 1, 0)
+    C2C_T = translate4(0, 0, 0)
+
+    cam = DummyCamera(R=R_mat, T=T_vec, W=1600, H=1200, FoVx=1.4261863218, FoVy=1.150908963)
+    print(cam.world_view_transform)
+
+    model1.render_view(cam=cam, save=True, out_path="test_roty_90_dev.jpg")
