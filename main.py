@@ -15,7 +15,15 @@ import io
 import numpy as np
 import torch
 
+# Load environment variables
 import os
+
+# Set up logging
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "development"
@@ -195,7 +203,7 @@ def image_reset():
                               [-0.68636268, 0.42995355, -0.58655453]])
     T_vec = np.array([-0.32326042, -3.65895232, 2.27446875])
 
-    print("Reset!")
+    logger.info("Pose reset to initial configuration.")
     pose = camera.compose_44(R_mat, T_vec)
 
     R, T = camera.decompose_44(np.array(pose))
