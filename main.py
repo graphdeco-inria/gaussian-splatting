@@ -15,6 +15,8 @@ import io
 import numpy as np
 import torch
 
+import os
+
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "development"
 socketio = SocketIO(app)
@@ -193,5 +195,8 @@ def disconnect():
 
 
 if __name__ == '__main__':
-    model_1 = GS_Model(ply_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply")
-    socketio.run(app, debug=False, allow_unsafe_werkzeug=True)
+    ply_path = os.getenv('GS_PLY_PATH', '/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply')
+    host = os.getenv('GS_HOST', '127.0.0.1')
+    debug = os.getenv('GS_DEBUG', 'false').lower() == 'true'    
+    model_1 = GS_Model(ply_path=ply_path)
+    socketio.run(app, host=host, debug=debug, allow_unsafe_werkzeug=True)
