@@ -188,12 +188,35 @@ def connect():
     socketio.emit("img1", {'image': img_data.getvalue()})
 
 
+@socketio.on("pose_reset")
+def image_reset():
+    R_mat = np.array([[-0.70811329, -0.21124761, 0.67375813],
+                              [0.16577646, 0.87778949, 0.4494483],
+                              [-0.68636268, 0.42995355, -0.58655453]])
+    T_vec = np.array([-0.32326042, -3.65895232, 2.27446875])
+
+    print("Reset!")
+    pose = camera.compose_44(R_mat, T_vec)
+
+    R, T = camera.decompose_44(np.array(pose))
+
+    cam = DummyCamera(R=R, T=T, W=800, H=600, FoVx=1.4261863218, FoVy=1.150908963)
+    img1 = model_1.render_view(cam=cam)
+    img_data = io.BytesIO()
+    img1.save(img_data, "JPEG")
+    session["pose"] = pose.tolist()  # This might be slow
+
+    # Send an initial (placeholder) image to canvas 1
+    socketio.emit("img1", {'image': img_data.getvalue()})
+    
+
 @socketio.on("disconnect")
 def disconnect():
     name = session.get("name")
     print(f'User {name} has disconnected.')
 
-
+    
+    
 if __name__ == '__main__':
     ply_path = os.getenv('GS_PLY_PATH', '/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply')
     host = os.getenv('GS_HOST', '127.0.0.1')

@@ -43,3 +43,10 @@ function keyEventHandler(event){
           console.log("Too many requests!");
        }
 }
+
+// Pose Reset
+const reset = document.getElementById('reset');
+reset.addEventListener('click', function() {
+    console.log("pose_reset")
+    socket.emit("pose_reset")
+})
