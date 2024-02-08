@@ -1,0 +1,1 @@
+Namespace(sh_degree=3, source_path='/workspace/data/sparse', model_path='.', images='images', resolution=-1, white_background=False, data_device='cuda', eval=False)

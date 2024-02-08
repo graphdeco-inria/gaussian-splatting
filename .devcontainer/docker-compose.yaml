@@ -2,13 +2,13 @@ version: '3.8'
 
 services:
   gaussian_splatting:
-    image: gaussian_splatting:author
+    image: gaussian_splatting:tim
     build:
       context: ..
       dockerfile: Dockerfile
     container_name: gaussian_splatting_container
     volumes:
-      - /data2/tushar:/data
+      - /mnt/c/Users/Timothy/COLMAP:/workspace/data
       - ../:/workspace
     ports:
       - "8888:8888"  # Adjust the port mapping as needed

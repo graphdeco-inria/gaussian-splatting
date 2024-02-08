@@ -128,6 +128,10 @@ RUN git clone --branch master --recursive https://github.com/cvg/Hierarchical-Lo
 
 RUN python3 -m pip install omegaconf
 
+RUN pip install -e /workspace/submodules/diff-gaussian-rasterization
+
+RUN pip install -e /workspace/submodules/simple-knn
+
 USER root
 RUN chsh -s /bin/bash user
 USER ${USER_ID}

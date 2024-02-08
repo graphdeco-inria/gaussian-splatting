@@ -6,3 +6,11 @@ diff_rasterization/diff_rast.egg-info
 diff_rasterization/dist
 tensorboard_3d
 screenshots
+data/img/living_room/*
+*.jpg
+*.png
+*.bin
+*.ply
+*.db
+*.ply.vis
+*.mp4
