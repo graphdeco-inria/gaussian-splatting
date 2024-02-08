@@ -18,3 +18,22 @@ canvas{
         border: 1px solid #000;
 }
 
+.button-container {
+    margin-top: 20px;
+    display: flex; /* Use flexbox layout to arrange child elements in a row */
+    align-items: center; /* Vertically center align the button and text */
+    font-size: 16px; /* Adjust the font-size as needed */
+    line-height: 1.5; /* Adjust the line-height to match the button's height */
+}
+
+.button-container button {
+    line-height: 1.5; /* Make the button's line-height match the container's */
+    height: auto; /* Or set a specific height if needed */
+    padding: 0.5em 1em; /* Adjust button padding as needed */
+}
+
+.button-container span {
+    margin-right: 10px; /* Set the right margin to 10 pixels */
+    display: flex; /* This makes the span a flex container */
+    align-items: center; /* This centers its content vertically */
+}

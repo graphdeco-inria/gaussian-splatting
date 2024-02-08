@@ -15,7 +15,15 @@ import io
 import numpy as np
 import torch
 
+# Load environment variables
 import os
+
+# Set up logging
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "development"
@@ -26,6 +34,11 @@ Available models (scenes) that we can load
 """
 idxs = {1, 2, 3}
 model_1 = []
+
+# Store init values of pose and img_data to reset
+init_pose_for_reset = None
+init_img_data = None
+
 
 @app.route('/', methods=["POST", "GET"])
 def home():
@@ -58,6 +71,10 @@ def home():
         session["name"] = name
         session["code"] = code
         session["pose"] = init_pose.tolist()
+
+        global init_pose_for_reset
+        init_pose_for_reset = init_pose
+
         return redirect(url_for("viewer"))
 
     return render_template("home.html")
@@ -168,7 +185,7 @@ def connect():
     name = session.get("name")
     pose = session.get("pose")
 
-    print(f'User {name} has requested model {code}.')
+    logger.info(f'connect(): User {name} has requested model {code}.')
 
     if not code or not name:
         return
@@ -181,19 +198,35 @@ def connect():
     R, T = camera.decompose_44(np.array(pose))
     cam = DummyCamera(R=R, T=T, W=800, H=600, FoVx=1.4261863218, FoVy=1.150908963)
     img1 = model_1.render_view(cam=cam)
-    img_data = io.BytesIO()
-    img1.save(img_data, "JPEG")
+    global init_img_data
+    init_img_data = io.BytesIO()
+    img1.save(init_img_data, "JPEG")
 
     # Send an initial (placeholder) image to canvas 1
-    socketio.emit("img1", {'image': img_data.getvalue()})
+    socketio.emit("img1", {'image': init_img_data.getvalue()})
 
+
+@socketio.on("pose_reset")
+def image_reset():
+    logger.info("Pose reset to initial configuration.")
+    
+    session["code"] = session.get("code")
+    session["name"] = session.get("name")
+    global init_pose_for_reset
+    session["pose"] = init_pose_for_reset
+ 
+    # Send an initial (placeholder) image to canvas 1
+    global init_img_data
+    socketio.emit("img1", {'image': init_img_data.getvalue()})
+    
 
 @socketio.on("disconnect")
 def disconnect():
     name = session.get("name")
     print(f'User {name} has disconnected.')
 
-
+    
+    
 if __name__ == '__main__':
     ply_path = os.getenv('GS_PLY_PATH', '/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply')
     host = os.getenv('GS_HOST', '127.0.0.1')
