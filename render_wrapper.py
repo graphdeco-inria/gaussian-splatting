@@ -55,7 +55,12 @@ class DummyCamera:
 class GS_Model():
     def __init__(self,
                  ply_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply",
-                 device="cuda:0"):
+                 device="cuda:0", images_txt=None):
+
+        self.images = None
+        if images_txt is not None:
+            self.images = ImagesMeta(images_txt)
+
         # First Set GPU Context (i.e., we can put different models on different GPUs if needed)
         device = torch.device(device)
         torch.cuda.set_device(device)
@@ -67,6 +72,7 @@ class GS_Model():
 
         bg_color = [1, 1, 1]
         self.background = torch.tensor(bg_color, dtype=torch.float32, device=device)
+
 
     def render_view(self, cam, save=False, out_path="./test.jpg"):
         '''
@@ -103,4 +109,5 @@ if __name__ == '__main__':
     cam = DummyCamera(R=R_mat, T=T_vec, W=1600, H=1200, FoVx=1.4261863218, FoVy=1.150908963)
     print(cam.world_view_transform)
 
-    model1.render_view(cam=cam, save=True, out_path="test_roty_90_dev.jpg")
+    model1.get_closest_imgs(cam.world_view_transform)
+    #model1.render_view(cam=cam, save=True, out_path="test_roty_90_dev.jpg")
