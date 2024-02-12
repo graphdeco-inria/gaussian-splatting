@@ -88,4 +88,4 @@ The contents of the file ```utils/loss_utils.py``` are based on publicly availab
 Title: pytorch-ssim\
 Project code: https://github.com/Po-Hsun-Su/pytorch-ssim\
 Copyright Evan Su, 2017\
-License: https://github.com/Po-Hsun-Su/pytorch-ssim/blob/master/LICENSE.txt (MIT)\
+License: https://github.com/Po-Hsun-Su/pytorch-ssim/blob/master/LICENSE.txt (MIT)
