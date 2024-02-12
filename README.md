@@ -1,23 +1,72 @@
 # Gaussian Splatting Streamer
 
 This repository is built on-top of the original "3D Gaussian Splatting for Real-Time Radiance Field Rendering" implementation.
-The objective is to create a simple framework to interact with Gaussian Splats and develop downstream applications.
+The objective is to create a simple framework to use Gaussian Splatting to support inspection applications.
 
-This streamer is essentially a wrapper about the original render.py thus the render_wrapper.py. 
-The only requirement should be the output of the trained model outputs (i.e., checkpoints and cfg_args).
+## Requirements:
+This viewer can simply run with a .ply file however additional inputs are necessary for the inspection features.
 
-## Usage:
+* Gaussian Splat (.ply) *Required
+* images.txt from Colmap (to retrieve the closest images)
+* custom_transforms.txt (to correct )
+* /images/***.JPG (to display closest images)
+* Pointcloud/Mesh (to view outside of viewer)
 
-To launch the flask app simply run...
+## Entrypoint:
+
+To launch locally simply run... (You do need to install the gaussian splatting environment see below...)
 ``` bash
 python main.py
 ```
 
-## TODO
+## TODO:
 
-- [ ] Loading the Gaussian Model is slow since scene object requires loading train/test images
-- [ ] Update viewer canvas based on keyboard commands
-- [ ] Create and tune a speed setting UI in viewer
+### User Stories
+- [ ] Implement 6-DOF controls similar to SIBR viewer 
+  - [x] LH camera translation RH camera rotation
+  - [ ] Create a speed setting in the viewer
+  - [x] Reset to initial position
+- [x] Show closest images from current pose
+- [ ] Allow annotations from either splat or closest images
+- [ ] Control two splats, of the same asset, simultaneously (i.e., before vs after)
+- [ ] Integrate annotation assistance 
+- [ ] Automatic report generation
+
+### Web Dev
+- [ ] User Authentication
+- [ ] User Access Controls
+- [ ] Need a professional front-end dev. lol
+- [ ] Typescript
+- [ ] Production webserver
+
+## Implementation Details:
+(Subject to change please see the R24 Project for Latest...)
+
+    .
+    ├── ...                         # Original Gaussian Splatting Repo. 
+    ├── data                        # Where raw data & Colmap reconstruction is stored
+    │   ├── project_name
+    │     ├── reconstruction
+    │       ├── sparse
+    │         ├── 0
+    │           ├── cameras.bin
+    │           ├── images.bin
+    │           ├── images.txt
+    │           ├── points3D.bin
+    │       ├── images
+    ├── output                      # Output of training
+    │   ├── project_name
+    │       ├── point_cloud
+    │         ├── iteration_XXXXX
+    │           ├── point_cloud.ply
+    │           ├── config.yaml     # Our file to keep track of where all the info is stored... 
+    ├── static                      # JS and CSS
+    ├── templates                   # HTML Pages
+    ├── camera_pos_utils.py         # Code that supports camera pose calculations
+    ├── render_wrapper.py           # Functions that interact with the Gaussian Splatting Repo.
+    ├── main.py                     # Main Entrypoint (Runs Server)
+    └── README.md
+
 
 # Original Paper
 
