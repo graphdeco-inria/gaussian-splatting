@@ -3,7 +3,6 @@ Imports for Web-Viewer
 """
 from flask import Flask, render_template, request, session, redirect, url_for
 from flask_socketio import join_room, leave_room, send, SocketIO
-import time
 
 from render_wrapper import DummyCamera, GS_Model
 
@@ -167,11 +166,6 @@ def key_control(data):
     session["pose"] = pose.tolist()  # This might be slow
 
 
-"""
-handel_message listens for unspecified websocket messages from the client
-"""
-
-
 @socketio.on('my_event')
 def handle_message(data):
     print('received message', data)
@@ -195,8 +189,6 @@ def connect():
     # TODO: make error checking code more robust
     if int(code) not in idxs:
         return
-
-    # TODO: support NeRF studio as well
 
     R, T = camera.decompose_44(np.array(pose))
     cam = DummyCamera(R=R, T=T, W=800, H=600, FoVx=1.4261863218, FoVy=1.150908963)
@@ -228,11 +220,11 @@ def disconnect():
     name = session.get("name")
     print(f'User {name} has disconnected.')
 
-    
-    
+
 if __name__ == '__main__':
-    ply_path = os.getenv('GS_PLY_PATH', '/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply')
+    config_path = os.getenv('GS_CONFIG_PATH', '/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud'
+                                              '/iteration_30000/config.yaml')
     host = os.getenv('GS_HOST', '127.0.0.1')
     debug = os.getenv('GS_DEBUG', 'false').lower() == 'true'    
-    model_1 = GS_Model(ply_path=ply_path)
+    model_1 = GS_Model(config_path=config_path)
     socketio.run(app, host=host, debug=debug, allow_unsafe_werkzeug=True)

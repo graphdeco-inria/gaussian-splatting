@@ -138,5 +138,5 @@ if __name__ == '__main__':
                       [-0.68636268, 0.42995355, -0.58655453]])
     T_vec = np.array([-0.32326042, -3.65895232, 2.27446875])
     init_pose = compose_44(R_mat, T_vec)
-    imagelocs = Images_Meta("/home/cviss/PycharmProjects/GS_Stream/data/UW_tower/sparse/0/images.txt")
+    imagelocs = ImagesMeta("/home/cviss/PycharmProjects/GS_Stream/data/UW_tower/sparse/0/images.txt")
     print(imagelocs.get_closest_n(init_pose))

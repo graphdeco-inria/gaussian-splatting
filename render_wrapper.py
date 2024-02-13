@@ -1,4 +1,6 @@
 import torch
+import yaml
+import os
 from gaussian_renderer import render
 import torchvision
 from gaussian_renderer import GaussianModel
@@ -53,13 +55,17 @@ class DummyCamera:
 
 
 class GS_Model():
-    def __init__(self,
-                 ply_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply",
-                 device="cuda:0", images_txt=None):
-
+    def __init__(self, config_path: str, device: str = "cuda:0"):
         self.images = None
-        if images_txt is not None:
-            self.images = ImagesMeta(images_txt)
+
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        if config["images_txt_path"] is not None:
+            self.images = ImagesMeta(config["images_txt_path"])
+            self.images_thumbnails = config["images_thumbnails"]
+
+        self.world2custom = np.array(config["world2custom"])
 
         # First Set GPU Context (i.e., we can put different models on different GPUs if needed)
         device = torch.device(device)
@@ -68,22 +74,18 @@ class GS_Model():
         self.pipeline = DummyPipeline()
 
         self.gaussians = GaussianModel(3)  # 3 is the default sh-degree
-        self.gaussians.load_ply(ply_path)
+        self.gaussians.load_ply(config["ply_path"])
 
         bg_color = [1, 1, 1]
         self.background = torch.tensor(bg_color, dtype=torch.float32, device=device)
 
-
-    def render_view(self, cam, save=False, out_path="./test.jpg"):
-        '''
-        Call this method to render a new view from the scene by inputting new pose and desired image width and height
-        Note: The FoVx and FoVy can be changed please see utils.graphics_utils.fov2focal and focal2fov methods
-        @param R_mat: 3x3 camera extrinsic rotation matrix numpy array
-        @param T_vec: 3, camera extrinsic translation vector numpy array
-        @param img_width: image width pixels
-        @param img_height: image height pixels
+    def render_view(self, cam: DummyCamera, save: bool = False, out_path: str = "./test.jpg"):
+        """
+        @param cam: DummyCamera object
+        @param save: whether to save the image
+        @param out_path: where and what to save the image as
         @return rendered PIL image
-        '''
+        """
 
         result = render(cam, self.gaussians, self.pipeline, self.background)["render"]
 
@@ -97,7 +99,7 @@ class GS_Model():
 
 if __name__ == '__main__':
     model1 = GS_Model(
-        ply_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/point_cloud.ply")
+        config_path="/home/cviss/PycharmProjects/GS_Stream/output/dab812a2-1/point_cloud/iteration_30000/config.yaml")
     R_mat = np.array([[-0.70811329, -0.21124761, 0.67375813],
                       [0.16577646, 0.87778949, 0.4494483],
                       [-0.68636268, 0.42995355, -0.58655453]])
@@ -109,5 +111,5 @@ if __name__ == '__main__':
     cam = DummyCamera(R=R_mat, T=T_vec, W=1600, H=1200, FoVx=1.4261863218, FoVy=1.150908963)
     print(cam.world_view_transform)
 
-    model1.get_closest_imgs(cam.world_view_transform)
-    #model1.render_view(cam=cam, save=True, out_path="test_roty_90_dev.jpg")
+    print(model1.images.get_closest_n(cam.world_view_transform.cpu().detach().numpy()))
+    # model1.render_view(cam=cam, save=True, out_path="test_roty_90_dev.jpg")
