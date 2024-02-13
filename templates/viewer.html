@@ -10,5 +10,13 @@
         <button id="reset" class="buttons">Reset</button>
     </div>
 
+    Step
+    <div>
+        <button id="decrease">-</button>
+        <input type="text" id="stepValue" value="1">
+        <button id="increase">+</button>
+    </div>
+    <div id="message"></div>
+
     <script src="{{ url_for('static', filename='js/ViewerPage.js') }}"></script>
 {%  endblock %}

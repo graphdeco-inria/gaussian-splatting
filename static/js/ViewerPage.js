@@ -30,6 +30,44 @@ socket.on('img1', function(msg) {
         img1.src = img1_url
 });
 
+// Step
+let step = 1;
+
+const stepValue = document.getElementById('stepValue');
+const message = document.getElementById('message');
+const increase = document.getElementById('increase');
+const decrease = document.getElementById('decrease');
+
+increase.addEventListener('click', function() {
+    if (step < 10) {
+        step++;
+        stepValue.value = step;
+        message.textContent = '';
+    } else {
+        message.textContent = 'The value cannot exceed 10.';
+    }
+});
+
+decrease.addEventListener('click', function() {
+    if (step > 1) {
+        step--;
+        stepValue.value = step;
+        message.textContent = '';
+    } else {
+        message.textContent = 'The value cannot be less than 1.';
+    }
+});
+
+stepValue.addEventListener('input', function() {
+    const inputValue = parseInt(this.value, 10);
+    if (inputValue >= 1 && inputValue <= 10) {
+        step = inputValue;
+        message.textContent = '';
+    } else {
+        message.textContent = 'Value must be between 1 and 10.';
+    }
+});
+
 // FPS limit
 let lastKeyPressedTime = 0;
 window.addEventListener("keypress", keyEventHandler, false);
@@ -37,7 +75,7 @@ function keyEventHandler(event){
        const currentTime = new Date().getTime();
        if (currentTime - lastKeyPressedTime > 100) { // 100ms = 0.1 second
            lastKeyPressedTime = currentTime;
-        socket.emit("key_control", {key: event.key})
+           socket.emit("key_control", {key: event.key, step: step})
         console.log(event.key);
        } else {
           console.log("Too many requests!");

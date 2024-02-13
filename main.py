@@ -90,7 +90,7 @@ def viewer():
 
 
 @socketio.on('key_control')
-def key_control(key):
+def key_control(data):
     """
     key_control listens for button presses from the client...
     1. then calculates a new pose
@@ -100,12 +100,15 @@ def key_control(key):
     :param key: keyboard input
     :return:
     """
+    key = data.get('key')
+    step = data.get('step')
+    
     code = session.get("code")
     name = session.get("name")
     pose = session.get("pose")
     pose = np.array(pose)
-    print(f'{name} pressed {key["key"]} in model {code}')
-
+    logging.info(f'{name} pressed {key} in model {code}, by {step} steps')
+    
     """
     SIBR Viewer Controls
     
@@ -118,33 +121,33 @@ def key_control(key):
     C2C_T = np.eye(4, dtype=np.float32)
 
     # Calculate the new pose
-    if key["key"] == "d":
-        C2C_T = camera.translate4(-0.1, 0, 0)
-    elif key["key"] == "a":
-        C2C_T = camera.translate4(0.1, 0, 0)
-    elif key["key"] == "s":
-        C2C_T = camera.translate4(0, 0, 0.1)
-    elif key["key"] == "w":
-        C2C_T = camera.translate4(0, 0, -0.1)
-    elif key["key"] == "e":
-        C2C_T = camera.translate4(0, 0.1, 0)
-    elif key["key"] == "q":
-        C2C_T = camera.translate4(0, -0.1, 0)
+    if key == "d":
+        C2C_T = camera.translate4(-0.1 * step, 0, 0)
+    elif key == "a":
+        C2C_T = camera.translate4(0.1 * step, 0, 0)
+    elif key == "s":
+        C2C_T = camera.translate4(0, 0, 0.1 * step)
+    elif key == "w":
+        C2C_T = camera.translate4(0, 0, -0.1 * step)
+    elif key == "e":
+        C2C_T = camera.translate4(0, 0.1 * step, 0)
+    elif key == "q":
+        C2C_T = camera.translate4(0, -0.1 * step, 0)
     else:
         C2C_T = np.eye(4, dtype=np.float32)
 
-    if key["key"] == "j":
-        C2C_Rot = camera.rotate4(np.radians(1), 0, 1, 0)
-    elif key["key"] == "l":
-        C2C_Rot = camera.rotate4(np.radians(-1), 0, 1, 0)
-    elif key["key"] == "k":
-        C2C_Rot = camera.rotate4(np.radians(1), 1, 0, 0)
-    elif key["key"] == "i":
-        C2C_Rot = camera.rotate4(np.radians(-1), 1, 0, 0)
-    elif key["key"] == "u":
-        C2C_Rot = camera.rotate4(np.radians(1), 0, 0, 1)
-    elif key["key"] == "o":
-        C2C_Rot = camera.rotate4(np.radians(-1), 0, 0, 1)
+    if key == "j":
+        C2C_Rot = camera.rotate4(np.radians(1 * step), 0, 1, 0)
+    elif key == "l":
+        C2C_Rot = camera.rotate4(np.radians(-1 * step), 0, 1, 0)
+    elif key == "k":
+        C2C_Rot = camera.rotate4(np.radians(1 * step), 1, 0, 0)
+    elif key == "i":
+        C2C_Rot = camera.rotate4(np.radians(-1 * step), 1, 0, 0)
+    elif key == "u":
+        C2C_Rot = camera.rotate4(np.radians(1 * step), 0, 0, 1)
+    elif key == "o":
+        C2C_Rot = camera.rotate4(np.radians(-1 * step), 0, 0, 1)
     else:
         C2C_Rot = np.eye(4, dtype=np.float32)
 
