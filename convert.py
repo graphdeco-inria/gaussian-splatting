@@ -99,26 +99,18 @@ if(args.resize):
     # Copy each file from the source directory to the destination directory
     for file in files:
         source_file = os.path.join(args.source_path, "images", file)
+        output_file2 = os.path.join(args.source_path, "images_2", file)
+        output_file4 = os.path.join(args.source_path, "images_4", file)
+        output_file8 = os.path.join(args.source_path, "images_8", file)
 
-        destination_file = os.path.join(args.source_path, "images_2", file)
-        shutil.copy2(source_file, destination_file)
-        exit_code = os.system(magick_command + " mogrify -resize 50% " + destination_file)
+        generate_resize_cmd = ("convert "
+            f"{source_file}[50%]"
+            f" -write mpr:thumb -write {output_file2} +delete"
+            f" mpr:thumb -resize 50% -write mpr:thumb -write {output_file4} +delete"
+            f" mpr:thumb -resize 50% {output_file8}")
+        exit_code = os.system(generate_resize_cmd)
         if exit_code != 0:
-            logging.error(f"50% resize failed with code {exit_code}. Exiting.")
-            exit(exit_code)
-
-        destination_file = os.path.join(args.source_path, "images_4", file)
-        shutil.copy2(source_file, destination_file)
-        exit_code = os.system(magick_command + " mogrify -resize 25% " + destination_file)
-        if exit_code != 0:
-            logging.error(f"25% resize failed with code {exit_code}. Exiting.")
-            exit(exit_code)
-
-        destination_file = os.path.join(args.source_path, "images_8", file)
-        shutil.copy2(source_file, destination_file)
-        exit_code = os.system(magick_command + " mogrify -resize 12.5% " + destination_file)
-        if exit_code != 0:
-            logging.error(f"12.5% resize failed with code {exit_code}. Exiting.")
+            logging.error(f"resize failed with code {exit_code}. Exiting.")
             exit(exit_code)
 
 print("Done.")
