@@ -10,6 +10,7 @@
 #
 
 from scene.cameras import Camera
+from PIL import Image
 import numpy as np
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
@@ -17,8 +18,17 @@ from utils.graphics_utils import fov2focal
 WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale):
-    orig_w, orig_h = cam_info.image.size
+    image = Image.open(cam_info.image_path)
+    if cam_info.is_RGBA:
+        im_data = np.array(image.convert("RGBA"))
 
+        bg = np.array([1,1,1]) if args.white_background else np.array([0, 0, 0])
+
+        norm_data = im_data / 255.0
+        arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
+        image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
+    orig_w, orig_h = image.size
+    
     if args.resolution in [1, 2, 4, 8]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
     else:  # should be a type that converts to float
@@ -38,7 +48,7 @@ def loadCam(args, id, cam_info, resolution_scale):
         scale = float(global_down) * float(resolution_scale)
         resolution = (int(orig_w / scale), int(orig_h / scale))
 
-    resized_image_rgb = PILtoTorch(cam_info.image, resolution)
+    resized_image_rgb = PILtoTorch(image, resolution)
 
     gt_image = resized_image_rgb[:3, ...]
     loaded_mask = None
