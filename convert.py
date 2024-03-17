@@ -8,11 +8,15 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
+# xvdp removed magick, even single threaded PIL resizes 4X faster
+
 
 import os
 import logging
 from argparse import ArgumentParser
 import shutil
+
+from PIL import Image
 
 # This Python script is based on the shell converter script provided in the MipNerF 360 repository.
 parser = ArgumentParser("Colmap converter")
@@ -25,7 +29,7 @@ parser.add_argument("--resize", action="store_true")
 parser.add_argument("--magick_executable", default="", type=str)
 args = parser.parse_args()
 colmap_command = '"{}"'.format(args.colmap_executable) if len(args.colmap_executable) > 0 else "colmap"
-magick_command = '"{}"'.format(args.magick_executable) if len(args.magick_executable) > 0 else "magick"
+
 use_gpu = 1 if not args.no_gpu else 0
 
 if not args.skip_matching:
@@ -87,38 +91,21 @@ for file in files:
     destination_file = os.path.join(args.source_path, "sparse", "0", file)
     shutil.move(source_file, destination_file)
 
-if(args.resize):
+if args.resize:
     print("Copying and resizing...")
 
     # Resize images.
-    os.makedirs(args.source_path + "/images_2", exist_ok=True)
-    os.makedirs(args.source_path + "/images_4", exist_ok=True)
-    os.makedirs(args.source_path + "/images_8", exist_ok=True)
+    for div in [2,4,8]:
+        os.makedirs(args.source_path + f"/images_{div}", exist_ok=True)
     # Get the list of files in the source directory
     files = os.listdir(args.source_path + "/images")
     # Copy each file from the source directory to the destination directory
-    for file in files:
+    for j, file in enumerate(files):
         source_file = os.path.join(args.source_path, "images", file)
-
-        destination_file = os.path.join(args.source_path, "images_2", file)
-        shutil.copy2(source_file, destination_file)
-        exit_code = os.system(magick_command + " mogrify -resize 50% " + destination_file)
-        if exit_code != 0:
-            logging.error(f"50% resize failed with code {exit_code}. Exiting.")
-            exit(exit_code)
-
-        destination_file = os.path.join(args.source_path, "images_4", file)
-        shutil.copy2(source_file, destination_file)
-        exit_code = os.system(magick_command + " mogrify -resize 25% " + destination_file)
-        if exit_code != 0:
-            logging.error(f"25% resize failed with code {exit_code}. Exiting.")
-            exit(exit_code)
-
-        destination_file = os.path.join(args.source_path, "images_8", file)
-        shutil.copy2(source_file, destination_file)
-        exit_code = os.system(magick_command + " mogrify -resize 12.5% " + destination_file)
-        if exit_code != 0:
-            logging.error(f"12.5% resize failed with code {exit_code}. Exiting.")
-            exit(exit_code)
+        im = Image.open(source_file)
+        logging.info(f"processing image [{j}/{len(files)}] {source_file}")
+        for div in [2,4,8]:
+            destination_file = os.path.join(args.source_path, f"images_{div}", file)
+            im.resize([round(i/div) for i in im.size], Image.BICUBIC).save(destination_file, quality=100)
 
 print("Done.")
