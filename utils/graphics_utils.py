@@ -48,30 +48,39 @@ def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     Rt = np.linalg.inv(C2W)
     return np.float32(Rt)
 
-def getProjectionMatrix(znear, zfar, fovX, fovY):
-    tanHalfFovY = math.tan((fovY / 2))
-    tanHalfFovX = math.tan((fovX / 2))
+def getProjectionMatrix(znear, zfar, fovXleft, fovXright, fovYtop, fovYbottom):
+    tanHalfFovYtop = math.tan(fovYtop)
+    tanHalfFovYbottom = math.tan(fovYbottom)
+    tanHalfFovXleft = math.tan(fovXleft)
+    tanHalfFovXright = math.tan(fovXright)
 
-    top = tanHalfFovY * znear
-    bottom = -top
-    right = tanHalfFovX * znear
-    left = -right
+    top = tanHalfFovYtop * znear
+    bottom = tanHalfFovYbottom * znear
+    left = tanHalfFovXleft * znear
+    right = tanHalfFovXright * znear
 
     P = torch.zeros(4, 4)
 
     z_sign = 1.0
 
+    # note that my conventions are (fovXleft,fovYtop) negative and (fovXright,fovYbottom) positive
     P[0, 0] = 2.0 * znear / (right - left)
-    P[1, 1] = 2.0 * znear / (top - bottom)
-    P[0, 2] = (right + left) / (right - left)
-    P[1, 2] = (top + bottom) / (top - bottom)
+    P[1, 1] = 2.0 * znear / (bottom - top)
+    P[0, 2] = -(right + left) / (right - left)
+    P[1, 2] = -(top + bottom) / (bottom - top)
     P[3, 2] = z_sign
     P[2, 2] = z_sign * zfar / (zfar - znear)
     P[2, 3] = -(zfar * znear) / (zfar - znear)
     return P
 
 def fov2focal(fov, pixels):
-    return pixels / (2 * math.tan(fov / 2))
+    return sidefov2focal(fov / 2, pixels / 2)
 
 def focal2fov(focal, pixels):
-    return 2*math.atan(pixels/(2*focal))
+    return 2 * focal2sidefov(focal, pixels / 2)
+
+def sidefov2focal(sidefov, sidepixels):
+    return sidepixels / math.tan(sidefov)
+
+def focal2sidefov(focal, sidepixels):
+    return math.atan(sidepixels / focal)
