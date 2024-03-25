@@ -71,6 +71,7 @@ img_undist_cmd = (colmap_command + " image_undistorter \
     --image_path " + args.source_path + "/input \
     --input_path " + args.source_path + "/distorted/sparse/0 \
     --output_path " + args.source_path + "\
+    --blank_pixels 0 \
     --output_type COLMAP")
 exit_code = os.system(img_undist_cmd)
 if exit_code != 0:
