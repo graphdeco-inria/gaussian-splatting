@@ -65,6 +65,10 @@ The codebase has 4 main components:
 
 The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
 
+## New features  [Please check regularly!]
+
+We will be adding several new features soon. In the meantime Orange Labs has kindly added [OpenXR support](#openXR-support) for VR viewing. Please come back soon, we will be adding other features, building among others on recent 3DGS followup papers.
+
 ## Optimizer
 
 The optimizer uses PyTorch and CUDA extensions in a Python environment to produce trained models. 
@@ -477,6 +481,11 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
   Path to the ImageMagick executable.
 </details>
 <br>
+
+### OpenXR support
+
+OpenXR is supported in the branch gaussian_code_release_openxr 
+Within that branch, you can find documentation for VR support [here](https://gitlab.inria.fr/sibr/sibr_core/-/tree/gaussian_code_release_openxr?ref_type=heads).
 
 ## FAQ
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page. Alternatively, you may access the cloned data (status: August 2023!) from [HuggingFace](https://huggingface.co/camenduru/gaussian-splatting)
