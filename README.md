@@ -67,7 +67,7 @@ The components have different requirements w.r.t. both hardware and software. Th
 
 ## New features  [Please check regularly!]
 
-We will be adding several new features soon. In the meantime Orange Labs has kindly added [OpenXR support](#openXR-support) for VR viewing. Please come back soon, we will be adding other features, building among others on recent 3DGS followup papers.
+We will be adding several new features soon. In the meantime Orange has kindly added [OpenXR support](#openXR-support) for VR viewing. Please come back soon, we will be adding other features, building among others on recent 3DGS followup papers.
 
 ## Optimizer
 
