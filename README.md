@@ -194,6 +194,8 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Influence of SSIM on total loss from 0 to 1, ```0.2``` by default. 
   #### --percent_dense
   Percentage of scene extent (0--1) a point must exceed to be forcibly densified, ```0.01``` by default.
+  #### --data_dtype
+  The data type (float32, float16) in which images are stored when computing the loss. ```float32``` by default.
 
 </details>
 <br>

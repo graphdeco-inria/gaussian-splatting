@@ -61,8 +61,8 @@ def get_expon_lr_func(
 
     return helper
 
-def strip_lowerdiag(L):
-    uncertainty = torch.zeros((L.shape[0], 6), dtype=torch.float, device="cuda")
+def strip_lowerdiag(L, dtype=torch.float32):
+    uncertainty = torch.zeros((L.shape[0], 6), dtype=dtype, device="cuda")
 
     uncertainty[:, 0] = L[:, 0, 0]
     uncertainty[:, 1] = L[:, 0, 1]
@@ -72,8 +72,8 @@ def strip_lowerdiag(L):
     uncertainty[:, 5] = L[:, 2, 2]
     return uncertainty
 
-def strip_symmetric(sym):
-    return strip_lowerdiag(sym)
+def strip_symmetric(sym, dtype=torch.float32):
+    return strip_lowerdiag(sym, dtype=dtype)
 
 def build_rotation(r):
     norm = torch.sqrt(r[:,0]*r[:,0] + r[:,1]*r[:,1] + r[:,2]*r[:,2] + r[:,3]*r[:,3])
@@ -98,8 +98,8 @@ def build_rotation(r):
     R[:, 2, 2] = 1 - 2 * (x*x + y*y)
     return R
 
-def build_scaling_rotation(s, r):
-    L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")
+def build_scaling_rotation(s, r, dtype=torch.float32):
+    L = torch.zeros((s.shape[0], 3, 3), dtype=dtype, device="cuda")
     R = build_rotation(r)
 
     L[:,0,0] = s[:,0]
@@ -131,3 +131,12 @@ def safe_state(silent):
     np.random.seed(0)
     torch.manual_seed(0)
     torch.cuda.set_device(torch.device("cuda:0"))
+
+def get_data_dtype(dtype):
+    if dtype == "float32":
+        return torch.float32
+    elif dtype == "float64":
+        return torch.float64
+    elif dtype == "float16":
+        return torch.float16
+    return torch.float32
