@@ -54,6 +54,7 @@ class ModelParams(ParamGroup):
         self._white_background = False
         self.data_device = "cuda"
         self.data_dtype = "float32"
+        self.store_images_as_uint8 = False
         self.eval = False
         super().__init__(parser, "Loading Parameters", sentinel)
 

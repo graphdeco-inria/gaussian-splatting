@@ -196,6 +196,8 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   Percentage of scene extent (0--1) a point must exceed to be forcibly densified, ```0.01``` by default.
   #### --data_dtype
   The data type (float32, float16) in which images are stored when computing the loss. ```float32``` by default.
+  #### --store_images_as_uint8
+  Flag that describes how to store images in memory. If set, the images will be stored as uint8, and will be converted to the target data type on demand.
 
 </details>
 <br>
