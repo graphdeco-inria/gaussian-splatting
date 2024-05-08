@@ -44,12 +44,12 @@ class GaussianModel:
     def __init__(self, sh_degree : int):
         self.active_sh_degree = 0
         self.max_sh_degree = sh_degree  
-        self._xyz = torch.empty(0)
-        self._features_dc = torch.empty(0)
-        self._features_rest = torch.empty(0)
-        self._scaling = torch.empty(0)
-        self._rotation = torch.empty(0)
-        self._opacity = torch.empty(0)
+        self._xyz = torch.empty(0)          # 世界坐标
+        self._features_dc = torch.empty(0)  #  diffuse color
+        self._features_rest = torch.empty(0)    # spherical harmonic coefficients
+        self._scaling = torch.empty(0)      # 3d scale
+        self._rotation = torch.empty(0)     # rotation expressed in quaternions
+        self._opacity = torch.empty(0)      # opacity
         self.max_radii2D = torch.empty(0)
         self.xyz_gradient_accum = torch.empty(0)
         self.denom = torch.empty(0)
