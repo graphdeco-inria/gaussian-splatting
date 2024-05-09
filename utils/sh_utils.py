@@ -112,6 +112,11 @@ def eval_sh(deg, sh, dirs):
     return result
 
 def RGB2SH(rgb):
+    """
+    将RGB颜色值转换为球谐系数C0项的系数
+    :param rgb: RGB颜色值
+    :return: 转换后的球谐系数C0项的系数
+    """
     return (rgb - 0.5) / C0
 
 def SH2RGB(sh):

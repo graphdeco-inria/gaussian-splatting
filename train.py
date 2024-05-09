@@ -10,8 +10,10 @@
 #
 
 import os
+import numpy as np
 import torch
 from random import randint
+from PIL import Image
 from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
 import sys
@@ -31,24 +33,31 @@ except ImportError:
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
-    gaussians = GaussianModel(dataset.sh_degree)
-    scene = Scene(dataset, gaussians)
-    gaussians.training_setup(opt)
+
+    gaussians = GaussianModel(dataset.sh_degree)    # 创建初始化高斯模型，用于表示场景中的每个点的3D高斯分布
+    scene = Scene(dataset, gaussians)   # 创建初始3D场景对象，加载数据集和对应的相机参数
+    gaussians.training_setup(opt)   # 为高斯模型参数设置优化器和学习率调度器
+
+    # 如果提供了checkpoint，则从checkpoint加载模型参数并恢复训练进度
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
 
+    # 设置背景颜色，白色或黑色取决于数据集要求
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
+    # 创建CUDA事件用于计时
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
     viewpoint_stack = None
     ema_loss_for_log = 0.0
+
+    # 使用tqdm库创建进度条，追踪训练进度
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
-    for iteration in range(first_iter, opt.iterations + 1):        
+    for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
             network_gui.try_connect()
         while network_gui.conn != None:
@@ -64,25 +73,28 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             except Exception as e:
                 network_gui.conn = None
 
-        iter_start.record()
+        iter_start.record() # 记录迭代开始时间
 
-        gaussians.update_learning_rate(iteration)
+        gaussians.update_learning_rate(iteration)   # 根据当前迭代次数更新学习率
 
-        # Every 1000 its we increase the levels of SH up to a maximum degree
+        # 每1000次迭代，提升球谐函数的次数以改进模型复杂度，Every 1000 its we increase the levels of SH up to a maximum degree
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
-        # Pick a random Camera
+        # 随机选择一个训练用的相机视角，Pick a random Camera
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
-        # Render
+        # 如果达到调试起始点，启用调试模式
         if (iteration - 1) == debug_from:
             pipe.debug = True
 
+        # Render，根据相机参数使用可微光栅化器渲染图像
+        # 根据设置决定是否使用随机背景颜色
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
+        # 渲染当前视角的图像
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
@@ -92,10 +104,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss.backward()
 
-        iter_end.record()
+        iter_end.record()   # 记录迭代结束时间
 
         with torch.no_grad():
-            # Progress bar
+            # 更新进度条和损失显示，Progress bar
             ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
             if iteration % 10 == 0:
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}"})
@@ -103,13 +115,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration == opt.iterations:
                 progress_bar.close()
 
-            # Log and save
+            # 定期记录训练数据并保存模型，Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
 
-            # Densification
+            # 在指定迭代区间内，对3D高斯模型进行增密和修剪，Densification
             if iteration < opt.densify_until_iter:
                 # Keep track of max radii in image-space for pruning
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
@@ -122,11 +134,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
-            # Optimizer step
+            # 执行优化器的一步，并准备下一次迭代，Optimizer step
             if iteration < opt.iterations:
                 gaussians.optimizer.step()
                 gaussians.optimizer.zero_grad(set_to_none = True)
 
+            # 定期保存checkpoint
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
@@ -193,9 +206,11 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
 if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
-    lp = ModelParams(parser)
-    op = OptimizationParams(parser)
-    pp = PipelineParams(parser)
+
+    lp = ModelParams(parser)    # 模型 相关参数
+    op = OptimizationParams(parser) # 优化 相关参数
+    pp = PipelineParams(parser) # 渲染 相关参数
+
     parser.add_argument('--ip', type=str, default="127.0.0.1")
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
