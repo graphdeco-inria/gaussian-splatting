@@ -1,7 +1,7 @@
 Running:
 # Train with train/test split
 python train.py --source_path <path to COLMAP or NeRF Synthetic dataset> --model_path <保存路径> --eval
-python train.py --source_path /media/liuzhi/b4608ade-d2e0-430d-a40b-f29a8b22cb8c/Dataset/3DGS_Dataset/湘家荡 --model_path output/xiangjiadang --eval --resolution 1
+python train.py --source_path ../../Dataset/3DGS_Dataset/科技馆 --model_path output/kejiguan --eval --resolution 1
 
 --source_path / -s：COLMAP 或合成 Synthetic NeRF data set的源目录的路径。COLMAP类型包含 images/, sparse/0
 --model_path / -m：训练模型的存储路径，默认为 output/<random>

@@ -109,8 +109,11 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             # 如果不是以上两种模型，抛出错误
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
-        image_path = os.path.join(images_folder, os.path.basename(extr.name))
+        image_path = os.path.join(images_folder, extr.name)
         image_name = os.path.basename(image_path).split(".")[0]
+
+        if not os.path.exists(image_path):
+            continue
         image = Image.open(image_path)
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
@@ -118,6 +121,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         cam_infos.append(cam_info)
     # 在读取完所有相机信息后换行
     sys.stdout.write('\n')
+    print("valid Colmap camera size: {}".format(len(cam_infos)))
 
     # 返回整理好的相机信息列表
     return cam_infos
