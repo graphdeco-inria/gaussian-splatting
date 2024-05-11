@@ -173,7 +173,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     # 读取并处理相机参数，转换为内部使用的格式
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
     # 根据图片名称对相机信息进行排序，以保证顺序一致性
-    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
+    cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : (x.image_path.split('/')[-2], x.image_name))
 
     # 根据是否为评估模式（eval），将相机分为训练集和测试集
     # 如果为评估模式，根据llffhold参数（通常用于LLFF数据集）间隔选择测试相机
