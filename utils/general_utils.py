@@ -161,9 +161,11 @@ def safe_state(silent):
         def flush(self):
             old_f.flush()
 
+    # 若args.quiet 为 True，不写入任何文本到标准输出管道
     sys.stdout = F(silent)
 
+    # 设置随机种子，使得结果可复现
     random.seed(0)
     np.random.seed(0)
     torch.manual_seed(0)
-    torch.cuda.set_device(torch.device("cuda:0"))
+    torch.cuda.set_device(torch.device("cuda:0"))   # torch 默认的 CUDA 设备为 cuda:0

@@ -20,7 +20,7 @@ python train.py --source_path ../../Dataset/3DGS_Dataset/xiangjiadang --model_pa
 --convert_cov3D_python：添加此标志以使用 PyTorch 而不是论文提出的pipeline计算 3D协方差 的forward and backward
 
 --debug：如果遇到错误，请启用调试模式。如果光栅化器失败，dump则会创建一个文件，您可以在问题中将其转发给我们，以便我们查看。
---debug_from：调试速度慢。可以指定一个迭代次数（从 0 开始），指定数字之前的迭代会是活动状态
+--debug_from：调试速度慢。可以指定从哪一迭代（>= 0）开始
 
 --iterations：训练的总迭代次数，默认为 30_000
 

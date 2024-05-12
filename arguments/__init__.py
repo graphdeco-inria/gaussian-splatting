@@ -39,7 +39,9 @@ class ParamGroup:
 
     def extract(self, args):
         group = GroupParams()
-        for arg in vars(args).items():
+        # 遍历各参数
+        for arg in vars(args).items():  # 例arg = ('sh_degree', '3')
+            # 若每个参数的名称与ModelParams等类的属性名称相匹配，则将该参数设置到新建的 GroupParams 对象的对应属性上
             if arg[0] in vars(self) or ("_" + arg[0]) in vars(self):
                 setattr(group, arg[0], arg[1])
         return group
@@ -57,8 +59,12 @@ class ModelParams(ParamGroup):
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
-        g = super().extract(args)
-        g.source_path = os.path.abspath(g.source_path)
+        '''
+        从args对象中提取出与 ModelParams类中定义的参数相匹配的值,并将它们封装到一个新的 GroupParams 对象中
+        args: 存储着 命令行和main中预设的参数
+        '''
+        g = super().extract(args)   # 返回的GroupParams对象
+        g.source_path = os.path.abspath(g.source_path)  # 更新为绝对路径
         return g
 
 class PipelineParams(ParamGroup):
