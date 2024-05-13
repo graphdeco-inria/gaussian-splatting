@@ -230,10 +230,10 @@ if __name__ == "__main__":
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
-    parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
+    parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[30_000])
     parser.add_argument("--start_checkpoint", type=str, default = None)
 
-    # 从命令行参数中解析出所有的参数值,并与上面的设置的参数一起存储到 Namespace 对象中，即args
+    # 从命令行参数中解析出所有的参数值,并与上面设置的参数一起存储到 Namespace 对象中，即args
     args = parser.parse_args(sys.argv[1:])
 
     args.save_iterations.append(args.iterations)
