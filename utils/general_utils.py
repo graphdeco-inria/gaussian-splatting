@@ -95,8 +95,8 @@ def strip_lowerdiag(L):
 def strip_symmetric(sym):
     """
     提取协方差矩阵的对称部分
-    :param sym: 协方差矩阵
-    :return: 对称部分
+        sym: 协方差矩阵
+        return: 对称部分
     """
     return strip_lowerdiag(sym)
 
@@ -129,10 +129,9 @@ def build_rotation(r):
 def build_scaling_rotation(s, r):
     """
     构建3D高斯模型的尺度-旋转矩阵
-
-    :param s: 尺度参数
-    :param r: 旋转参数
-    :return: 尺度-旋转矩阵
+        s: 尺度参数
+        r: 旋转参数
+        return: 尺度-旋转矩阵
     """
     L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")   # 初始化尺度矩阵
     R = build_rotation(r)   # 四元数 -> 旋转矩阵

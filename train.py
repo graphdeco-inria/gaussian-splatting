@@ -34,11 +34,11 @@ except ImportError:
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     '''
-    dataset: 只存储与Moedl相关参数的args
-    opt:    优化相关参数
-    pipe:   管道相关参数
-    checkpoint: 已训练模型的路径
-    debug_from: 从哪一个迭代开始debug
+        dataset: 只存储与Moedl相关参数的args
+        opt:    优化相关参数
+        pipe:   管道相关参数
+        checkpoint: 已训练模型的路径
+        debug_from: 从哪一个迭代开始debug
     '''
     first_iter = 0
     # 创建保存结果的文件夹，并保存模型相关的参数到cfg_args文件；尝试创建tensorboard_writer，记录训练过程
@@ -105,7 +105,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
         # 渲染当前视角的图像
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
+        render_pkg = render(viewpoint_cam, gaussians, pipe, bg, return_depth=True, return_normal=True)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         # Loss
