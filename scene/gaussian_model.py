@@ -25,10 +25,9 @@ class GaussianModel:
 
     def setup_functions(self):
         """
-        定义和初始化一些用于处理3D高斯模型参数的函数
+            定义和初始化处理高斯体模型参数的 激活函数
         """
-
-        # 定义构建3D高斯协方差矩阵的函数
+        # 定义 从尺度、旋转构建3D高斯的 协方差矩阵 的函数
         def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
             L = build_scaling_rotation(scaling_modifier * scaling, rotation)    # 从尺度、尺度的缩放、旋转得到L矩阵
             actual_covariance = L @ L.transpose(1, 2)   # 计算实际的协方差矩阵
@@ -49,29 +48,30 @@ class GaussianModel:
 
     def __init__(self, sh_degree : int):
         """
-        初始化3D高斯模型的参数
-        sh_degree: 球谐函数的最大阶数，用于控制颜色表示的复杂度
+            初始化3D高斯模型的参数
+            sh_degree: 设定的 球谐函数的最大阶数，默认为3，用于控制颜色表示的复杂度
         """
-        # 初始化球谐阶数和最大球谐阶数j
         self.active_sh_degree = 0   # 当前激活的球谐阶数，初始为0
-        self.max_sh_degree = sh_degree      # 允许的最大球谐阶数
+        self.max_sh_degree = sh_degree      # 允许的最大球谐阶数j
 
         # 初始化3D高斯模型的各项参数
-        self._xyz = torch.empty(0)          # 3D高斯的中心位置（均值）
+        self._xyz = torch.empty(0)          # 3D高斯的 中心位置（均值）
         self._features_dc = torch.empty(0)  # 第一个球谐系数，用于表示基础颜色
-        self._features_rest = torch.empty(0)    # 其余的球谐系数，用于表示颜色的细节和变化
-        self._scaling = torch.empty(0)      # 3D高斯的尺度参数，控制高斯的形状
-        self._rotation = torch.empty(0)     # 3D高斯的旋转参数（一系列四元数）
+        self._features_rest = torch.empty(0)    # 其余球谐系数，用于表示颜色的细节和变化
+        self._scaling = torch.empty(0)      # 3D高斯的尺度，控制高斯的形状
+        self._rotation = torch.empty(0)     # 3D高斯的旋转（一系列四元数）
         self._opacity = torch.empty(0)      # 3D高斯的不透明度（sigmoid前的），控制可见性
         self.max_radii2D = torch.empty(0)   # 在2D投影中，每个高斯的最大半径
+
         self.xyz_gradient_accum = torch.empty(0)    # 累积3D高斯中心位置的梯度，当它太大的时候要对Gaussian进行分裂，小时代表under要复制
         self.denom = torch.empty(0)     # 与累积梯度配合使用，表示统计了多少次累积梯度，算平均梯度时除掉这个（denom = denominator，分母）
+
         self.optimizer = None   # 优化器，用于调整上述参数以改进模型（论文中采用Adam，见附录B Algorithm 1的伪代码）
 
         self.percent_dense = 0  # 控制Gaussian密集程度的超参数
         self.spatial_lr_scale = 0   # 位置坐标的学习率要乘上这个，抵消在不同尺度下应用同一个学习率带来的问题
 
-        # 调用setup_functions来初始化一些处理函数
+        # 调用 setup_functions，初始化处理高斯体模型参数的 激活函数
         self.setup_functions()
 
     def capture(self):
@@ -139,24 +139,23 @@ class GaussianModel:
 
     def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
         """
-        从点云数据初始化模型参数
-
-        :param pcd: 稀疏点云数据，包含点的位置和颜色
-        :param spatial_lr_scale: 空间学习率缩放因子，影响 位置坐标参数的学习率
+        从稀疏点云数据 初始化模型参数
+            pcd: 稀疏点云，包含点的位置和颜色
+            spatial_lr_scale: 空间学习率缩放因子，影响 位置坐标参数的学习率
         """
 
         # 根据scene.Scene.__init__ 以及 scene.dataset_readers.SceneInfo.nerf_normalization，即scene.dataset_readers.getNerfppNorm的代码，
         # 这个值似乎是训练相机中离它们的坐标平均值（即中心）最远距离的1.1倍，根据命名推断应该与学习率有关，防止固定的学习率适配不同尺度的场景时出现问题。
         self.spatial_lr_scale = spatial_lr_scale
 
-        # 将点云的位置和颜色数据从numpy数组转换为PyTorch张量，并传送到CUDA设备上
+        # 将点云的 位置 和 颜色 数据从numpy数组转换为PyTorch张量，并传送到CUDA设备上
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()     # 稀疏点云的3D坐标，大小为(P, 3)
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())   # 球谐的直流分量，大小为(P, 3)，
                                                                                     # RGB2SH(x) = (x - 0.5) / 0.28209479177387814看样子pcd.colors的原始范围应该是0到1。0.28209479177387814是1 / (2*sqrt(pi))，是直流分量Y(l=0,m=0)的值
 
-        # 初始化存储球谐系数的张量，RGB三通道球谐的所有系数，每个通道有(max_sh_degree + 1) ** 2个球谐系数
+        # 初始化存储 球谐系数 的张量，RGB三通道球谐的所有系数，每个通道有(max_sh_degree + 1) ** 2个球谐系数
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda() # (P, 3, 16)
-        features[:, :3, 0 ] = fused_color   # 将RGB转换后的球谐系数C0项的系数(直流分量)存入
+        features[:, :3, 0 ] = fused_color   # 将RGB转换后的球谐系数C0项的系数(直流分量)存入每个3D点的直流分量球谐系数中
         features[:, 3:, 1:] = 0.0   # 其余球谐系数初始化为0
 
         # 打印初始点的数量

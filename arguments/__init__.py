@@ -63,7 +63,7 @@ class ModelParams(ParamGroup):
         从args对象中提取出与 ModelParams类中定义的参数相匹配的值,并将它们封装到一个新的 GroupParams 对象中
             args: 存储着 命令行和main中预设的参数
         '''
-        g = super().extract(args)   # 返回的GroupParams对象
+        g = super().extract(args)   # 替换相匹配的值，并返回一个GroupParams对象
         g.source_path = os.path.abspath(g.source_path)  # 更新为绝对路径
         return g
 

@@ -66,28 +66,34 @@ def getNerfppNorm(cam_info):
     return {"translate": translate, "radius": radius}
 
 def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
-    cam_infos = []  # 初始化用于存储相机信息的列表
+    '''
+
+        cam_extrinsics: 存储每张图片相机的外参类Imgae 的字典
+        cam_intrinsics: 存储每张图片相机的内参类Camera 的字典
+        images_folder: 保存原图的文件夹路径
+    '''
+    # 初始化存储相机信息类CameraInfo对象的列表
+    cam_infos = []
 
     # 遍历所有相机的外参
     for idx, key in enumerate(cam_extrinsics):
         # 动态显示读取相机信息的进度
-        sys.stdout.write('\r')
-        # the exact output you're looking for:
+        sys.stdout.write('\r')  # 光标回到当前行的最前面
         sys.stdout.write("Reading camera {}/{}".format(idx+1, len(cam_extrinsics)))
-        sys.stdout.flush()
+        sys.stdout.flush()  # 立即将缓冲区中的内容输出到控制台
 
         # 获取当前相机的外参和内参
-        extr = cam_extrinsics[key]  # 当前相机的外参
-        intr = cam_intrinsics[extr.camera_id]   # 根据外参中的camera_id找到对应的内参
-        height = intr.height    # 相机图片的高度
-        width = intr.width      # 相机图片的宽度
+        extr = cam_extrinsics[key]  # 当前相机的外参类Imgae对象
+        intr = cam_intrinsics[extr.camera_id]   # 根据外参中的camera_id找到对应的内参类对象
+        height = intr.height    # 图片高度
+        width = intr.width      # 图片宽度
 
         uid = intr.id   # 相机的唯一标识符
 
-        R = np.transpose(qvec2rotmat(extr.qvec))    # 将四元数表示的旋转转换为旋转矩阵R
-        T = np.array(extr.tvec)     # 外参中的平移向量
+        R = np.transpose(qvec2rotmat(extr.qvec))    # 将旋转四元数 转为 旋转矩阵 R，并转置
+        T = np.array(extr.tvec)     # 平移向量
 
-        # 根据相机内参模型计算视场角（FoV）
+        # 根据相机内参模型计算 视场角（FoV）
         if intr.model=="SIMPLE_PINHOLE":
             # 如果是简单针孔模型，只有一个焦距参数
             focal_length_x = intr.params[0]
@@ -97,14 +103,13 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             # 如果是针孔模型，有两个焦距参数
             focal_length_x = intr.params[0]
             focal_length_y = intr.params[1]
-            FovY = focal2fov(focal_length_y, height)    # 使用y方向的焦距计算垂直视场角
-            FovX = focal2fov(focal_length_x, width)     # 使用x方向的焦距计算水平视场角
+            FovY = focal2fov(focal_length_y, height)    # 使用fy计算垂直视场角
+            FovX = focal2fov(focal_length_x, width)     # 使用fx计算水平视场角
         elif intr.model=="SIMPLE_RADIAL":
             # 如果是针孔模型，有两个焦距参数
             focal_length_x = intr.params[0]
-            focal_length_y = intr.params[1]
-            FovY = focal2fov(focal_length_y, height)    # 使用y方向的焦距计算垂直视场角
-            FovX = focal2fov(focal_length_x, width)     # 使用x方向的焦距计算水平视场角
+            FovY = focal2fov(focal_length_x, height)    # 使用fy计算垂直视场角
+            FovX = focal2fov(focal_length_x, width)     # 使用fx计算水平视场角
         else:
             # 如果不是以上两种模型，抛出错误
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
@@ -116,6 +121,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             continue
         image = Image.open(image_path)
 
+        # 创建相机信息类CameraInfo对象 (包含旋转矩阵、平移向量、视场角、图像数据、图片路径、图片名、宽度、高度)，并添加到列表cam_infos中
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height)
         cam_infos.append(cam_info)
@@ -123,7 +129,6 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     sys.stdout.write('\n')
     print("valid Colmap camera size: {}".format(len(cam_infos)))
 
-    # 返回整理好的相机信息列表
     return cam_infos
 
 def fetchPly(path):
@@ -153,30 +158,38 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-# 尝试读取COLMAP处理结果中的二进制相机外参文件imags.bin 和 内参文件cameras.bin
 def readColmapSceneInfo(path, images, eval, llffhold=8):
+    '''
+        加载COLMAP的结果中的二进制相机外参文件imags.bin 和 内参文件cameras.bin
+
+        path:   GaussianModel中的源文件路径
+        images: 'images'
+        eval:   是否为eval模式
+        llffhold: 默认为8
+    '''
+
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
         cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
     except:
-        # 如果二进制文件读取失败，尝试读取文本格式的相机外参和内参文件
+        # 如果bin文件读取失败，尝试读取txt格式的相机外参和内参文件
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
-    # 定义存放图片的目录，如果未指定则默认为"images"
+    # 存储原图片的文件夹名，默认为'images'，要从中读取图片
     reading_dir = "images" if images == None else images
 
-    # 读取并处理相机参数，转换为内部使用的格式
+    # 根据每个相机的内、外参，构建CameraInfo类的对象 (包含旋转矩阵、平移向量、视场角、图像数据、图片路径、图片名、宽度、高度)，存储cam_infos_unsorted列表中
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
-    # 根据图片名称对相机信息进行排序，以保证顺序一致性
+    # 根据图片名称排序，以保证顺序一致性
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : (x.image_path.split('/')[-2], int(x.image_name)))
 
     # 根据是否为评估模式（eval），将相机分为训练集和测试集
-    # 如果为评估模式，根据llffhold参数（通常用于LLFF数据集）间隔选择测试相机
+    # 如果为评估模式，每llffhold张图片取一张作为测试集
     if eval:
         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
         test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
@@ -188,7 +201,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
     # 计算场景归一化参数，这是为了处理不同尺寸和位置的场景，使模型训练更稳定
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
-    # 尝试读取点云数据，优先从PLY文件读取，如果不存在，则尝试从BIN或TXT文件转换并保存为PLY格式
+    # 尝试读取COLMAP生成的稀疏点云数据，优先从PLY文件读取，如果不存在，则尝试从BIN或TXT文件转换并保存为PLY格式
     ply_path = os.path.join(path, "sparse/0/points3D.ply")
     bin_path = os.path.join(path, "sparse/0/points3D.bin")
     txt_path = os.path.join(path, "sparse/0/points3D.txt")
@@ -198,9 +211,12 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
             xyz, rgb, _ = read_points3D_binary(bin_path)    # 从points3D.bin读取COLMAP产生的稀疏点云
         except:
             xyz, rgb, _ = read_points3D_text(txt_path)
+
         storePly(ply_path, xyz, rgb)    # 转换成ply文件
+
     try:
-        pcd = fetchPly(ply_path)
+        pcd = fetchPly(ply_path)    # points3D.ply读取COLMAP产生的稀疏点云
+
     except:
         pcd = None
 

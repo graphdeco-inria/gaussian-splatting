@@ -74,4 +74,8 @@ def fov2focal(fov, pixels):
     return pixels / (2 * math.tan(fov / 2))
 
 def focal2fov(focal, pixels):
-    return 2*math.atan(pixels/(2*focal))
+    '''
+        focal: fx 或 fy
+        pixels: 宽度或高度,单位为像素
+    '''
+    return 2 * math.atan(pixels / (2 * focal))

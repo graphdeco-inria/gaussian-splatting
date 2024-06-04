@@ -34,18 +34,21 @@ except ImportError:
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     '''
-        dataset: 只存储与Moedl相关参数的args
-        opt:    优化相关参数
-        pipe:   管道相关参数
+        dataset: 存储着与 GaussianMoedl 相关参数 的args
+        opt:    存储着与 优化 相关参数 的args
+        pipe:   存储着与 管道相关参数 的args
         checkpoint: 已训练模型的路径
         debug_from: 从哪一个迭代开始debug
     '''
     first_iter = 0
-    # 创建保存结果的文件夹，并保存模型相关的参数到cfg_args文件；尝试创建tensorboard_writer，记录训练过程
+    # 创建保存结果的文件夹output/scene，并保存模型相关的参数到cfg_args文件；尝试创建tensorboard_writer，记录训练过程
     tb_writer = prepare_output_and_logger(dataset)
 
-    gaussians = GaussianModel(dataset.sh_degree)    # 创建初始化高斯模型，用于表示场景中的每个点的3D高斯分布
-    scene = Scene(dataset, gaussians)   # 创建初始3D场景对象，加载数据集和对应的相机参数
+    # 创建高斯模型对象，用于表示场景中的每个点的3D高斯分布
+    gaussians = GaussianModel(dataset.sh_degree)
+    # 创建初始3D场景对象，加载数据集和对应的相机参数
+    scene = Scene(dataset, gaussians)
+
     gaussians.training_setup(opt)   # 为高斯模型参数设置优化器和学习率调度器
 
     # 如果提供了checkpoint，则从checkpoint加载模型参数并恢复训练进度
@@ -131,7 +134,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
 
-            # 在指定迭代区间内，对3D高斯模型进行增密和修剪，Densification
+            # Densification，在指定迭代区间内，对3D高斯模型进行增密和修剪
             if iteration < opt.densify_until_iter:
                 # Keep track of max radii in image-space for pruning
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
@@ -144,7 +147,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
-            # 执行优化器的一步，并准备下一次迭代，Optimizer step
+            # Optimizer step，执行优化器的一步，并准备下一次迭代
             if iteration < opt.iterations:
                 gaussians.optimizer.step()
                 gaussians.optimizer.zero_grad(set_to_none = True)
@@ -219,12 +222,13 @@ if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
 
-    model_prams = ModelParams(parser)    # 定义存储 模型 相关参数的arg对象
-    optim_prams = OptimizationParams(parser) # 定义存储 优化 相关参数的arg对象
-    pipeline_prams = PipelineParams(parser) # 定义存储 渲染 相关参数的arg对象
+    # 创建 模型、优化、渲染 相关参数的对象
+    lp = ModelParams(parser)
+    op = OptimizationParams(parser)
+    pp = PipelineParams(parser)
 
     parser.add_argument('--ip', type=str, default="127.0.0.1")
-    parser.add_argument('--port', type=int, default=6009)
+    parser.add_argument('--port', type=int, default=6007)
     parser.add_argument('--debug_from', type=int, default=-1)   # 指定从哪一迭代（>= 0）开始debug
     parser.add_argument('--detect_anomaly', action='store_true', default=False) # action='store_true' 如果命令行中包含了这个参数,它的值将被设置为 True
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
@@ -233,7 +237,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[30_000])
     parser.add_argument("--start_checkpoint", type=str, default = None)
 
-    # 从命令行参数中解析出所有的参数值,并与上面设置的参数一起存储到 Namespace 对象中，即args
+    # 从命令行参数覆盖parser内的参数，并存储到args
     args = parser.parse_args(sys.argv[1:])
 
     args.save_iterations.append(args.iterations)
@@ -248,8 +252,12 @@ if __name__ == "__main__":
 
     torch.autograd.set_detect_anomaly(args.detect_anomaly)  # 设置pytorch是否检测梯度异常
 
-    # model_prams.extract(args)：将args中的属性，即命令行和预设的参数中 与 ModelParams类中定义的参数相匹配的值，并将它们封装到一个新的 GroupParams 对象中
-    training(model_prams.extract(args), optim_prams.extract(args), pipeline_prams.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    # lp.extract(args)：args中参数 覆盖 模型、优化、渲染 的参数，并形成新的args
+    lp_args = lp.extract(args)
+    op_args = op.extract(args)
+    pp_args = pp.extract(args)
+
+    training(lp_args, op_args, pp_args, args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 
     # All done
     print("\nTraining complete.")

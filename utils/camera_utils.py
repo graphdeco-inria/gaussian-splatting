@@ -52,6 +52,11 @@ def loadCam(args, id, cam_info, resolution_scale):
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
+    '''
+        cam_infos: 训练或测试相机对象列表
+        resolution_scale: 不同分辨率列表
+        args: 高斯模型参数
+    '''
     camera_list = []
 
     for id, c in enumerate(cam_infos):
