@@ -111,7 +111,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, return_depth=True, return_normal=True)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
-        # Loss
+        # Loss，计算渲染图像与真实图像之间的损失
+
+        # 替换为一张一张读取
+        # gt_image_path = viewpoint_cam.image_path
+        # gt_image = Image.open(gt_image_path)
+        # gt_image = (torch.from_numpy(np.array(gt_image)) / 255.0).permute(2, 0, 1)
+        # gt_image = gt_image.clamp(0.0, 1.0).to(viewpoint_cam.data_device)
+
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
