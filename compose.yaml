@@ -1,0 +1,19 @@
+version: '3'
+services:
+  gsplat-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gsplat-dev-container
+    image: gsplat:1.0
+    user: 1010:1010
+    volumes:
+      - /etc/passwd:/etc/passwd:ro
+      - /etc/group:/etc/group:ro
+      - .:/home/terada/gaussian-splatting
+      - ~/.ssh:/root/.ssh
+      # ports:
+      #   - "8087:8088"
+    working_dir: /home/terada/gaussian-splatting
+    tty: true
+    network_mode: "host"
