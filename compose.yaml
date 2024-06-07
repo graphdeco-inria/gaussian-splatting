@@ -6,14 +6,22 @@ services:
       dockerfile: Dockerfile
     container_name: gsplat-dev-container
     image: gsplat:1.0
-    user: 1010:1010
+    # user: 1010:1010 #terada
     volumes:
-      - /etc/passwd:/etc/passwd:ro
-      - /etc/group:/etc/group:ro
-      - .:/home/terada/gaussian-splatting
+      # - /etc/passwd:/etc/passwd:ro
+      # - /etc/group:/etc/group:ro
+      - .:/root/gaussian-splatting
       - ~/.ssh:/root/.ssh
       # ports:
       #   - "8087:8088"
-    working_dir: /home/terada/gaussian-splatting
+    working_dir: /root/gaussian-splatting
     tty: true
     network_mode: "host"
+    # host gpu を使えるようにする設定　https://docs.docker.jp/compose/gpu-support.html
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
