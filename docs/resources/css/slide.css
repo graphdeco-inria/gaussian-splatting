@@ -1,0 +1,37 @@
+.slider-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 400px; /* Adjust to your preference */
+    margin: 0 auto; /* Center horizontally */
+  }
+  
+  .img-comp-container {
+    position: relative;
+    width: 500px; /* Adjust to your preference */
+  }
+  
+  .img-comp-img {
+    position: absolute;
+    width: auto;
+    height: 100%;
+    overflow: hidden;
+  }
+  
+  .img-comp-img img {
+    display: block;
+    width: auto;
+    height: 100%;
+  }
+  
+  .img-comp-slider {
+    position: absolute;
+    z-index: 9;
+    cursor: ew-resize;
+    /* Style the slider (optional) */
+    background-color: #2196F3;
+    opacity: 0.7;
+    height: 40px;
+    width: 10px;
+    border-radius: 5px;
+  }
