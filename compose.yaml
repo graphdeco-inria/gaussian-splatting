@@ -11,7 +11,7 @@ services:
       # - /etc/passwd:/etc/passwd:ro
       # - /etc/group:/etc/group:ro
       - .:/root/gaussian-splatting
-      - /home/terada/dataset/tandt_db:/root/dataset/tandt_db
+      - ~/dataset/tandt_db:/root/dataset/tandt_db
       - ~/.ssh:/root/.ssh
       # ports:
       #   - "8087:8088"

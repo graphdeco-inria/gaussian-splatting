@@ -15,7 +15,13 @@ RUN bash /miniconda3/miniconda.sh -b -u -p /miniconda3
 RUN /miniconda3/bin/conda init bash
 
 
-COPY environment.yml /root/environment.yml
-RUN /miniconda3/bin/conda env create -f /root/environment.yml
+WORKDIR /root/gaussian-splatting
+COPY environment.yml /root/gaussian-splatting/environment.yml
+COPY submodules /root/gaussian-splatting/submodules
+RUN /miniconda3/bin/conda env create -f environment.yml
+# conda env createがが終わったら不要
+RUN rm -rf /root/gaussian-splatting 
+
+RUN apt-get install -y git
 
 CMD ["/bin/bash"]
