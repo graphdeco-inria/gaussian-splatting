@@ -92,6 +92,7 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 Our default, provided install method is based on Conda package and environment management:
 ```shell
 SET DISTUTILS_USE_SDK=1 # Windows only
+sudo apt-get install libglm-dev # linux only
 conda env create --file environment.yml
 conda activate gaussian_splatting
 ```
