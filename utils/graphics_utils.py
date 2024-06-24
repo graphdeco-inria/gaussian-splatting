@@ -37,15 +37,16 @@ def getWorld2View(R, t):
 
 def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     Rt = np.zeros((4, 4))
-    Rt[:3, :3] = R.transpose()
-    Rt[:3, 3] = t
+    Rt[:3, :3] = R.transpose()  # W2C的 R
+    Rt[:3, 3] = t   # W2C的 t
     Rt[3, 3] = 1.0
-
+    # C2W的变换矩阵
     C2W = np.linalg.inv(Rt)
-    cam_center = C2W[:3, 3]
+    cam_center = C2W[:3, 3] # C2W的 t，即相机在世界坐标系中的坐标位置
     cam_center = (cam_center + translate) * scale
-    C2W[:3, 3] = cam_center
-    Rt = np.linalg.inv(C2W)
+    C2W[:3, 3] = cam_center # 加上平移后的 C2W的变换矩阵
+
+    Rt = np.linalg.inv(C2W) # W2C的变换矩阵
     return np.float32(Rt)
 
 def getProjectionMatrix(znear, zfar, fovX, fovY):

@@ -23,8 +23,8 @@ class Camera(nn.Module):
 
         self.uid = uid
         self.colmap_id = colmap_id
-        self.R = R
-        self.T = T
+        self.R = R  # 相机到世界的 C2W
+        self.T = T  # 世界到相机的 W2C
         self.FoVx = FoVx
         self.FoVy = FoVy
         self.image_name = image_name
@@ -36,7 +36,7 @@ class Camera(nn.Module):
             print(f"[Warning] Custom device {data_device} failed, fallback to default cuda device" )
             self.data_device = torch.device("cuda")
 
-        self.original_image = image.clamp(0.0, 1.0).to(self.data_device)
+        self.original_image = image.clamp(0.0, 1.0).to(self.data_device)    # tensor, 归一化的 C H W
         self.image_width = self.original_image.shape[2]
         self.image_height = self.original_image.shape[1]
 
@@ -51,10 +51,10 @@ class Camera(nn.Module):
         self.trans = trans
         self.scale = scale
 
-        self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda()
-        self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
-        self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
-        self.camera_center = self.world_view_transform.inverse()[3, :3]
+        self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda() # C2W 相机到世界的变换矩阵
+        self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()    # 生成了一个投影矩阵，用于将视图坐标投影到图像平面
+        self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0) # 使用 bmm（批量矩阵乘法）将世界到视图变换矩阵和投影矩阵相乘，生成完整的投影变换矩阵
+        self.camera_center = self.world_view_transform.inverse()[3, :3] # 通过求逆变换矩阵获取相机在世界坐标系中的位置（相机中心）
 
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):

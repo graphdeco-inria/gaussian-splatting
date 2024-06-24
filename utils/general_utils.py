@@ -20,10 +20,11 @@ def inverse_sigmoid(x):
 
 def PILtoTorch(pil_image, resolution):
     resized_image_PIL = pil_image.resize(resolution)
-    resized_image = torch.from_numpy(np.array(resized_image_PIL)) / 255.0
+    resized_image = torch.from_numpy(np.array(resized_image_PIL)) / 255.0   # 归一化
     if len(resized_image.shape) == 3:
-        return resized_image.permute(2, 0, 1)
+        return resized_image.permute(2, 0, 1)   # 转换为 3 H W
     else:
+        # 若为H W，则添加一个通道维度为 H W 1，再转换为 1 H W
         return resized_image.unsqueeze(dim=-1).permute(2, 0, 1)
 
 def get_expon_lr_func(

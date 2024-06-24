@@ -38,7 +38,7 @@ def loadCam(args, id, cam_info, resolution_scale):
         scale = float(global_down) * float(resolution_scale)
         resolution = (int(orig_w / scale), int(orig_h / scale))
 
-    resized_image_rgb = PILtoTorch(cam_info.image, resolution)
+    resized_image_rgb = PILtoTorch(cam_info.image, resolution)  # 调整图片比例，归一化，并转换通道为torch上的 (C, H, W)
 
     gt_image = resized_image_rgb[:3, ...]
     loaded_mask = None

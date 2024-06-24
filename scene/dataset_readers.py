@@ -67,7 +67,6 @@ def getNerfppNorm(cam_info):
 
 def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     '''
-
         cam_extrinsics: 存储每张图片相机的外参类Imgae 的字典
         cam_intrinsics: 存储每张图片相机的内参类Camera 的字典
         images_folder: 保存原图的文件夹路径
@@ -90,11 +89,11 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         uid = intr.id   # 相机的唯一标识符
 
-        R = np.transpose(qvec2rotmat(extr.qvec))    # 将旋转四元数 转为 旋转矩阵 R，并转置
-        T = np.array(extr.tvec)     # 平移向量
+        R = np.transpose(qvec2rotmat(extr.qvec))    # W2C的四元数转为 R，transpose后 ==> C2W的R
+        T = np.array(extr.tvec)     # W2C的T
 
         # 根据相机内参模型计算 视场角（FoV）
-        if intr.model=="SIMPLE_PINHOLE":
+        if intr.model=="SIMPLE_PINHOLE" or intr.model=="SIMPLE_RADIAL":
             # 如果是简单针孔模型，只有一个焦距参数
             focal_length_x = intr.params[0]
             FovY = focal2fov(focal_length_x, height)    # 计算垂直方向的视场角
@@ -105,11 +104,6 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
             focal_length_y = intr.params[1]
             FovY = focal2fov(focal_length_y, height)    # 使用fy计算垂直视场角
             FovX = focal2fov(focal_length_x, width)     # 使用fx计算水平视场角
-        elif intr.model=="SIMPLE_RADIAL":
-            # 如果是针孔模型，有两个焦距参数
-            focal_length_x = intr.params[0]
-            FovY = focal2fov(focal_length_x, height)    # 使用fy计算垂直视场角
-            FovX = focal2fov(focal_length_x, width)     # 使用fx计算水平视场角
         else:
             # 如果不是以上两种模型，抛出错误
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
@@ -119,7 +113,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         if not os.path.exists(image_path):
             continue
-        image = Image.open(image_path)
+        image = Image.open(image_path)  # PIL.Image读取的为RGB格式，OpenCV读取的为BGR格式
 
         # 创建相机信息类CameraInfo对象 (包含旋转矩阵、平移向量、视场角、图像数据、图片路径、图片名、宽度、高度)，并添加到列表cam_infos中
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
@@ -160,8 +154,7 @@ def storePly(path, xyz, rgb):
 
 def readColmapSceneInfo(path, images, eval, llffhold=8):
     '''
-        加载COLMAP的结果中的二进制相机外参文件imags.bin 和 内参文件cameras.bin
-
+    加载COLMAP的结果中的二进制相机外参文件imags.bin 和 内参文件cameras.bin
         path:   GaussianModel中的源文件路径
         images: 'images'
         eval:   是否为eval模式

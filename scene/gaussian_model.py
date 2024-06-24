@@ -139,7 +139,7 @@ class GaussianModel:
 
     def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
         """
-        从稀疏点云数据 初始化模型参数
+        从稀疏点云数据pcd 初始化模型参数
             pcd: 稀疏点云，包含点的位置和颜色
             spatial_lr_scale: 空间学习率缩放因子，影响 位置坐标参数的学习率
         """
@@ -465,6 +465,12 @@ class GaussianModel:
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation)
 
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size):
+        """
+            max_grad    决定是否应基于 2D 位置梯度对点进行densification的限制，默认为0.0002
+            min_opacity 0.005
+            extent
+            max_screen_size 初始为None，3000代后，即后续重置不透明度，则为20
+        """
         grads = self.xyz_gradient_accum / self.denom    # 计算平均梯度
         grads[grads.isnan()] = 0.0
 

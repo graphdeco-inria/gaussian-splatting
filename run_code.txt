@@ -4,70 +4,68 @@ python train.py --source_path <path to COLMAP or NeRF Synthetic dataset> --model
 python train.py --source_path ../../Dataset/3DGS_Dataset/linggongtang --model_path output/linggongtang --data_device 'cpu' --eval --resolution 1
 python train.py --source_path ../../Dataset/3DGS_Dataset/xiangjiadang --model_path output/xiangjiadang --data_device 'cpu' --eval --resolution 1
 
---source_path / -s：COLMAP 或合成 Synthetic NeRF data set的源目录的路径。COLMAP类型包含 images/, sparse/0
---model_path / -m：训练模型的存储路径，默认为 output/<random>
---images / -i：COLMAP 图像的替代子目录，默认为 images
---eval：训练时默认使用全部图片，--eval可以在训练时按照MipNeRF360-style划分 training/test，用于 evaluation
+--source_path / -s：数据集输入路径，包含图片文件夹：images, SfM输出文件夹：sparse/0
+--model_path / -m：指定的训练模型存储路径，默认为 output/<random>
+--images / -i：输入路径下存储图片的替代文件夹名，默认为 images
+--eval：训练时默认使用全部图片，添加此标志将在训练时按照MipNeRF360-style划分训练集/测试集（每8张选1张作为测试集），以用于 evaluation
 --resolution / -r：指定训练前加载图像的分辨率。如果是 1, 2, 4 or 8 则使用原始分辨率的 1/2, 1/4 or 1/8。
                    对于所有其他值，会将图像宽度调整到给定数字，同时保持图像宽高比；
-                   如果未设置并且输入图像宽度超过 1.6K 像素，则输入将宽度自动缩放到 1.6k
+                   如果未设置且输入图像宽度超过 1.6k 个像素，则输入将宽度自动缩放到 1.6k
 
---data_device：指定源图像数据在训练时的放置位置，默认使用cuda，如果在大型/高分辨率数据集上进行训练，建议使用cpu，减少显存占用，但训练速度会变慢
+--data_device：指定源图像数据在训练时的放置位置，默认使用cuda，如果在大型/高分辨率数据集上进行训练，建议使用cpu，减少显存占用
 
 --white_background / -w：添加此标志以使用白色背景而不是黑色（默认），用于评估 NeRF Synthetic dataset
 --sh_degree：球谐函数的阶数（不大于 3），默认为 3
---convert_SHs_python：添加此标志以使用 PyTorch 而不是论文提出的pipeline计算 SH系数 的forward and backward
---convert_cov3D_python：添加此标志以使用 PyTorch 而不是论文提出的pipeline计算 3D协方差 的forward and backward
+--convert_SHs_python：添加此标志以使用PyTorch而不是论文提出的pipeline计算 SH系数的forward和backward，默认为False
+--convert_cov3D_python：添加此标志以使用PyTorch而不是论文提出的pipeline计算 3D协方差的forward和backward，默认为False
 
---debug：如果遇到错误，请启用调试模式。如果光栅化器失败，dump则会创建一个文件，您可以在问题中将其转发给我们，以便我们查看。
+--debug：如果遇到错误，请启用调试模式。如果光栅化器失败，dump则会创建一个文件，默认为False
 --debug_from：调试速度慢。可以指定从哪一迭代（>= 0）开始
-
---iterations：训练的总迭代次数，默认为 30_000
 
 --ip：启动 GUI 服务器的 IP，默认为 127.0.0.1
 --port：GUI 服务器的端口，默认为 6009
 
---test_iterations：训练脚本在测试集上计算 L1 和 PSNR 的分隔迭代次数，默认为 7000, 30000
---save_iterations：训练脚本保存高斯模型的分隔迭代次数，默认为 7000, 30000
---checkpoint_iterations：存储checkpoint的分隔迭代次数，以后续继续新联，保存在model directory中
---start_checkpoint：保存的checkpoint的路径，以继续训练
+--iterations：训练的总迭代次数，默认为 30_000
+--test_iterations：训练脚本在测试集上计算 L1 和 PSNR 的迭代次数，默认为 7000, 30000
+--save_iterations：训练脚本保存高斯模型的迭代次数，默认为 7000, 30000
+--checkpoint_iterations：存储checkpoint的迭代次数，以后续继续训练，保存在model_path中
+--start_checkpoint：继续训练时要加载的checkpoint的路径
 
 --quiet：此标志用于不写入任何文本到标准输出管道
 
---feature_lr：球谐函数的学习率，默认为 0.0025
---opacity_lr：不透明度的学习率，默认为 0.05
---scaling_lr：尺度的学习率，默认为 0.005
---rotation_lr：旋转四元数的学习率，默认为 0.001
-
---position_lr_max_steps：位置学习率从初始值到最终值的步数（从 0 开始），默认为 30_000
 --position_lr_init：位置学习率的初始值，默认为 0.00016
 --position_lr_final：位置学习率的最终值，默认为 0.0000016
 --position_lr_delay_mult：位置学习率的乘数，默认为 0.01
+--position_lr_max_steps：位置学习率从初始值到最终值的步数（从 0 开始），默认为 30_000
 
---densify_from_iter：densification开始的迭代次数，默认为 500
---densify_until_iter：densification结束的迭代次数，默认为 15_000
+--feature_lr：球谐函数的学习率，默认为 0.0025
+--opacity_lr：不透明度的学习率，默认为 0.05
+--scaling_lr：缩放尺度的学习率，默认为 0.005
+--rotation_lr：旋转四元数的学习率，默认为 0.001
+
+--densify_from_iter：densification增稠开始的迭代次数，默认为 500
+--densify_until_iter：densification增稠结束的迭代次数，默认为 15_000
 --densify_grad_threshold：决定是否应基于 2D 位置梯度对点进行densification的限制，默认为0.0002
---densification_interval：densify的频率，默认为 100（每迭代100次进行1次）
 
+--densification_interval：增稠的频率，默认为 100（每迭代100次进行1次）
 --opacity_reset_interval：重置不透明度的频率，默认为 3_000
 
---lambda_dssim：SSIM 对总损失的影响，从 0 到 1，默认为0.2
-
---percent_dense：点必须超过场景范围的百分比才能强制致密， (0--1)，默认为0.01
+--lambda_dssim：SSIM在总损失的权重，从 0 到 1，默认为0.2
+--percent_dense：点必须超过场景范围的百分比才能强制增稠， (0--1)，默认为0.01
 
 #--------------------------------------------------------------------------
 Evluation:
 # Generate renderings
 python render.py -m <path to trained model>
 
---model_path / -m：为其创建renderings的以训练模型的路径
---skip_train：跳过渲染training set
---skip_test：跳过渲染test set
+--model_path / -m：训练模型输出路径, 在其子文件夹下生成训练或测试视角的渲染图，同train中
+--skip_train：跳过渲染训练视角
+--skip_test：跳过渲染测试视角
 --quiet：不写入任何文本到标准输出管道
 
-以下参数会从用于训练的model path中自动读取。但可覆写它们
---source_path / -s：COLMAP 或合成 Synthetic NeRF data set的源目录的路径。
---images / -i：COLMAP 图像的替代子目录，默认为 images
+以下参数会从用于训练输出的model_path中自动读取，但可覆写它们
+--source_path / -s
+--images / -i
 --eval
 --resolution / -r
 --white_background / -w
@@ -78,5 +76,5 @@ python render.py -m <path to trained model>
 # Compute error metrics on renderings
 python metrics.py -m <path to trained model>
 
---model_paths / -m：应计算metrics的model paths的分隔列表
+--model_paths / -m：保存所有输出结果的文件夹路径，同train中
 
