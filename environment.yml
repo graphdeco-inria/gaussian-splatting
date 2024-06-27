@@ -4,13 +4,12 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - cudatoolkit=11.6
+  - cudatoolkit=11.7
   - plyfile
-  - python=3.7.13
-  - pip=22.3.1
-  - pytorch=1.12.1
-  - torchaudio=0.12.1
-  - torchvision=0.13.1
+  - python=3.8
+  - pytorch=1.13.1
+  - torchaudio=0.13.1
+  - torchvision=0.14.1
   - tqdm
   - pip:
     - submodules/diff-gaussian-rasterization
