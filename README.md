@@ -59,7 +59,7 @@ This project is built on top of the [Original 3DGS code base](https://github.com
 
 1. **Clone the Repository:**
    ```sh
-   git clone --recursive git@github.com:ubc-vision/3dgs-mcmc.git
+   git clone --recursive https://github.com/ubc-vision/3dgs-mcmc.git
    cd 3dgs-mcmc
    ```
 2. **Set Up the Conda Environment:**
