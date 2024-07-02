@@ -165,7 +165,7 @@
         <hr />
       </div>
 
-      <div class="parent-video-compare-container">
+      <div class="parent-video-compare-container" id="trainb">
         <div class="video-compare-container" id="materialsDiv">
           <video
             class="video"
@@ -188,6 +188,18 @@
           the ground texture) providing much higher quality renderings.
         </p>
       </div>
+
+      <script>
+        function isSafari() {
+          return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        }
+        if (isSafari()) {
+          document.getElementById('trainb').innerHTML =
+            `<video class="safari-video" controls autoplay>
+              <source src="./resources/training_rand_compare/bicycle_both-rand.mp4" type="video/mp4" >
+            </video>`;
+        }
+      </script>
 
       <div class="parent-video-compare-container">
         <hr />
