@@ -17,12 +17,17 @@ from utils.graphics_utils import fov2focal
 WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale):
+    """
+    调整当前相机对应图像的分辨率，并根据当前相机的info创建相机（包含R、T、FovY、FovX、图像数据image、image_path、image_name、width、height）
+    """
     orig_w, orig_h = cam_info.image.size
-
+    # 1. 计算下采样后的图像尺寸
     if args.resolution in [1, 2, 4, 8]:
+        # 计算下采样后的图像尺寸 [1, 1/2, 1/4, 1/8]
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
-    else:  # should be a type that converts to float
+    else:
         if args.resolution == -1:
+            # 如果用户没有指定分辨率，即默认为-1，则自动判断图片的宽度是>1.6K：如果大于，则自动进行下采样到1.6K时的采样倍率；如果小于，则采样倍率=1，即使用原图尺寸
             if orig_w > 1600:
                 global WARNED
                 if not WARNED:
@@ -33,19 +38,22 @@ def loadCam(args, id, cam_info, resolution_scale):
             else:
                 global_down = 1
         else:
+            # 如果用户指定了分辨率，则根据用户指定的分辨率计算采样倍率
             global_down = orig_w / args.resolution
 
-        scale = float(global_down) * float(resolution_scale)
-        resolution = (int(orig_w / scale), int(orig_h / scale))
+        scale = float(global_down) * float(resolution_scale)    # 缩放倍率
+        resolution = (int(orig_w / scale), int(orig_h / scale)) # 下采样后的图像尺寸
 
-    resized_image_rgb = PILtoTorch(cam_info.image, resolution)  # 调整图片比例，归一化，并转换通道为torch上的 (C, H, W)
+    # 2. 调整图片分辨率，归一化，并转换通道为torch上的 (C, H, W)
+    resized_image_rgb = PILtoTorch(cam_info.image, resolution)
 
     gt_image = resized_image_rgb[:3, ...]
     loaded_mask = None
 
     if resized_image_rgb.shape[1] == 4:
+        # 如果图片有alpha通道，则提取出来
         loaded_mask = resized_image_rgb[3:4, ...]
-
+    # 3. 创建相机
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                   image=gt_image, gt_alpha_mask=loaded_mask,
@@ -53,14 +61,14 @@ def loadCam(args, id, cam_info, resolution_scale):
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     '''
-        cam_infos: 训练或测试相机对象列表
-        resolution_scale: 不同分辨率列表
-        args: 高斯模型参数
+        cam_infos:          train或test相机info列表
+        resolution_scale:   分辨率倍率
+        args:               更新后的ModelParams()中的参数
     '''
     camera_list = []
-
+    # 遍历每个camera_info（包含R、T、FovY、FovX、图像数据image、image_path、image_name、width、height）
     for id, c in enumerate(cam_infos):
-        camera_list.append(loadCam(args, id, c, resolution_scale))
+        camera_list.append( loadCam(args, id, c, resolution_scale) )
 
     return camera_list
 
