@@ -25,53 +25,56 @@ class GaussianModel:
 
     def setup_functions(self):
         """
-            定义和初始化处理高斯体模型参数的 激活函数
+        定义和初始化处理高斯体模型参数的 激活函数
         """
-        # 定义 从尺度、旋转构建3D高斯的 协方差矩阵 的函数
         def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
-            L = build_scaling_rotation(scaling_modifier * scaling, rotation)    # 从尺度、尺度的缩放、旋转得到L矩阵
-            actual_covariance = L @ L.transpose(1, 2)   # 计算实际的协方差矩阵
-            symm = strip_symmetric(actual_covariance)   # 提取对称部分
+            """
+            从 缩放因子、旋转四元数 构建 各3D高斯体的 协方差矩阵
+            """
+            L = build_scaling_rotation(scaling_modifier * scaling, rotation)    # 从缩放因子、旋转四元数得到高斯体的变化，N 3 3
+            actual_covariance = L @ L.transpose(1, 2)   # 计算实际的 协方差矩阵
+            symm = strip_symmetric(actual_covariance)   # 提取上半对角元素
             return symm
 
         # 初始化一些激活函数
-        self.scaling_activation = torch.exp     # 用exp函数，确保尺度参数非负
-        self.scaling_inverse_activation = torch.log     # 尺度的逆激活函数，用于梯度回传
+        self.scaling_activation = torch.exp             # 缩放因子的激活函数，exp函数，确保缩放因子非负
+        self.scaling_inverse_activation = torch.log     # 缩放因子的逆激活函数，用于梯度回传，log函数
 
-        self.covariance_activation = build_covariance_from_scaling_rotation # 协方差矩阵的激活函数
+        self.covariance_activation = build_covariance_from_scaling_rotation # 协方差矩阵的激活函数（实际未使用激活函数，直接构建）
 
-        self.opacity_activation = torch.sigmoid     # 用sigmoid函数，确保不透明度在0到1之间
+        self.opacity_activation = torch.sigmoid             # 不透明的激活函数，sigmoid函数，确保不透明度在0到1之间
         self.inverse_opacity_activation = inverse_sigmoid   # 不透明度的逆激活函数
 
-        self.rotation_activation = torch.nn.functional.normalize    # 用于标准化旋转参数的函数
+        self.rotation_activation = torch.nn.functional.normalize    # 旋转四元数的激活函数，归一化函数（取模）
 
 
     def __init__(self, sh_degree : int):
         """
-            初始化3D高斯模型的参数
+        3D高斯模型的各参数 初始化为0或空
             sh_degree: 设定的 球谐函数的最大阶数，默认为3，用于控制颜色表示的复杂度
         """
-        self.active_sh_degree = 0   # 当前激活的球谐阶数，初始为0
+        self.active_sh_degree = 0           # 当前球谐函数的阶数，初始为0
         self.max_sh_degree = sh_degree      # 允许的最大球谐阶数j
 
-        # 初始化3D高斯模型的各项参数
-        self._xyz = torch.empty(0)          # 3D高斯的 中心位置（均值）
-        self._features_dc = torch.empty(0)  # 第一个球谐系数，用于表示基础颜色
-        self._features_rest = torch.empty(0)    # 其余球谐系数，用于表示颜色的细节和变化
-        self._scaling = torch.empty(0)      # 3D高斯的尺度，控制高斯的形状
-        self._rotation = torch.empty(0)     # 3D高斯的旋转（一系列四元数）
-        self._opacity = torch.empty(0)      # 3D高斯的不透明度（sigmoid前的），控制可见性
-        self.max_radii2D = torch.empty(0)   # 在2D投影中，每个高斯的最大半径
+        self._xyz = torch.empty(0)          # 各3D高斯的 中心位置
 
-        self.xyz_gradient_accum = torch.empty(0)    # 累积3D高斯中心位置的梯度，当它太大的时候要对Gaussian进行分裂，小时代表under要复制
-        self.denom = torch.empty(0)     # 与累积梯度配合使用，表示统计了多少次累积梯度，算平均梯度时除掉这个（denom = denominator，分母）
+        self._features_dc = torch.empty(0)  # 球谐函数的直流分量，第一个元素，用于表示基础颜色
+        self._features_rest = torch.empty(0)    # 球谐函数的高阶分量，用于表示颜色的细节和变化
+
+        self._scaling = torch.empty(0)      # 各3D高斯的 缩放因子，控制高斯的形状
+        self._rotation = torch.empty(0)     # 各3D高斯的 旋转四元数
+        self._opacity = torch.empty(0)      # 各3D高斯的不透明度（sigmoid前的），控制可见性
+        self.max_radii2D = torch.empty(0)   # 各3D高斯投影到2D平面上的 最大半径
+
+        self.xyz_gradient_accum = torch.empty(0)    # 3D高斯中心位置 梯度的累及值，当它太大的时候要对Gaussian进行分裂，小时代表under要复制
+        self.denom = torch.empty(0)                 # 与累积梯度配合使用，表示统计了多少次累积梯度，用于计算每个高斯体的平均梯度时需除以它（denom = denominator，分母）
 
         self.optimizer = None   # 优化器，用于调整上述参数以改进模型（论文中采用Adam，见附录B Algorithm 1的伪代码）
 
-        self.percent_dense = 0  # 控制Gaussian密集程度的超参数
-        self.spatial_lr_scale = 0   # 位置坐标的学习率要乘上这个，抵消在不同尺度下应用同一个学习率带来的问题
+        self.percent_dense = 0      # 百分比密度，控制3D高斯的密度
+        self.spatial_lr_scale = 0   # 各3D高斯的位置学习率的变化因子，位置的学习率 乘以它，以抵消在不同尺度下应用同一个学习率带来的问题
 
-        # 调用 setup_functions，初始化处理高斯体模型参数的 激活函数
+        # 初始化高斯体模型各参数的 激活函数
         self.setup_functions()
 
     def capture(self):
@@ -109,11 +112,11 @@ class GaussianModel:
         self.optimizer.load_state_dict(opt_dict)
 
     @property
-    def get_scaling(self):
+    def get_scaling(self):  # 获取的是激活后的 缩放因子
         return self.scaling_activation(self._scaling)
     
     @property
-    def get_rotation(self):
+    def get_rotation(self): # 获取的是激活后的 旋转四元数
         return self.rotation_activation(self._rotation)
     
     @property
@@ -127,13 +130,14 @@ class GaussianModel:
         return torch.cat((features_dc, features_rest), dim=1)
     
     @property
-    def get_opacity(self):
+    def get_opacity(self):  # 获取的是激活后的 不透明度
         return self.opacity_activation(self._opacity)
     
     def get_covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
 
     def oneupSHdegree(self):
+        # 当前球谐函数的阶数 < 规定的最大阶数，则 阶数+1
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
@@ -141,17 +145,17 @@ class GaussianModel:
         """
         从稀疏点云数据pcd 初始化模型参数
             pcd: 稀疏点云，包含点的位置和颜色
-            spatial_lr_scale: 空间学习率缩放因子，影响 位置坐标参数的学习率
+            spatial_lr_scale: 位置学习率的 变化因子
         """
-
         # 根据scene.Scene.__init__ 以及 scene.dataset_readers.SceneInfo.nerf_normalization，即scene.dataset_readers.getNerfppNorm的代码，
         # 这个值似乎是训练相机中离它们的坐标平均值（即中心）最远距离的1.1倍，根据命名推断应该与学习率有关，防止固定的学习率适配不同尺度的场景时出现问题。
         self.spatial_lr_scale = spatial_lr_scale
 
-        # 将点云的 位置 和 颜色 数据从numpy数组转换为PyTorch张量，并传送到CUDA设备上
-        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()     # 稀疏点云的3D坐标，大小为(P, 3)
-        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())   # 球谐的直流分量，大小为(P, 3)，
-                                                                                    # RGB2SH(x) = (x - 0.5) / 0.28209479177387814看样子pcd.colors的原始范围应该是0到1。0.28209479177387814是1 / (2*sqrt(pi))，是直流分量Y(l=0,m=0)的值
+        # 点云的3D位置从array转换为tensor，并放到cuda上，(N, 3)
+        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
+        # 点云的颜色从RGB array转换为tensor，放到cuda上，再转为球谐函数直流分量系数，(N, 3)
+        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
+
 
         # 初始化存储 球谐系数 的张量，RGB三通道球谐的所有系数，每个通道有(max_sh_degree + 1) ** 2个球谐系数
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda() # (P, 3, 16)

@@ -78,13 +78,13 @@ def get_expon_lr_func(
 
 def strip_lowerdiag(L):
     """
-    从协方差矩阵中提取六个独立参数
-    :param L: 协方差矩阵
-    :return: 六个独立参数组成的张量
+    从协方差矩阵中提取6个上半对角元素，节省内存
+    [ _ _ _ ]
+    [   _ _ ]
+    [     _ ]
     """
-    uncertainty = torch.zeros((L.shape[0], 6), dtype=torch.float, device="cuda")
+    uncertainty = torch.zeros((L.shape[0], 6), dtype=torch.float, device="cuda")    # N 6
 
-    # 提取协方差矩阵的独立元素
     uncertainty[:, 0] = L[:, 0, 0]
     uncertainty[:, 1] = L[:, 0, 1]
     uncertainty[:, 2] = L[:, 0, 2]
@@ -95,15 +95,15 @@ def strip_lowerdiag(L):
 
 def strip_symmetric(sym):
     """
-    提取协方差矩阵的对称部分
+    提取协方差矩阵的上半对角元素
         sym: 协方差矩阵
-        return: 对称部分
+        return: 上半对角元素
     """
     return strip_lowerdiag(sym)
 
 def build_rotation(r):
     '''
-    从旋转四元数 -> 单位化 -> 3x3的旋转矩阵
+    旋转四元数 -> 单位化 -> 3x3的旋转矩阵
     '''
     norm = torch.sqrt(r[:,0]*r[:,0] + r[:,1]*r[:,1] + r[:,2]*r[:,2] + r[:,3]*r[:,3])
 
@@ -129,20 +129,20 @@ def build_rotation(r):
 
 def build_scaling_rotation(s, r):
     """
-    构建3D高斯模型的尺度-旋转矩阵
-        s: 尺度参数
-        r: 旋转参数
+    构建3D高斯模型的 缩放-旋转矩阵
+        s: 缩放因子, N 3
+        r: 旋转四元素, N 4
         return: 尺度-旋转矩阵
     """
-    L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")   # 初始化尺度矩阵
-    R = build_rotation(r)   # 四元数 -> 旋转矩阵
+    L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")   # 初始化缩放矩阵为0，N 3 3
+    R = build_rotation(r)   # 旋转四元数 -> 旋转矩阵，N 3 3
 
-    # 设置尺度矩阵的对角线元素
+    # 构建缩放矩阵，其对角线元素对应为缩放因子的s1, s2, s3
     L[:,0,0] = s[:,0]
     L[:,1,1] = s[:,1]
     L[:,2,2] = s[:,2]
 
-    L = R @ L   # 应用旋转
+    L = R @ L   # 高斯体的变化：旋转 矩阵乘 缩放
     return L
 
 def safe_state(silent):

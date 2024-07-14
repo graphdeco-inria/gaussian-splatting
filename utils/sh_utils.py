@@ -23,7 +23,7 @@
 
 import torch
 
-C0 = 0.28209479177387814
+C0 = 0.28209479177387814    # 球谐函数直流分量的值，sqrt(1 / (4*pi))，是0阶的球谐函数，即直流分量Y(l=0,m=0)的值
 C1 = 0.4886025119029199
 C2 = [
     1.0925484305920792,
@@ -61,14 +61,14 @@ def eval_sh(deg, sh, dirs):
     Works with torch/np/jnp.
     ... Can be 0 or more batch dimensions.
     Args:
-        deg: int SH deg. Currently, 0-3 supported
-        sh: jnp.ndarray SH coeffs [..., C, (deg + 1) ** 2]
-        dirs: jnp.ndarray unit directions [..., 3]
+        deg: 球谐函数的 阶数，这里可能为 0-3
+        sh:  球谐函数的 系数 [..., C, (deg + 1) ** 2]
+        dirs: 方向值 jnp.ndarray unit directions [..., 3]
     Returns:
         [..., C]
     """
     assert deg <= 4 and deg >= 0
-    coeff = (deg + 1) ** 2
+    coeff = (deg + 1) ** 2  # 球谐函数当前阶数要求的系数 个数
     assert sh.shape[-1] >= coeff
 
     result = C0 * sh[..., 0]
@@ -113,9 +113,9 @@ def eval_sh(deg, sh, dirs):
 
 def RGB2SH(rgb):
     """
-    将RGB颜色值转换为球谐系数C0项的系数
-    :param rgb: RGB颜色值
-    :return: 转换后的球谐系数C0项的系数
+    将RGB颜色值 转换为 球谐系数直流分量的系数
+        rgb: RGB颜色值
+        C0：球谐函数直流分量的值，sqrt(1 / (4*pi))，是0阶的球谐函数，即直流分量Y(l=0,m=0)的值
     """
     return (rgb - 0.5) / C0
 
