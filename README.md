@@ -30,9 +30,20 @@ Abstract: *Radiance Field methods have recently revolutionized novel-view synthe
 </section>
 
 
+
 ## Funding and Acknowledgments
 
 This research was funded by the ERC Advanced grant FUNGRAPH No 788065. The authors are grateful to Adobe for generous donations, the OPAL infrastructure from Université Côte d’Azur and for the HPC resources from GENCI–IDRIS (Grant 2022-AD011013409). The authors thank the anonymous reviewers for their valuable feedback, P. Hedman and A. Tewari for proofreading earlier drafts also T. Müller, A. Yu and S. Fridovich-Keil for helping with the comparisons.
+
+## NEW FEATURES !
+
+We have limited resources for maintaining and updating the code. However, we have added a few new features since the original release that are inspired by some of the excellent work many other researchers have been doing on 3DGS. We will be adding other features within the ability of our resources. 
+
+Update of August 2024:
+We have added/corrected the following features: [Depth regularization](#depth-regularization) for training, [anti aliasing](#anti-aliasing) and [exposure compensation](#exposure-compensation). We have enhanced the SIBR real time viewer by correcting bugs and adding features in the [Top View](#sibr:-top-view) that allows visualization of input and user cameras. Please note that it is currently not possible to use depth regularization with the training speed acceleration since they use different rasterizer versions.
+
+Update of Spring 2024:
+Orange Labs has kindly added [OpenXR support](#openXR-support) for VR viewing. 
 
 ## Step-by-step Tutorial
 
@@ -65,9 +76,8 @@ The codebase has 4 main components:
 
 The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
 
-## New features  [Please check regularly!]
 
-We will be adding several new features soon. In the meantime Orange has kindly added [OpenXR support](#openXR-support) for VR viewing. Please come back soon, we will be adding other features, building among others on recent 3DGS followup papers.
+
 
 ## Optimizer
 
@@ -482,10 +492,61 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
 </details>
 <br>
 
+### Depth regularization
+
+
+Two preprocessing steps are required to enable depth regularization when training a scene:
+  To have better reconstructed scenes we use depth maps as priors during optimization with each input images. It works best on untextured parts ex: roads and can remove floaters. Several papers have used similar ideas to improve various aspects of 3DGS; (e.g. [DepthRegularizedGS](https://robot0321.github.io/DepthRegGS/index.html), [SparseGS](https://formycat.github.io/SparseGS-Real-Time-360-Sparse-View-Synthesis-using-Gaussian-Splatting/), [DNGaussian](https://fictionarry.github.io/DNGaussian/)). The depth regularization we integrated is that used in our [Hierarchical 3DGS](https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/) paper, but applied to the original 3DGS; for some scenes (e.g., the DeepBlending scenes) it improves quality significantly; for others it either makes a small difference or can even be worse. For details statistics please see here: [Stats for depth regularization](results.md).
+1. Depth maps should be generated for each input images, to this effect we suggest using [Depth anything v2](https://github.com/DepthAnything/Depth-Anything-V2?tab=readme-ov-file#usage).
+2. Generate a `depth_params.json` file using:
+    ```
+    python utils/make_depth_scale.py --base_dir <path to colmap> --depths_dir <path to generated depths>
+    ```
+
+A new parameter should be set when training if you want to use depth regularization `-d <path to depth maps>`.
+
+### Exposure compensation
+To compensate for exposure changes in the different input images we optimize an affine transformation for each image just as in [Hierarchical 3dgs](https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/). Add the following parameters to enable it:
+```
+--exposure_lr_init 0.001 --exposure_lr_final 0.0001 --exposure_lr_delay_steps 5000 --exposure_lr_delay_mult 0.001 --train_test_exp
+```
+Again, other excellent papers have used similar ideas e.g. [NeRF-W](https://nerf-w.github.io/), [URF](https://urban-radiance-fields.github.io/).
+
+### Anti aliasing
+We added the EWA Filter from [Mip Splatting](https://niujinshuchong.github.io/mip-splatting/) in our codebase to remove aliasing. Antialiasing is enabled by default, to disable it please do the following:
+1. Comment out `#define DGR_FIX_AA` in `submodules/diff-gaussian-rasterization/cuda_rasterizer/auxiliary.h`.
+2. Re-install the rasterizer in your environment: 
+    ```
+    pip uninstall diff-gaussian-rasterization
+    cd submodules/diff-gaussian-rasterization
+    rm -r build
+    pip install .
+    ```
+
+### SIBR: Top view
+> `Views > Top view`
+
+The `Top view` renders the SfM point cloud in another view with the corresponding input cameras and the `Point view` user camera. This allows visualization of how far the viewer is from the input cameras for example.
+
+It is a 3D view so the user can navigate through it just as in the `Point view` (modes available: FPS, trackball, orbit).
+<!-- _gif showing the top view, showing it is realtime_ -->
+<!-- ![topViewOpen_1.gif](../assets/topViewOpen_1_1709560483017_0.gif) -->
+![top view open](assets/top_view_open.gif)
+
+Options are available to customize this view, meshes can be disabled/enabled and their scales can be modified. 
+<!-- _gif showing different options_ -->
+<!-- ![topViewOptions.gif](../assets/topViewOptions_1709560615266_0.gif) -->
+![top view options](assets/top_view_options.gif)
+A useful additional functionality is to move to the position of an input image, and progressively fade out to the SfM point view in that position (e.g., to verify camera alignment). Views from input cameras can be displayed in the `Top view` (*note that `--images-path` must be set in the command line*). One can snap the `Top view` camera to the closest input camera from the user camera in the `Point view` by clicking `Top view settings > Cameras > Snap to closest`. 
+<!-- _gif showing for a snapped camera the ground truth image with alpha_ -->
+<!-- ![topViewImageAlpha.gif](../assets/topViewImageAlpha_1709560852268_0.gif) -->
+![top view image alpha](assets/top_view_image_alpha.gif)
+
 ### OpenXR support
 
 OpenXR is supported in the branch gaussian_code_release_openxr 
 Within that branch, you can find documentation for VR support [here](https://gitlab.inria.fr/sibr/sibr_core/-/tree/gaussian_code_release_openxr?ref_type=heads).
+
 
 ## FAQ
 - *Where do I get data sets, e.g., those referenced in ```full_eval.py```?* The MipNeRF360 data set is provided by the authors of the original paper on the project site. Note that two of the data sets cannot be openly shared and require you to consult the authors directly. For Tanks&Temples and Deep Blending, please use the download links provided at the top of the page. Alternatively, you may access the cloned data (status: August 2023!) from [HuggingFace](https://huggingface.co/camenduru/gaussian-splatting)

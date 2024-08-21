@@ -11,6 +11,7 @@
 
 import os
 from argparse import ArgumentParser
+import time
 
 mipnerf360_outdoor_scenes = ["bicycle", "flowers", "garden", "stump", "treehill"]
 mipnerf360_indoor_scenes = ["room", "counter", "kitchen", "bonsai"]
@@ -38,18 +39,30 @@ if not args.skip_training or not args.skip_rendering:
 
 if not args.skip_training:
     common_args = " --quiet --eval --test_iterations -1 "
+
+    start_time = time.time()
     for scene in mipnerf360_outdoor_scenes:
         source = args.mipnerf360 + "/" + scene
         os.system("python train.py -s " + source + " -i images_4 -m " + args.output_path + "/" + scene + common_args)
     for scene in mipnerf360_indoor_scenes:
         source = args.mipnerf360 + "/" + scene
         os.system("python train.py -s " + source + " -i images_2 -m " + args.output_path + "/" + scene + common_args)
+    m360_timing = (time.time() - start_time)/60.0
+
+    start_time = time.time()
     for scene in tanks_and_temples_scenes:
         source = args.tanksandtemples + "/" + scene
         os.system("python train.py -s " + source + " -m " + args.output_path + "/" + scene + common_args)
+    tandt_timing = (time.time() - start_time)/60.0
+
+    start_time = time.time()
     for scene in deep_blending_scenes:
         source = args.deepblending + "/" + scene
         os.system("python train.py -s " + source + " -m " + args.output_path + "/" + scene + common_args)
+    db_timing = (time.time() - start_time)/60.0
+
+with open("timing.txt", 'w') as file:
+    file.write(f"m360: {m360_timing} minutes \n tandt: {tandt_timing} minutes \n db: {db_timing} minutes\n")
 
 if not args.skip_rendering:
     all_sources = []
