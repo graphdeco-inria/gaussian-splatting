@@ -78,7 +78,7 @@ class Scene:
             self.gaussians.load_ply(os.path.join(self.model_path,
                                                            "point_cloud",
                                                            "iteration_" + str(self.loaded_iter),
-                                                           "point_cloud.ply"))
+                                                           "point_cloud.ply"), args.train_test_exp)
         else:
             self.gaussians.create_from_pcd(scene_info.point_cloud, scene_info.train_cameras, self.cameras_extent)
 
