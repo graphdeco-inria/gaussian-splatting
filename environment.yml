@@ -15,4 +15,3 @@ dependencies:
   - pip:
     - submodules/diff-gaussian-rasterization
     - submodules/simple-knn
-    - opencv-python
