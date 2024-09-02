@@ -20,7 +20,7 @@ def inverse_sigmoid(x):
 
 def PILtoTorch(pil_image, resolution):
     resized_image_PIL = pil_image.resize(resolution)
-    resized_image = torch.from_numpy(np.array(resized_image_PIL)) / 255.0
+    resized_image = torch.from_numpy(np.array(resized_image_PIL))
     if len(resized_image.shape) == 3:
         return resized_image.permute(2, 0, 1)
     else:
@@ -131,3 +131,12 @@ def safe_state(silent):
     np.random.seed(0)
     torch.manual_seed(0)
     torch.cuda.set_device(torch.device("cuda:0"))
+
+def get_data_dtype(dtype):
+    if dtype == "float32":
+        return torch.float32
+    elif dtype == "float64":
+        return torch.float64
+    elif dtype == "float16":
+        return torch.float16
+    return torch.float32

@@ -92,6 +92,10 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         rotations = rotations,
         cov3D_precomp = cov3D_precomp)
 
+    # after rasterization, we convert the resulting image to the target dtype
+    # The rasterizer expects parameters as float32, so the result is also float32.
+    rendered_image = rendered_image.to(viewpoint_camera.data_dtype)
+
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
     return {"render": rendered_image,
