@@ -16,3 +16,4 @@ dependencies:
     - submodules/diff-gaussian-rasterization
     - submodules/simple-knn
     - opencv-python
+    - joblib
