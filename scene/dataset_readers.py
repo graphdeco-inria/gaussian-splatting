@@ -29,11 +29,11 @@ class CameraInfo(NamedTuple):
     T: np.array
     FovY: np.array
     FovX: np.array
-    image: np.array
     image_path: str
     image_name: str
     width: int
     height: int
+    is_RGBA: bool
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -96,10 +96,9 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
-        image = Image.open(image_path)
 
-        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=image_name, width=width, height=height)
+        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, 
+                              image_path=image_path, image_name=image_name, width=width, height=height, is_RGBA=False)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
@@ -201,20 +200,12 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             image_name = Path(cam_name).stem
             image = Image.open(image_path)
 
-            im_data = np.array(image.convert("RGBA"))
-
-            bg = np.array([1,1,1]) if white_background else np.array([0, 0, 0])
-
-            norm_data = im_data / 255.0
-            arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
-            image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
-
             fovy = focal2fov(fov2focal(fovx, image.size[0]), image.size[1])
             FovY = fovy 
             FovX = fovx
 
-            cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                            image_path=image_path, image_name=image_name, width=image.size[0], height=image.size[1]))
+            cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX,
+                            image_path=image_path, image_name=image_name, width=image.size[0], height=image.size[1], is_RGBA=True))
             
     return cam_infos
 
