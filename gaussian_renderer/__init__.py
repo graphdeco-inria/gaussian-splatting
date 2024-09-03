@@ -15,7 +15,7 @@ from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianR
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 
-def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None):
+def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None, return_accumulation=False):
     """
     Render the scene. 
     
@@ -32,7 +32,6 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     # Set up rasterization configuration
     tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
     tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
-
     raster_settings = GaussianRasterizationSettings(
         image_height=int(viewpoint_camera.image_height),
         image_width=int(viewpoint_camera.image_width),
@@ -45,7 +44,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         sh_degree=pc.active_sh_degree,
         campos=viewpoint_camera.camera_center,
         prefiltered=False,
-        debug=pipe.debug
+        debug=pipe.debug,
+        return_accumulation=return_accumulation
     )
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
@@ -82,7 +82,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-    rendered_image, radii = rasterizer(
+    rendered_image, radii, accumulation = rasterizer(
         means3D = means3D,
         means2D = means2D,
         shs = shs,
@@ -94,7 +94,10 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
-    return {"render": rendered_image,
-            "viewspace_points": screenspace_points,
-            "visibility_filter" : radii > 0,
-            "radii": radii}
+    out = {"render": rendered_image,
+           "viewspace_points": screenspace_points,
+           "visibility_filter" : radii > 0,
+           "radii": radii}
+    if raster_settings.return_accumulation:
+        out["accumulation"] = accumulation
+    return out
