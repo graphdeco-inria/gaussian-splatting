@@ -9,7 +9,7 @@ dependencies:
   - python=3.7.13
   - pip=22.3.1
   - pytorch=1.12.1
-  - torchaudio=0.12.1
+  - torchmetrics
   - torchvision=0.13.1
   - tqdm
   - pip:
