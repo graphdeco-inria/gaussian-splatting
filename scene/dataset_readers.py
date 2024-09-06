@@ -15,7 +15,7 @@ from PIL import Image
 from typing import NamedTuple
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, \
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
-from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
+from utils.graphics_utils import getWorld2View2, focal2sidefov, focal2fov, fov2focal
 import numpy as np
 import json
 from pathlib import Path
@@ -27,8 +27,10 @@ class CameraInfo(NamedTuple):
     uid: int
     R: np.array
     T: np.array
-    FovY: np.array
-    FovX: np.array
+    FovYtop: np.array
+    FovYbottom: np.array
+    FovXleft: np.array
+    FovXright: np.array
     image: np.array
     image_path: str
     image_name: str
@@ -82,15 +84,23 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         R = np.transpose(qvec2rotmat(extr.qvec))
         T = np.array(extr.tvec)
 
+        cx = intr.params[-2]
+        cy = intr.params[-1]
+
         if intr.model=="SIMPLE_PINHOLE":
             focal_length_x = intr.params[0]
-            FovY = focal2fov(focal_length_x, height)
-            FovX = focal2fov(focal_length_x, width)
+            focal_length_y = intr.params[0]
+            FovYtop = focal2sidefov(focal_length_y, -cy) # usually negative
+            FovYbottom = focal2sidefov(focal_length_y, height - cy) # usually positive
+            FovXleft = focal2sidefov(focal_length_x, -cx) # usually negative
+            FovXright = focal2sidefov(focal_length_x, width - cx) # usually positive
         elif intr.model=="PINHOLE":
             focal_length_x = intr.params[0]
             focal_length_y = intr.params[1]
-            FovY = focal2fov(focal_length_y, height)
-            FovX = focal2fov(focal_length_x, width)
+            FovYtop = focal2sidefov(focal_length_y, -cy) # usually negative
+            FovYbottom = focal2sidefov(focal_length_y, height - cy) # usually positive
+            FovXleft = focal2sidefov(focal_length_x, -cx) # usually negative
+            FovXright = focal2sidefov(focal_length_x, width - cx) # usually positive
         else:
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
@@ -98,7 +108,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
 
-        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
+        cam_info = CameraInfo(uid=uid, R=R, T=T, FovYtop=FovYtop, FovYbottom=FovYbottom, FovXleft=FovXleft, FovXright=FovXright, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
@@ -181,7 +191,6 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
 
     with open(os.path.join(path, transformsfile)) as json_file:
         contents = json.load(json_file)
-        fovx = contents["camera_angle_x"]
 
         frames = contents["frames"]
         for idx, frame in enumerate(frames):
@@ -209,13 +218,21 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
             image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
 
-            fovy = focal2fov(fov2focal(fovx, image.size[0]), image.size[1])
-            FovY = fovy 
-            FovX = fovx
+            cx = frame["cx"] if "cx" in frame else contents["cx"] if "cx" in contents else image.size[0] / 2
+            cy = frame["cy"] if "cy" in frame else contents["cy"] if "cy" in contents else image.size[1] / 2
+            fl_y = frame["fl_y"] if "fl_y" in frame else contents["fl_y"] if "fl_y" in contents else None
+            fl_x = frame["fl_x"] if "fl_x" in frame else contents["fl_x"] if "fl_x" in contents else fl_y
+            fovx = frame["camera_angle_x"] if "camera_angle_x" in frame else contents["camera_angle_x"] if "camera_angle_x" in contents else None
+            fovy = frame["camera_angle_y"] if "camera_angle_y" in frame else contents["camera_angle_y"] if "camera_angle_y" in contents else focal2fov(fov2focal(fovx, image.size[0]), image.size[1])
+            # priority is given to ("fl_x", "cx") over "camera_angle_x" because it can be frame specific:
+            fovYtop = focal2sidefov(fl_y, -cy) if fl_y else focal2sidefov(fov2focal(fovy, image.size[1]), -cy) # usually negative
+            fovYbottom = focal2sidefov(fl_y, image.size[1] - cy) if fl_y else focal2sidefov(fov2focal(fovy, image.size[1]), image.size[1] - cy) # usually positive
+            fovXleft = focal2sidefov(fl_x, -cx) if fl_x else focal2sidefov(fov2focal(fovx, image.size[0]), -cx) # usually negative
+            fovXright = focal2sidefov(fl_x, image.size[0] - cx) if fl_x else focal2sidefov(fov2focal(fovx, image.size[0]), image.size[0] - cx) # usually positive
 
-            cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
+            cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovYtop=fovYtop, FovYbottom=fovYbottom, FovXleft=fovXleft, FovXright=fovXright, image=image,
                             image_path=image_path, image_name=image_name, width=image.size[0], height=image.size[1]))
-            
+
     return cam_infos
 
 def readNerfSyntheticInfo(path, white_background, eval, extension=".png"):

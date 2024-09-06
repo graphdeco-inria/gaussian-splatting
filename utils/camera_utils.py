@@ -13,6 +13,7 @@ from scene.cameras import Camera
 import numpy as np
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
+import math
 
 WARNED = False
 
@@ -47,7 +48,7 @@ def loadCam(args, id, cam_info, resolution_scale):
         loaded_mask = resized_image_rgb[3:4, ...]
 
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
-                  FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
+                  FovXleft=cam_info.FovXleft, FovXright=cam_info.FovXright, FovYtop=cam_info.FovYtop, FovYbottom=cam_info.FovYbottom,
                   image=gt_image, gt_alpha_mask=loaded_mask,
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device)
 
@@ -76,7 +77,7 @@ def camera_to_JSON(id, camera : Camera):
         'height' : camera.height,
         'position': pos.tolist(),
         'rotation': serializable_array_2d,
-        'fy' : fov2focal(camera.FovY, camera.height),
-        'fx' : fov2focal(camera.FovX, camera.width)
+        'fy' : camera.height / (2 * math.tan((camera.FovYbottom - camera.FovYtop) / 2)),
+        'fx' : camera.width / (2 * math.tan((camera.FovXright - camera.FovXleft) / 2))
     }
     return camera_entry
