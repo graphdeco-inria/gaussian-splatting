@@ -513,15 +513,7 @@ To compensate for exposure changes in the different input images we optimize an 
 Again, other excellent papers have used similar ideas e.g. [NeRF-W](https://nerf-w.github.io/), [URF](https://urban-radiance-fields.github.io/).
 
 ### Anti aliasing
-We added the EWA Filter from [Mip Splatting](https://niujinshuchong.github.io/mip-splatting/) in our codebase to remove aliasing. Antialiasing is enabled by default, to disable it please do the following:
-1. Comment out `#define DGR_FIX_AA` in `submodules/diff-gaussian-rasterization/cuda_rasterizer/auxiliary.h`.
-2. Re-install the rasterizer in your environment: 
-    ```
-    pip uninstall diff-gaussian-rasterization
-    cd submodules/diff-gaussian-rasterization
-    rm -r build
-    pip install .
-    ```
+We added the EWA Filter from [Mip Splatting](https://niujinshuchong.github.io/mip-splatting/) in our codebase to remove aliasing. It is disabled by default but you can enable it by adding `--antialiasing` when training on a scene using `train.py` or rendering using `render.py`. 
 
 ### SIBR: Top view
 > `Views > Top view`
