@@ -56,6 +56,16 @@ class Camera(nn.Module):
         self.full_proj_transform = (self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
 
+    def __repr__(self):
+        format_string = self.__class__.__name__ + '()\n'
+        for k, v in self.__dict__.items():
+            if torch.is_tensor(v) and v.numel() > 16:
+                format_string +=f"  {k}:\t{tuple(v.shape)}\n"
+            else:
+                format_string += f"{k}:\t{v}\n"
+        return format_string
+
+
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):
         self.image_width = width
