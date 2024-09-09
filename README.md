@@ -513,7 +513,8 @@ To compensate for exposure changes in the different input images we optimize an 
 Again, other excellent papers have used similar ideas e.g. [NeRF-W](https://nerf-w.github.io/), [URF](https://urban-radiance-fields.github.io/).
 
 ### Anti aliasing
-We added the EWA Filter from [Mip Splatting](https://niujinshuchong.github.io/mip-splatting/) in our codebase to remove aliasing. It is disabled by default but you can enable it by adding `--antialiasing` when training on a scene using `train.py` or rendering using `render.py`. 
+We added the EWA Filter from [Mip Splatting](https://niujinshuchong.github.io/mip-splatting/) in our codebase to remove aliasing. It is disabled by default but you can enable it by adding `--antialiasing` when training on a scene using `train.py` or rendering using `render.py`. Antialiasing can be toggled in the SIBR viewer, it is disabled by default but you should enable it when viewing a scene trained using `--antialiasing`.
+![aa](/assets/aa_onoff.gif)
 
 ### SIBR: Top view
 > `Views > Top view`
@@ -536,7 +537,7 @@ A useful additional functionality is to move to the position of an input image, 
 
 ### OpenXR support
 
-OpenXR is supported in the branch gaussian_code_release_openxr 
+OpenXR is supported in the branch `gaussian_code_release_openxr` 
 Within that branch, you can find documentation for VR support [here](https://gitlab.inria.fr/sibr/sibr_core/-/tree/gaussian_code_release_openxr?ref_type=heads).
 
 
