@@ -262,8 +262,8 @@ def readCamerasFromTransforms(path, transformsfile, depths_folder, white_backgro
             FovY = fovy 
             FovX = fovx
 
-            depth_path = os.path.join(depths_folder, f"{image_name}_depth_0002.png") if depths_folder != "" else ""
-            
+            depth_path = os.path.join(depths_folder, f"{image_name}.png") if depths_folder != "" else ""
+
             cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX,
                             image_path=image_path, image_name=image_name,
                             width=image.size[0], height=image.size[1], depth_path=depth_path, depth_params=None, is_test=is_test))
