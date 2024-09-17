@@ -40,10 +40,10 @@ This research was funded by the ERC Advanced grant FUNGRAPH No 788065. The autho
 We have limited resources for maintaining and updating the code. However, we have added a few new features since the original release that are inspired by some of the excellent work many other researchers have been doing on 3DGS. We will be adding other features within the ability of our resources. 
 
 Update of August 2024:
-We have added/corrected the following features: [Depth regularization](#depth-regularization) for training, [anti aliasing](#anti-aliasing) and [exposure compensation](#exposure-compensation). We have enhanced the SIBR real time viewer by correcting bugs and adding features in the [Top View](#sibr:-top-view) that allows visualization of input and user cameras. Please note that it is currently not possible to use depth regularization with the training speed acceleration since they use different rasterizer versions.
+We have added/corrected the following features: [Depth regularization](#depth-regularization) for training, [anti-aliasing](#anti-aliasing) and [exposure compensation](#exposure-compensation). We have enhanced the SIBR real time viewer by correcting bugs and adding features in the [Top View](#sibr-top-view) that allows visualization of input and user cameras. Please note that it is currently not possible to use depth regularization with the training speed acceleration since they use different rasterizer versions.
 
 Update of Spring 2024:
-Orange Labs has kindly added [OpenXR support](#openXR-support) for VR viewing. 
+Orange Labs has kindly added [OpenXR support](#openxr-support) for VR viewing. 
 
 ## Step-by-step Tutorial
 
@@ -497,7 +497,9 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
 
 Two preprocessing steps are required to enable depth regularization when training a scene:
   To have better reconstructed scenes we use depth maps as priors during optimization with each input images. It works best on untextured parts ex: roads and can remove floaters. Several papers have used similar ideas to improve various aspects of 3DGS; (e.g. [DepthRegularizedGS](https://robot0321.github.io/DepthRegGS/index.html), [SparseGS](https://formycat.github.io/SparseGS-Real-Time-360-Sparse-View-Synthesis-using-Gaussian-Splatting/), [DNGaussian](https://fictionarry.github.io/DNGaussian/)). The depth regularization we integrated is that used in our [Hierarchical 3DGS](https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/) paper, but applied to the original 3DGS; for some scenes (e.g., the DeepBlending scenes) it improves quality significantly; for others it either makes a small difference or can even be worse. For details statistics please see here: [Stats for depth regularization](results.md).
-1. Depth maps should be generated for each input images, to this effect we suggest using [Depth anything v2](https://github.com/DepthAnything/Depth-Anything-V2?tab=readme-ov-file#usage).
+
+When training on a synthetic dataset, depth maps can be produced and they do not require further processing to be used in our method. For real world datasets please do the following: 
+1. Get depth maps for each input images, to this effect we suggest using [Depth anything v2](https://github.com/DepthAnything/Depth-Anything-V2?tab=readme-ov-file#usage).
 2. Generate a `depth_params.json` file using:
     ```
     python utils/make_depth_scale.py --base_dir <path to colmap> --depths_dir <path to generated depths>
@@ -512,9 +514,10 @@ To compensate for exposure changes in the different input images we optimize an 
 ```
 Again, other excellent papers have used similar ideas e.g. [NeRF-W](https://nerf-w.github.io/), [URF](https://urban-radiance-fields.github.io/).
 
-### Anti aliasing
+### Anti-aliasing
 We added the EWA Filter from [Mip Splatting](https://niujinshuchong.github.io/mip-splatting/) in our codebase to remove aliasing. It is disabled by default but you can enable it by adding `--antialiasing` when training on a scene using `train.py` or rendering using `render.py`. Antialiasing can be toggled in the SIBR viewer, it is disabled by default but you should enable it when viewing a scene trained using `--antialiasing`.
 ![aa](/assets/aa_onoff.gif)
+*this scene was trained using `--antialiasing`*.
 
 ### SIBR: Top view
 > `Views > Top view`
