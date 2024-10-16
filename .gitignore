@@ -6,3 +6,5 @@ diff_rasterization/diff_rast.egg-info
 diff_rasterization/dist
 tensorboard_3d
 screenshots
+depth_maps
+projected_depth

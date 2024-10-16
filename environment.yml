@@ -1,4 +1,4 @@
-name: gaussian_splatting
+name: depth-pruned-gaussian-splatting
 channels:
   - pytorch
   - conda-forge

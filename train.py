@@ -107,8 +107,21 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
+                if iteration == opt.iterations and dataset.depth_prune:
+                    print("Initializing depth maps")
+                    scene.initialize_depth_maps()
+                    print("Pruning gaussians by depth")
+                    num_gaussians = gaussians.num_gaussians
+                    all_cams = scene.getTrainCameras().copy() + scene.getTestCameras().copy()
+                    gaussians.compute_average_depths(all_cams)
+                    for cam in all_cams:
+                        gaussians.visualize_gaussians_on_image(cam, f'before_prune_{cam.image_name}')
+                    gaussians.filter_gaussians_by_depth(0.3)
+                    print(f"Pruned {num_gaussians - gaussians.num_gaussians} gaussians")
+                    scene.save(iteration)
+                    return
                 scene.save(iteration)
-
+            
             # Densification
             if iteration < opt.densify_until_iter:
                 # Keep track of max radii in image-space for pruning

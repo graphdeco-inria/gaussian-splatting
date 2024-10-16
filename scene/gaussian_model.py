@@ -14,6 +14,8 @@ import numpy as np
 from utils.general_utils import inverse_sigmoid, get_expon_lr_func, build_rotation
 from torch import nn
 import os
+import cv2
+from scene.cameras import Camera
 from utils.system_utils import mkdir_p
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import RGB2SH
@@ -56,6 +58,7 @@ class GaussianModel:
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
+        self.average_depth = torch.empty(0)
         self.setup_functions()
 
     def capture(self):
@@ -103,6 +106,10 @@ class GaussianModel:
     @property
     def get_xyz(self):
         return self._xyz
+    
+    @property
+    def num_gaussians(self):
+        return self._xyz.shape[0]
     
     @property
     def get_features(self):
@@ -289,7 +296,7 @@ class GaussianModel:
         return optimizable_tensors
 
     def prune_points(self, mask):
-        valid_points_mask = ~mask
+        valid_points_mask = ~mask # mask was True for points to be pruned
         optimizable_tensors = self._prune_optimizer(valid_points_mask)
 
         self._xyz = optimizable_tensors["xyz"]
@@ -405,3 +412,119 @@ class GaussianModel:
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
+
+    def project_gaussians(self, camera: Camera):
+        """
+        Projects Gaussians into image space using the camera's view and projection matrices.
+        """
+        positions = self.get_xyz
+        N = positions.shape[0]
+        full_proj_transform = camera.full_proj_transform  # [4, 4]
+
+        positions_h = positions @ full_proj_transform[:3, :3].T + full_proj_transform[3, :3]  # [N, 3]
+        w = full_proj_transform[3, 3]
+        positions_clip = positions_h / w
+
+        x_ndc = positions_clip[:, 0]
+        y_ndc = positions_clip[:, 1]
+
+        x = (x_ndc + 1.0) * 0.5 * (camera.image_width - 1)
+        y = (y_ndc + 1.0) * 0.5 * (camera.image_height - 1)
+
+        pixel_coords = torch.stack([x, y], dim=1)  # [N, 2]
+        
+        return pixel_coords 
+
+    def compute_average_depths(self, cameras, threshold = 0.8):
+        """
+        Computes the average depth of the Gaussians in the camera's view space.
+        """
+        N = self.get_xyz.shape[0]
+        device = self.get_xyz.device
+        total_depth = torch.zeros(N, device=device)
+        count = torch.zeros(N, device=device)
+
+        for camera in cameras:
+            pixel_coords = self.project_gaussians(camera)  # [N, 2]
+            depths = camera.get_depths_from_depth_map(pixel_coords)  # [N]
+
+            valid_mask = ~torch.isnan(depths)
+            
+            if valid_mask.any():
+                adjusted_depths = torch.where(depths > threshold, torch.tensor(1.0, device=device), depths)
+
+                total_depth[valid_mask] += adjusted_depths[valid_mask]
+                count[valid_mask] += 1
+
+        average_depth = torch.full((N,), float(1), device=device)
+        nonzero_mask = count > 0
+        average_depth[nonzero_mask] = total_depth[nonzero_mask] / count[nonzero_mask]
+        self.average_depth = average_depth
+
+    def filter_gaussians_by_depth(self, depth_threshold):
+        """
+        Filter the Gaussians based on the depths on their projection onto the depth map.
+        """
+        prune_depth_mask = ~torch.isnan(self.average_depth) & (self.average_depth < depth_threshold)
+
+        if prune_depth_mask.sum() == 0:
+            print("No Gaussians to prune.")
+            return
+        
+        if prune_depth_mask.sum() == self.get_xyz.shape[0]:
+            raise ValueError("All Gaussians are being pruned. Please adjust the depth threshold.")
+
+        self.prune_points(prune_depth_mask)
+
+    def visualize_gaussians_on_image(self, camera: Camera, image_name: str):
+        """
+        Visualize Gaussians projected onto a camera's image, colored based on average depth.
+        """
+        if not hasattr(self, 'average_depth') or self.average_depth is None:
+            raise ValueError("average_depth is not computed. Please run compute_average_depths(cameras) first.")
+
+        pixel_coords = self.project_gaussians(camera)
+        pixel_coords = pixel_coords.detach().cpu().numpy()
+        avg_depths = self.average_depth.detach().cpu().numpy()
+        valid_avg_depths = avg_depths[~np.isnan(avg_depths)]
+        if valid_avg_depths.size == 0:
+            raise ValueError("No valid average depths found.")
+
+        depth_min = valid_avg_depths.min()
+        depth_max = valid_avg_depths.max()
+        depth_range = depth_max - depth_min
+
+        avg_depths_clean = np.copy(avg_depths)
+        avg_depths_clean[np.isnan(avg_depths)] = depth_max
+
+        normalized_depths = (avg_depths_clean - depth_min) / (depth_range + 1e-8)
+        normalized_depths = np.clip(normalized_depths, 0, 1)
+
+        colors = (1 - normalized_depths) * 255
+        colors = colors.astype(np.uint8)
+
+        image_tensor = camera.original_image.detach().cpu()  # Shape: [C, H, W]
+        image_np = image_tensor.permute(1, 2, 0).numpy()
+        image_np = np.clip(image_np * 255, 0, 255).astype(np.uint8)
+
+        if image_np.shape[2] == 1:
+            image_np = cv2.cvtColor(image_np, cv2.COLOR_GRAY2BGR)
+        elif image_np.shape[2] == 3:
+            image_np = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+        else:
+            raise ValueError(f"Unexpected number of channels in image: {image_np.shape[2]}")
+
+        image_height, image_width = image_np.shape[:2]
+        image_with_projections = image_np.copy()
+
+        x_coords = np.round(pixel_coords[:, 0]).astype(np.int32)
+        y_coords = np.round(pixel_coords[:, 1]).astype(np.int32)
+
+        for x, y, color in zip(x_coords, y_coords, colors):
+            if 0 <= x < image_width and 0 <= y < image_height:
+                cv2.circle(image_with_projections, (x, y), radius=2, color=(int(color), int(color), int(color)), thickness=-1)
+
+        # Save
+        os.makedirs('projected_depth', exist_ok=True)
+        output_path = f'projected_depth/{image_name}_gaussian_depth.png'
+        cv2.imwrite(output_path, image_with_projections)

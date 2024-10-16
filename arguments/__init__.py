@@ -47,6 +47,7 @@ class ParamGroup:
 class ModelParams(ParamGroup): 
     def __init__(self, parser, sentinel=False):
         self.sh_degree = 3
+        self.depth_prune = False
         self._source_path = ""
         self._model_path = ""
         self._images = "images"

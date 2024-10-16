@@ -12,11 +12,13 @@
 import os
 import random
 import json
+import torch
 from utils.system_utils import searchForMaxIteration
 from scene.dataset_readers import sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
 from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
+from utils.depth_map import generate_depth_map_from_tensor
 
 class Scene:
 
@@ -91,3 +93,21 @@ class Scene:
 
     def getTestCameras(self, scale=1.0):
         return self.test_cameras[scale]
+    
+    def initialize_depth_maps(self):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model_type = 'DPT_Large'  # or 'MiDaS_small' for faster processing
+        depth_model = torch.hub.load('intel-isl/MiDaS', model_type, trust_repo=True)
+        depth_model.to(device)
+        depth_model.eval()
+
+        if model_type in ['DPT_Large', 'DPT_Hybrid']:
+            transforms = torch.hub.load('intel-isl/MiDaS', 'transforms')
+            transform = transforms.dpt_transform
+        else:
+            transforms = torch.hub.load('intel-isl/MiDaS', 'transforms')
+            transform = transforms.small_transform
+
+        all_cameras = self.getTrainCameras().copy() + self.getTestCameras().copy()
+        for cam in all_cameras:
+            cam.depth_map = generate_depth_map_from_tensor(cam.original_image, depth_model, transform, device, cam.image_name)
