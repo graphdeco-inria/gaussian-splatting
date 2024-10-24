@@ -37,12 +37,15 @@ This research was funded by the ERC Advanced grant FUNGRAPH No 788065. The autho
 
 ## NEW FEATURES !
 
-We have limited resources for maintaining and updating the code. However, we have added a few new features since the original release that are inspired by some of the excellent work many other researchers have been doing on 3DGS. We will be adding other features within the ability of our resources. 
+We have limited resources for maintaining and updating the code. However, we have added a few new features since the original release that are inspired by some of the excellent work many other researchers have been doing on 3DGS. We will be adding other features within the ability of our resources.
 
-Update of August 2024:
-We have added/corrected the following features: [Depth regularization](#depth-regularization) for training, [anti-aliasing](#anti-aliasing) and [exposure compensation](#exposure-compensation). We have enhanced the SIBR real time viewer by correcting bugs and adding features in the [Top View](#sibr-top-view) that allows visualization of input and user cameras. Please note that it is currently not possible to use depth regularization with the training speed acceleration since they use different rasterizer versions.
+**Update of October 2024**: We integrated [training speed acceleration](#training-speed-acceleration) and made it compatible with [depth regularization](#depth-regularization), [anti-aliasing](#anti-aliasing) and [exposure compensation](#exposure-compensation).
 
-Update of Spring 2024:
+
+**Update of August 2024**:
+We have added/corrected the following features: [depth regularization](#depth-regularization) for training, [anti-aliasing](#anti-aliasing) and [exposure compensation](#exposure-compensation). We have enhanced the SIBR real time viewer by correcting bugs and adding features in the [Top View](#sibr-top-view) that allows visualization of input and user cameras. Please note that it is currently not possible to use depth regularization with the training speed acceleration since they use different rasterizer versions.
+
+**Update of Spring 2024**:
 Orange Labs has kindly added [OpenXR support](#openxr-support) for VR viewing. 
 
 ## Step-by-step Tutorial
@@ -492,11 +495,34 @@ python convert.py -s <location> --skip_matching [--resize] #If not resizing, Ima
 </details>
 <br>
 
+### Training speed acceleration
+
+We integrated the drop-in replacements from [Taming-3dgs](https://humansensinglab.github.io/taming-3dgs/)<sup>1</sup> with [fused ssim](https://github.com/rahul-goel/fused-ssim/tree/main) into the original codebase to speed up training times. Once installed, the accelerated rasterizer delivers a **$\times$ 1.6 training time speedup** using `--optimizer_type default` and a **$\times$ 2.7 training time speedup** using `--optimizer_type sparse_adam`.
+
+To get faster training times you must first install the accelerated rasterizer to your environment:
+
+```bash
+pip uninstall diff-gaussian-rasterization -y
+cd submodules/diff-gaussian-rasterization
+rm -r build
+git checkout 3dgs_accel
+pip install .
+```
+
+Then you can add the following parameter to use the sparse adam optimizer when running `train.py`:
+
+```bash
+--optimizer_type sparse_adam
+```
+
+*Note that this custom rasterizer has a different behaviour than the original version, for more details on training times please see [stats for training times](results.md/#training-times-comparisons)*.
+
+*1. Mallick and Goel, et al. ‘Taming 3DGS: High-Quality Radiance Fields with Limited Resources’. SIGGRAPH Asia 2024 Conference Papers, 2024, https://doi.org/10.1145/3680528.3687694, [github](https://github.com/humansensinglab/taming-3dgs)*
+
+
 ### Depth regularization
 
-
-Two preprocessing steps are required to enable depth regularization when training a scene:
-  To have better reconstructed scenes we use depth maps as priors during optimization with each input images. It works best on untextured parts ex: roads and can remove floaters. Several papers have used similar ideas to improve various aspects of 3DGS; (e.g. [DepthRegularizedGS](https://robot0321.github.io/DepthRegGS/index.html), [SparseGS](https://formycat.github.io/SparseGS-Real-Time-360-Sparse-View-Synthesis-using-Gaussian-Splatting/), [DNGaussian](https://fictionarry.github.io/DNGaussian/)). The depth regularization we integrated is that used in our [Hierarchical 3DGS](https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/) paper, but applied to the original 3DGS; for some scenes (e.g., the DeepBlending scenes) it improves quality significantly; for others it either makes a small difference or can even be worse. For details statistics please see here: [Stats for depth regularization](results.md).
+To have better reconstructed scenes we use depth maps as priors during optimization with each input images. It works best on untextured parts ex: roads and can remove floaters. Several papers have used similar ideas to improve various aspects of 3DGS; (e.g. [DepthRegularizedGS](https://robot0321.github.io/DepthRegGS/index.html), [SparseGS](https://formycat.github.io/SparseGS-Real-Time-360-Sparse-View-Synthesis-using-Gaussian-Splatting/), [DNGaussian](https://fictionarry.github.io/DNGaussian/)). The depth regularization we integrated is that used in our [Hierarchical 3DGS](https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/) paper, but applied to the original 3DGS; for some scenes (e.g., the DeepBlending scenes) it improves quality significantly; for others it either makes a small difference or can even be worse. For example results showing the potential benefit and statistics on quality please see here: [Stats for depth regularization](results.md).
 
 When training on a synthetic dataset, depth maps can be produced and they do not require further processing to be used in our method. For real world datasets please do the following: 
 1. Get depth maps for each input images, to this effect we suggest using [Depth anything v2](https://github.com/DepthAnything/Depth-Anything-V2?tab=readme-ov-file#usage).
@@ -508,7 +534,11 @@ When training on a synthetic dataset, depth maps can be produced and they do not
 A new parameter should be set when training if you want to use depth regularization `-d <path to depth maps>`.
 
 ### Exposure compensation
-To compensate for exposure changes in the different input images we optimize an affine transformation for each image just as in [Hierarchical 3dgs](https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/). Add the following parameters to enable it:
+To compensate for exposure changes in the different input images we optimize an affine transformation for each image just as in [Hierarchical 3dgs](https://repo-sam.inria.fr/fungraph/hierarchical-3d-gaussians/).  
+
+This can greatly improve reconstruction results for "in the wild" captures, e.g., with a smartphone when the exposure setting of the camera is not fixed. For example results showing the potential benefit and statistics on quality please see here: [Stats for exposure compensation](results.md).
+
+Add the following parameters to enable it:
 ```
 --exposure_lr_init 0.001 --exposure_lr_final 0.0001 --exposure_lr_delay_steps 5000 --exposure_lr_delay_mult 0.001 --train_test_exp
 ```
