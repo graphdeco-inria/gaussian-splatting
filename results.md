@@ -11,7 +11,7 @@ We evaluated the impact of the features we added on MipNeRF360, Tanks&Temples an
 
 <br>
 
-![nodepth/depth](assets/Depth_comparison.png)
+![nodepth/depth](assets/depth_comparison.png)
 
 ### SSIM
 ![all results SSIM](assets/charts/base_SSIM.png)
