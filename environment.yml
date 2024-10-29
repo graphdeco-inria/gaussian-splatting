@@ -15,5 +15,6 @@ dependencies:
   - pip:
     - submodules/diff-gaussian-rasterization
     - submodules/simple-knn
+    - submodules/fused_ssim
     - opencv-python
     - joblib
