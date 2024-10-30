@@ -280,7 +280,7 @@ python full_eval.py -m <directory with evaluation images>/garden ... --skip_trai
 
 <details>
 <summary><span style="font-weight: bold;">Command Line Arguments for full_eval.py</span></summary>
-  
+
   #### --skip_training
   Flag to skip training stage.
   #### --skip_rendering
@@ -318,6 +318,8 @@ We provide pre-built binaries for Windows [here](https://repo-sam.inria.fr/fungr
 ### Installation from Source
 If you cloned with submodules (e.g., using ```--recursive```), the source code for the viewers is found in ```SIBR_viewers```. The network viewer runs within the SIBR framework for Image-based Rendering applications.
 
+Note that if you encounter an error when compiling using gcc-13, try to comment the method `getModeIndice` on line 938 of the file `VideoUtils.hpp`.
+
 #### Windows
 CMake should take care of your dependencies.
 ```shell
@@ -336,7 +338,7 @@ sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libo
 cd SIBR_viewers
 cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
 cmake --build build -j24 --target install
-``` 
+```
 
 #### Ubuntu 20.04
 Backwards compatibility with Focal Fossa is not fully tested, but building SIBR with CMake should still work after invoking
@@ -344,7 +346,21 @@ Backwards compatibility with Focal Fossa is not fully tested, but building SIBR 
 git checkout fossa_compatibility
 ```
 
+#### Arch Linux
+
+```shell
+# Dependencies
+sudo pacman -S base-devel cmake glew assimp boost gtk3 opencv glfw-x11 ffmpeg4.4 hdf5 fmt vtk eigen libxxf86vm embree3
+# Project setup
+cd SIBR_viewers
+# export CC=$(which gcc-12) CXX=$(which g++-12) # optional, gcc-12 will ignore the error mentioned in section #[Installation from Source]
+export CMAKE_PREFIX_PATH="/usr/lib/ffmpeg4.4:/usr/include/ffmpeg4.4" # use ffmpeg4.4
+cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
+cmake --build build -j24 --target install
+```
+
 ### Navigation in SIBR Viewers
+
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D, Q, E``` for camera translation and ```I, K, J, L, U, O``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
 
 ### Running the Network Viewer
