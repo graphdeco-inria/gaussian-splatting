@@ -19,7 +19,7 @@ from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
 import numpy as np
 import json
 from pathlib import Path
-from plyfile import PlyData, PlyElement
+import meshio
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 
@@ -118,29 +118,31 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
     return cam_infos
 
 def fetchPly(path):
-    plydata = PlyData.read(path)
-    vertices = plydata['vertex']
-    positions = np.vstack([vertices['x'], vertices['y'], vertices['z']]).T
-    colors = np.vstack([vertices['red'], vertices['green'], vertices['blue']]).T / 255.0
-    normals = np.vstack([vertices['nx'], vertices['ny'], vertices['nz']]).T
+    vertices = meshio.read(path)
+    positions = vertices.points
+    colors = np.vstack(
+        [
+            vertices.point_data['red'].astype(np.uint8),
+            vertices.point_data['green'].astype(np.uint8),
+            vertices.point_data['blue'].astype(np.uint8)
+        ]).T / 255.0
+    
+    normals = np.vstack([vertices.point_data['nx'], vertices.point_data['ny'], vertices.point_data['nz']]).T
     return BasicPointCloud(points=positions, colors=colors, normals=normals)
 
 def storePly(path, xyz, rgb):
-    # Define the dtype for the structured array
-    dtype = [('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
-            ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),
-            ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
-    
     normals = np.zeros_like(xyz)
+    point_data = {
+        "red": rgb[..., 0].astype(np.uint8),  
+        "green": rgb[..., 1].astype(np.uint8),  
+        "blue": rgb[..., 2].astype(np.uint8),  
+        "nx": normals[..., 0].astype(np.float32),  
+        "ny": normals[..., 1].astype(np.float32),  
+        "nz": normals[..., 2].astype(np.float32),  
+    }
 
-    elements = np.empty(xyz.shape[0], dtype=dtype)
-    attributes = np.concatenate((xyz, normals, rgb), axis=1)
-    elements[:] = list(map(tuple, attributes))
-
-    # Create the PlyData object and write to file
-    vertex_element = PlyElement.describe(elements, 'vertex')
-    ply_data = PlyData([vertex_element])
-    ply_data.write(path)
+    mesh = meshio.Mesh(points=xyz.astype(np.float32), point_data=point_data, cells=[])
+    meshio.write(path, mesh)
 
 def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8):
     try:
