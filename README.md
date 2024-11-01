@@ -1,3 +1,4 @@
+# ** NeurIPS 2024 SPOTLIGHT **
 # 3D Gaussian Splatting as Markov Chain Monte Carlo
 
 [![button](https://img.shields.io/badge/Project%20Website-orange?style=for-the-badge)](https://ubc-vision.github.io/3dgs-mcmc/)
