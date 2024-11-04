@@ -261,6 +261,10 @@ python metrics.py -m <path to pre-trained model>
 
   #### --model_paths / -m 
   Space-separated list of model paths for which metrics should be computed.
+  #### --eval_dir_name / -e
+  Name of the folder contains render results at <model_paths> / <eval_dir_name>. (```test``` by default)
+  #### --run_iter
+  If set, read image iteratively to save VRAM but take more time. 
 </details>
 <br>
 
