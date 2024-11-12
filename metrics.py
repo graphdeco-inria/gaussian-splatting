@@ -33,7 +33,7 @@ def readImages(renders_dir, gt_dir):
         image_names.append(fname)
     return renders, gts, image_names
 
-def evaluate(model_paths):
+def evaluate(model_paths, eval_dir):
 
     full_dict = {}
     per_view_dict = {}
@@ -49,7 +49,7 @@ def evaluate(model_paths):
             full_dict_polytopeonly[scene_dir] = {}
             per_view_dict_polytopeonly[scene_dir] = {}
 
-            test_dir = Path(scene_dir) / "test"
+            test_dir = Path(scene_dir) / eval_dir
 
             for method in os.listdir(test_dir):
                 print("Method:", method)
@@ -99,5 +99,6 @@ if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
     parser.add_argument('--model_paths', '-m', required=True, nargs="+", type=str, default=[])
+    parser.add_argument('--eval_dir', required=False, default="test", type=str)
     args = parser.parse_args()
-    evaluate(args.model_paths)
+    evaluate(args.model_paths, args.eval_dir)
