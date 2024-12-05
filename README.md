@@ -3,6 +3,7 @@
 
 [![button](https://img.shields.io/badge/Project%20Website-orange?style=for-the-badge)](https://ubc-vision.github.io/3dgs-mcmc/)
 [![button](https://img.shields.io/badge/Paper-blue?style=for-the-badge)](https://arxiv.org/abs/2404.09591)
+[![button](https://img.shields.io/badge/Video-green?style=for-the-badge)](https://neurips.cc/virtual/2024/poster/94984)
 
 <span class="author-block">
   <a href="https://shakibakh.github.io/">Shakiba Kheradmand</a>,
@@ -51,6 +52,17 @@
 </section>
 
 
+## Updates
+### Dec. 5th, 2024
+A new change has been pushed to diff-gaussian-rasterization. In order to pull it:
+```sh
+cd submodules/diff-gaussian-rasterization
+git pull origin gs-mcmc
+cd ../..
+pip install submodules/diff-gaussian-rasterization
+```
+
+This change incorporates "Section B.2 Tighter Bounding of 2D Gaussians" from [StopThePop](https://arxiv.org/abs/2402.00525) paper. This bound allows to fit a tighter bound around Gaussians when opacity is less than 1.
 
 ## How to Install
 
