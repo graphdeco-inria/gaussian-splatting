@@ -42,12 +42,13 @@
 <section class="section" id="BibTeX">
   <div class="container is-max-desktop content">
     <h2 class="title">BibTeX</h2>
-    <pre><code>@article{kheradmand20243d,
-  title={3D Gaussian Splatting as Markov Chain Monte Carlo},
-  author={Kheradmand, Shakiba and Rebain, Daniel and Sharma, Gopal and Sun, Weiwei and Tseng, Jeff and Isack, Hossam and Kar, Abhishek and Tagliasacchi, Andrea and Yi, Kwang Moo},
-  journal={arXiv preprint arXiv:2404.09591},
-  year={2024}
-}</code></pre>
+    <pre><code>@inproceedings{kheradmand20243d,
+    title = {3D Gaussian Splatting as Markov Chain Monte Carlo},
+    author = {Kheradmand, Shakiba and Rebain, Daniel and Sharma, Gopal and Sun, Weiwei and Tseng, Yang-Che and Isack, Hossam and Kar, Abhishek and Tagliasacchi, Andrea and Yi, Kwang Moo},
+    booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+    year = {2024},
+    note = {Spotlight Presentation},
+   }</code></pre>
   </div>
 </section>
 
