@@ -113,7 +113,7 @@ class GaussianModel:
     
     @property
     def get_features(self):
-        features_dc = self._features_dc
+        features_dc = self._features_dc#.unsqueeze(1)
         features_rest = self._features_rest
         return torch.cat((features_dc, features_rest), dim=1)
     
@@ -145,31 +145,199 @@ class GaussianModel:
     def oneupSHdegree(self):
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
+            
+    def csp(self):
+        self._features_dc = self._features_dc.squeeze(1)  # [N, 3]
+
+        min_vals = self._xyz.min(dim=0).values
+        max_vals = self._xyz.max(dim=0).values
+        x_min, y_min, z_min = min_vals
+        x_max, y_max, z_max = max_vals
+
+        num_voxels_x = torch.ceil((x_max - x_min) / self.voxel_size).long()
+        num_voxels_y = torch.ceil((y_max - y_min) / self.voxel_size).long()
+        num_voxels_z = torch.ceil((z_max - z_min) / self.voxel_size).long()
+
+        voxel_indices_x = torch.floor((self._xyz[:, 0] - x_min) / self.voxel_size).long().clamp(0, num_voxels_x - 1)
+        voxel_indices_y = torch.floor((self._xyz[:, 1] - y_min) / self.voxel_size).long().clamp(0, num_voxels_y - 1)
+        voxel_indices_z = torch.floor((self._xyz[:, 2] - z_min) / self.voxel_size).long().clamp(0, num_voxels_z - 1)
+
+        # 전체 포인트에 대한 선형 인덱스 계산
+        linear_indices_all = voxel_indices_y * (num_voxels_z * num_voxels_x) + voxel_indices_z * num_voxels_x + voxel_indices_x
+
+        num_voxels_total = num_voxels_y * num_voxels_z * num_voxels_x
+
+        # 공통 로직을 수행하는 헬퍼 함수
+        def accumulate_and_average(data_values, channels):
+            """
+            data_values: [N, channels]
+            channels: int, number of channels per voxel
+            """
+            image_sums = torch.zeros((num_voxels_total, channels), dtype=torch.float32, device='cuda')
+            counts = torch.zeros((num_voxels_total), dtype=torch.float32, device='cuda')
+
+            image_sums.index_add_(0, linear_indices_all, data_values)
+            counts.index_add_(0, linear_indices_all, torch.ones_like(linear_indices_all, dtype=torch.float32))
+
+            counts_mask = counts > 0
+            image_means = torch.zeros_like(image_sums)
+            image_means[counts_mask] = image_sums[counts_mask] / counts[counts_mask].unsqueeze(1)
+            return image_means
+
+        # features_dc 처리: [N, 3] -> [Y, Z, X, 3]
+        data_values_dc = self._features_dc  # [N, 3]
+        image_means_dc = accumulate_and_average(data_values_dc, 3)
+        features_dc_tensor = image_means_dc.view(num_voxels_y, num_voxels_z, num_voxels_x, 3)
+
+        # scaling 처리: [N, 3] -> [Y, Z, X, 3]
+        data_values_scaling = self._scaling  # [N, 3]
+        image_means_scaling = accumulate_and_average(data_values_scaling, 3)
+        scaling_tensor = image_means_scaling.view(num_voxels_y, num_voxels_z, num_voxels_x, 3)
+
+        # opacity 처리: [N, 1] -> [Y, Z, X, 1]
+        data_values_opacity = self._opacity  # [N, 1]
+        image_means_opacity = accumulate_and_average(data_values_opacity, 1)
+        opacity_tensor = image_means_opacity.view(num_voxels_y, num_voxels_z, num_voxels_x, 1)
+
+        # rotation 처리: [N, 4] -> [Y, Z, X, 4]
+        data_values_rotation = self._rotation  # [N, 4]
+        image_means_rotation = accumulate_and_average(data_values_rotation, 4)
+        rotation_tensor = image_means_rotation.view(num_voxels_y, num_voxels_z, num_voxels_x, 4)
+
+        # features_rest 처리: [N, 15, 3] -> 리스트로 [Y, Z, X, 3] 형태의 15개 텐서
+        # 각각의 SH 계수를 별도로 처리한 뒤 스택
+        data_values_rest = self._features_rest  # [N, 15, 3]
+        features_rest_tensors = []
+        for i in range(15):
+            coeff_values = data_values_rest[:, i, :]  # [N, 3]
+            image_means_coeff = accumulate_and_average(coeff_values, 3)
+            coeff_tensor = image_means_coeff.view(num_voxels_y, num_voxels_z, num_voxels_x, 3)
+            features_rest_tensors.append(coeff_tensor)
+
+        csp_data = {
+            'features_dc_tensor': features_dc_tensor,
+            'scaling_tensor': scaling_tensor,
+            'opacity_tensor': opacity_tensor,
+            'rotation_tensor': rotation_tensor,
+            'features_rest_tensors': features_rest_tensors,
+            'voxel_indices_x': voxel_indices_x,
+            'voxel_indices_y': voxel_indices_y,
+            'voxel_indices_z': voxel_indices_z
+        }
+
+        return csp_data
+    
+    
+    def unprojection(self, csp_data):
+        features_dc_tensor = csp_data['features_dc_tensor']  # [Y, Z, X, 3]
+        scaling_tensor = csp_data['scaling_tensor']  # [Y, Z, X, 3]
+        opacity_tensor = csp_data['opacity_tensor']  # [Y, Z, X, 1]
+        rotation_tensor = csp_data['rotation_tensor']  # [Y, Z, X, 4]
+        features_rest_tensors = csp_data['features_rest_tensors']  # 리스트 형태
+
+        voxel_indices_x = csp_data['voxel_indices_x']  # [N]
+        voxel_indices_y = csp_data['voxel_indices_y']  # [N]
+        voxel_indices_z = csp_data['voxel_indices_z']  # [N]
+
+        # 각 포인트의 복셀 인덱스를 사용하여 속성 값을 가져옵니다.
+        # 복셀 인덱스를 텐서 인덱스로 사용하기 위해 차원을 확장합니다.
+        voxel_indices_y = voxel_indices_y # [N ]
+        voxel_indices_z = voxel_indices_z # [N ]
+        voxel_indices_x = voxel_indices_x# [N]
+
+        
+        # print("feature_dc:", features_dc_tensor.shape)        
+        # print("scaling:", scaling_tensor.shape)           
+        # print("opacity:", opacity_tensor.shape)             
+        # print("rotation:", rotation_tensor.shape)          
+
+        # 속성 텐서에서 해당 복셀의 속성 값을 가져옵니다.
+        reconstructed_feature_dc = features_dc_tensor[voxel_indices_y, voxel_indices_z, voxel_indices_x].unsqueeze(1) # [N, 3]
+        reconstructed_scaling = scaling_tensor[voxel_indices_y, voxel_indices_z, voxel_indices_x].squeeze(1)        # [N, 3]
+        reconstructed_opacity = opacity_tensor[voxel_indices_y, voxel_indices_z, voxel_indices_x]       # [N, 1]
+        reconstructed_rotation = rotation_tensor[voxel_indices_y, voxel_indices_z, voxel_indices_x].squeeze(1)      # [N, 4]
+        reconstructed_feature_rest = []
+        
+        for tensor in features_rest_tensors:
+            value = tensor[voxel_indices_y, voxel_indices_z, voxel_indices_x].squeeze(1)  # [N, 3]
+            reconstructed_feature_rest.append(value)
+        
+        reconstructed_feature_rest = torch.stack(reconstructed_feature_rest, dim=1)  # [N, 15, 3]
+
+        
+        # 모든 텐서 shape 출력 및 확인
+        # print("reconstructed_feature_dc:", reconstructed_feature_dc.shape)     
+        # print("self._features_dc:", self._features_dc.shape)
+        # print("reconstructed_scaling:", reconstructed_scaling.shape)         
+        # print("reconstructed_opacity:", reconstructed_opacity.shape)            
+        # print("reconstructed_rotation:", reconstructed_rotation.shape)            
+        # print("reconstructed_feature_rest:", reconstructed_feature_rest.shape) 
+        # self._features_dc = reconstructed_feature_dc
+        # self._scaling = reconstructed_scaling
+        # self._opacity = reconstructed_opacity
+        # self._rotation = reconstructed_rotation
+        # self._features_rest = reconstructed_feature_rest          
+
 
     def create_from_pcd(self, pcd : BasicPointCloud, cam_infos : int, spatial_lr_scale : float):
         self.spatial_lr_scale = spatial_lr_scale
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
-        features[:, :3, 0 ] = fused_color
+        features[:, :3, 0] = fused_color
         features[:, 3:, 1:] = 0.0
 
-        print("Number of points at initialisation : ", fused_point_cloud.shape[0])
+        # print("초기 포인트 개수:", fused_point_cloud.shape[0])
 
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
-        scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
+        # 복셀 크기 설정
+        self.voxel_size = 0.01
+
+        # 포인트를 복셀로 양자화
+        voxel_indices = torch.floor(fused_point_cloud / self.voxel_size).long()
+        unique_voxels, self.inverse_indices = torch.unique(voxel_indices, return_inverse=True, dim=0)
+        # print(unique_voxels.shape) 99740, 3
+        # print(inverse_indices.shape) 100000
+        # 고유 복셀 개수
+        num_voxels = unique_voxels.shape[0]
+
+        # 복셀 단위 속성을 초기화
+        voxel_features = torch.zeros((num_voxels, features.shape[1], features.shape[2]), device='cuda')
+        voxel_counts = torch.zeros(num_voxels, device='cuda') # 각 복셀에 몇개의 포인트가 포함되는지
+        
+
+        # 복셀별 속성 합산 및 개수 계산
+        voxel_feature_sum = torch.zeros_like(voxel_features)
+
+        # 합산
+        voxel_feature_sum.index_add_(0, self.inverse_indices, features)
+        voxel_counts.index_add_(0, self.inverse_indices, torch.ones(features.shape[0], device='cuda'))
+        # print(voxel_counts)
+
+        # 0으로 나누는 것을 방지
+        voxel_counts = voxel_counts.unsqueeze(1).unsqueeze(2).clamp_min(1)
+
+        # 복셀별 속성 평균 계산
+        voxel_features = voxel_feature_sum / voxel_counts
+
+        # 평균 속성을 포인트에 재할당
+        features = voxel_features[self.inverse_indices]
+
+        # 기존 초기화 과정 유지
+        dist2 = torch.clamp_min(distCUDA2(fused_point_cloud), 1e-7)
+        scales = torch.log(torch.sqrt(dist2))[..., None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
 
         opacities = self.inverse_opacity_activation(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
 
         self._xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
-        self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
-        self._features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
+        self._features_dc = nn.Parameter(features[:, :, 0:1].transpose(1, 2).contiguous().requires_grad_(True))
+        self._features_rest = nn.Parameter(features[:, :, 1:].transpose(1, 2).contiguous().requires_grad_(True))
         self._scaling = nn.Parameter(scales.requires_grad_(True))
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
-        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+        self.max_radii2D = torch.zeros((self._xyz.shape[0]), device="cuda")
+        
         self.exposure_mapping = {cam_info.image_name: idx for idx, cam_info in enumerate(cam_infos)}
         self.pretrained_exposures = None
         exposure = torch.eye(3, 4, device="cuda")[None].repeat(len(cam_infos), 1, 1)
@@ -370,7 +538,6 @@ class GaussianModel:
             extension_tensor = tensors_dict[group["name"]]
             stored_state = self.optimizer.state.get(group['params'][0], None)
             if stored_state is not None:
-
                 stored_state["exp_avg"] = torch.cat((stored_state["exp_avg"], torch.zeros_like(extension_tensor)), dim=0)
                 stored_state["exp_avg_sq"] = torch.cat((stored_state["exp_avg_sq"], torch.zeros_like(extension_tensor)), dim=0)
 
