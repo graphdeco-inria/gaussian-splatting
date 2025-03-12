@@ -12,7 +12,9 @@
 import os
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim
+from utils.loss_utils import l1_loss, ssim, InvDepthSmoothnessLoss, laplacian_pyramid_loss
+from utils.bundle_utils import cluster_cameras, bundle_start_index_generator, adaptive_cluster
+from utils.aug_utils import *
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
@@ -40,7 +42,20 @@ try:
 except:
     SPARSE_ADAM_AVAILABLE = False
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training(dataset, 
+             opt, 
+             pipe, 
+             testing_iterations, 
+             saving_iterations, 
+             checkpoint_iterations, 
+             checkpoint, 
+             debug_from,
+             camera_order,
+             bundle_training,
+             enable_ds_lap,
+             lambda_ds,
+             lambda_lap,
+             ):
 
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
@@ -68,6 +83,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     ema_loss_for_log = 0.0
     ema_Ll1depth_for_log = 0.0
 
+    if bundle_training:
+        sorted_keys = cluster_cameras(dataset.source_path, camera_order)
+        start_indices, cluster_sizes = bundle_start_index_generator(sorted_keys, 20)
+        n_interval = 0
+
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
     for iteration in range(first_iter, opt.iterations + 1):
@@ -94,13 +114,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
-        # Pick a random Camera
-        if not viewpoint_stack:
-            viewpoint_stack = scene.getTrainCameras().copy()
-            viewpoint_indices = list(range(len(viewpoint_stack)))
-        rand_idx = randint(0, len(viewpoint_indices) - 1)
-        viewpoint_cam = viewpoint_stack.pop(rand_idx)
-        vind = viewpoint_indices.pop(rand_idx)
+        if bundle_training and iteration < opt.densify_until_iter and iteration > opt.densify_from_iter and cluster_sizes[n_interval] < 160 and iteration % 100 > 80:
+            densification_viewpoint_stack = scene.getTrainCameras().copy()
+            selected_idx = adaptive_cluster(start_indices[n_interval], sorted_keys, cluster_sizes[n_interval])
+            if selected_idx >= len(densification_viewpoint_stack):
+                selected_idx = selected_idx % len(densification_viewpoint_stack)
+            viewpoint_cam = densification_viewpoint_stack[selected_idx]
+
+        else:
+            if not viewpoint_stack:
+                viewpoint_stack = scene.getTrainCameras().copy()
+                viewpoint_indices = list(range(len(viewpoint_stack)))
+                rand_idx = randint(0, len(viewpoint_indices) - 1)
+                viewpoint_cam = viewpoint_stack.pop(rand_idx)
+                vind = viewpoint_indices.pop(rand_idx)
 
         # Render
         if (iteration - 1) == debug_from:
@@ -123,7 +150,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         else:
             ssim_value = ssim(image, gt_image)
 
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+        if enable_ds_lap:
+            ds_loss = InvDepthSmoothnessLoss()(render_pkg["depth"], image)
+            lap_loss = laplacian_pyramid_loss(image.unsqueeze(0), gt_image.unsqueeze(0))
+        else:
+            ds_loss = 0.0
+            lap_loss = 0.0
+
+        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value) + lambda_ds * ds_loss + lambda_lap * lap_loss
 
         # Depth regularization
         Ll1depth_pure = 0.0
@@ -155,7 +189,24 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 progress_bar.close()
 
             # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp)
+            training_report(tb_writer, 
+                            iteration, 
+                            Ll1, 
+                            loss, 
+                            l1_loss, 
+                            iter_start.elapsed_time(iter_end), 
+                            testing_iterations, 
+                            scene, 
+                            render, 
+                            (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), 
+                            dataset.train_test_exp,
+                            1.0 - ssim_value,
+                            ds_loss,
+                            lap_loss,
+                            lambda_ds,
+                            lambda_lap
+                            )
+
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
@@ -169,6 +220,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)
+                    n_interval += 1
                 
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
@@ -211,10 +263,30 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp):
+def training_report(tb_writer, 
+                    iteration, 
+                    Ll1, 
+                    loss, 
+                    l1_loss, 
+                    elapsed, 
+                    testing_iterations, 
+                    scene : Scene, 
+                    renderFunc, 
+                    renderArgs, 
+                    train_test_exp,
+                    ssim_loss,
+                    ds_loss,
+                    lap_loss,
+                    lambda_ds,
+                    lambda_lap):
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
+        tb_writer.add_scalar('train_loss_patches/ssim_loss', ssim_loss.item(), iteration)
+        tb_writer.add_scalar('train_loss_patches/ds_loss', ds_loss.item(), iteration)
+        tb_writer.add_scalar('train_loss_patches/lap_loss', lap_loss.item(), iteration)
+        tb_writer.add_scalar('train_loss_patches/lambda_ds', lambda_ds, iteration)
+        tb_writer.add_scalar('train_loss_patches/lambda_lap', lambda_lap, iteration)
         tb_writer.add_scalar('iter_time', elapsed, iteration)
 
     # Report test and samples of training set
@@ -267,6 +339,11 @@ if __name__ == "__main__":
     parser.add_argument('--disable_viewer', action='store_true', default=False)
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument("--bundle_training", action='store_true', default=False)
+    parser.add_argument("--camera_order", type=str, default='covisibility')
+    parser.add_argument("--enable_ds_lap", action='store_true', default=False)
+    parser.add_argument("--lambda_ds", type=float, default=0.0)
+    parser.add_argument("--lambda_lap", type=float, default=0.0)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
@@ -279,7 +356,19 @@ if __name__ == "__main__":
     if not args.disable_viewer:
         network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp.extract(args), 
+             op.extract(args), 
+             pp.extract(args), 
+             args.test_iterations, 
+             args.save_iterations, 
+             args.checkpoint_iterations, 
+             args.start_checkpoint, 
+             args.debug_from,
+             args.bundle_training,
+             args.camera_order,
+             args.enable_ds_lap,
+             args.lambda_ds,
+             args.lambda_lap)
 
     # All done
     print("\nTraining complete.")
