@@ -3,7 +3,7 @@ import os
 from colmap.scripts.python.read_write_model import *
 import numpy as np
 from collections import defaultdict
-from colmap_utils import compute_extrinsics, compute_intrinsics, get_colmap_data
+from utils.colmap_utils import compute_extrinsics, compute_intrinsics, get_colmap_data
 import cv2
 from sklearn.decomposition import PCA
 
@@ -77,9 +77,9 @@ def create_sequence_from_covisibility_graph(covisibility_graph, min_covisibility
 
     return sequence
 
-def cluster_cameras(model_path, camera_order):
-    colmap_path = os.path.join(model_path, 'sparse/0')
+def cluster_cameras(colmap_path, camera_order):
     colmap_images, colmap_points3D, colmap_cameras = get_colmap_data(colmap_path)
+    print(camera_order)
     if camera_order == 'covisibility':
         covisibility_matrix, id_to_idx, idx_to_id = build_covisibility_matrix(colmap_images, colmap_points3D)
         covisibility_graph = create_covisibility_graph(covisibility_matrix, idx_to_id)
@@ -137,6 +137,8 @@ def cluster_cameras(model_path, camera_order):
         sorted_indices = np.argsort(angles)
         sorted_cam_centers = cam_center_2d[sorted_indices]
         sorted_keys = np.array(key)[sorted_indices]
+
+    print(sorted_keys)
 
     return sorted_keys
 

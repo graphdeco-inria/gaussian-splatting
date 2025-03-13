@@ -9,7 +9,7 @@ import rtree
 from shapely.geometry import Point, box
 from collections import defaultdict
 from sklearn.decomposition import PCA
-from colmap_utils import compute_extrinsics, get_colmap_data
+from utils.colmap_utils import compute_extrinsics, get_colmap_data
 from matplotlib import pyplot as plt
 
 class Node:

@@ -84,7 +84,7 @@ def training(dataset,
     ema_Ll1depth_for_log = 0.0
 
     if bundle_training:
-        sorted_keys = cluster_cameras(dataset.source_path, camera_order)
+        sorted_keys = cluster_cameras(os.path.join(dataset.source_path, 'sparse/0'), camera_order)
         start_indices, cluster_sizes = bundle_start_index_generator(sorted_keys, 20)
         n_interval = 0
 
@@ -125,9 +125,9 @@ def training(dataset,
             if not viewpoint_stack:
                 viewpoint_stack = scene.getTrainCameras().copy()
                 viewpoint_indices = list(range(len(viewpoint_stack)))
-                rand_idx = randint(0, len(viewpoint_indices) - 1)
-                viewpoint_cam = viewpoint_stack.pop(rand_idx)
-                vind = viewpoint_indices.pop(rand_idx)
+            rand_idx = randint(0, len(viewpoint_indices) - 1)
+            viewpoint_cam = viewpoint_stack.pop(rand_idx)
+            vind = viewpoint_indices.pop(rand_idx)
 
         # Render
         if (iteration - 1) == debug_from:
@@ -364,8 +364,8 @@ if __name__ == "__main__":
              args.checkpoint_iterations, 
              args.start_checkpoint, 
              args.debug_from,
-             args.bundle_training,
              args.camera_order,
+             args.bundle_training,
              args.enable_ds_lap,
              args.lambda_ds,
              args.lambda_lap)

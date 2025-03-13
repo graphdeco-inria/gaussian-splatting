@@ -1,5 +1,3 @@
-
-
 import argparse
 import numpy as np
 from tqdm import tqdm
@@ -13,6 +11,7 @@ from utils.aug_utils import *
 
 def augment(colmap_path, image_path, augment_path, camera_order, visibility_aware_culling, compare_center_patch):
     colmap_images, colmap_points3D, colmap_cameras = get_colmap_data(colmap_path)
+    np.seterr(divide='ignore', invalid='ignore')
     sorted_keys = cluster_cameras(colmap_path, camera_order)
 
     points3d = []
@@ -29,11 +28,12 @@ def augment(colmap_path, image_path, augment_path, camera_order, visibility_awar
 
     count = 0
     roots = {}
-    pbar = tqdm(len(sorted_keys))
+    pbar = tqdm(range(len(sorted_keys)))
     for view_idx in pbar:
         view = sorted_keys[view_idx]
         view_root, augmented_count = image_quadtree_augmentation(
             view,
+            image_path,
             colmap_cameras,
             colmap_images,
             colmap_points3D,
@@ -42,25 +42,25 @@ def augment(colmap_path, image_path, augment_path, camera_order, visibility_awar
             intrinsics_camera,
             rotations_image,
             translations_image,
-            visibility_aware_culling,
+            visibility_aware_culling=visibility_aware_culling,
         )
         count += augmented_count
         pbar.set_description(f"{count} points augmented")
         roots[view] = view_root
 
     for view1_idx in tqdm(range(len(sorted_keys))):
-        for view2_idx in [view_idx + 6,
-                          view_idx + 5,
-                          view_idx + 4,
-                          view_idx + 3,
-                          view_idx + 2,
-                          view_idx + 1,
-                          view_idx - 1,
-                          view_idx - 2,
-                          view_idx - 3,
-                          view_idx - 4,
-                          view_idx - 5,
-                          view_idx - 6]:
+        for view2_idx in [view1_idx + 6,
+                          view1_idx + 5,
+                          view1_idx + 4,
+                          view1_idx + 3,
+                          view1_idx + 2,
+                          view1_idx + 1,
+                          view1_idx - 1,
+                          view1_idx - 2,
+                          view1_idx - 3,
+                          view1_idx - 4,
+                          view1_idx - 5,
+                          view1_idx - 6]:
             if view2_idx > len(sorted_keys) - 1:
                 view2_idx = view2_idx - len(sorted_keys)
             view1 = sorted_keys[view1_idx]
@@ -93,6 +93,8 @@ def augment(colmap_path, image_path, augment_path, camera_order, visibility_awar
                 x, y = view1_sample_points_view2[i]
                 corresponding_node_type = None
                 error = None
+                
+                # Case 1: Culling
                 if (view1_sample_points_view2_depth[i] < 0) | \
                    (view1_sample_points_view2[i, 0] < 0) | \
                    (view1_sample_points_view2[i, 0] >= image_view2.shape[1]) | \
@@ -102,65 +104,85 @@ def augment(colmap_path, image_path, augment_path, camera_order, visibility_awar
                     corresponding_node_type = "culled"
                     matching_log.append([view2, corresponding_node_type, error])
                     continue
-                else:
-                    view2_corresponding_node = find_leaf_node(view2_root, x, y)
-                    if view2_corresponding_node is None:
-                        corresponding_node_type = "missing"
-                    else:
-                        if view2_corresponding_node.unoccupied:
-                            if view2_corresponding_node.depth_interpolated:
-                                error = np.linalg.norm(view1_sample_points_view2_depth[i] - view2_corresponding_node.sampled_point_depth)
-                                if error < 0.2 * view2_corresponding_node.sampled_point_depth:
-                                    if compare_center_patch:
-                                        try:
-                                            view1_sample_point_patch = image_view2[int(view1_sample_points_view2[i, 1])-1:\
-                                                                                   int(view1_sample_points_view2[i,1])+2,
-                                                                                   int(view1_sample_points_view2[i, 0])-1:\
-                                                                                   int(view1_sample_points_view2[i,0])+2]
-                                            view2_corresponding_node_patch = image_view2[int(view2_corresponding_node.sampled_point_uv[1])-1:\
-                                                                                   int(view2_corresponding_node.sampled_point_uv[1])+2,
-                                                                                   int(view2_corresponding_node.sampled_point_uv[0])-1:\
-                                                                                   int(view2_corresponding_node.sampled_point_uv[0])+2]
-                                            if compare_local_texture(view1_sample_point_patch, view2_corresponding_node_patch) > 0.5:
-                                                corresponding_node_type = "sampledrejected"
-                                            else:
-                                                corresponding_node_type = "sampled"
-                                        except IndexError:
-                                            corresponding_node_type = "sampledrejected"
+                
+                # Case 2: Find corresponding node
+                view2_corresponding_node = find_leaf_node(view2_root, x, y)
+                if view2_corresponding_node is None:
+                    corresponding_node_type = "missing"
+                    matching_log.append([view2, corresponding_node_type, error])
+                    continue
+                
+                # Case 3: Process unoccupied node
+                if view2_corresponding_node.unoccupied:
+                    if view2_corresponding_node.depth_interpolated:
+                        error = np.linalg.norm(view1_sample_points_view2_depth[i] - view2_corresponding_node.sampled_point_depth)
+                        if error < 0.2 * view2_corresponding_node.sampled_point_depth:
+                            if compare_center_patch:
+                                try:
+                                    view1_sample_point_patch = image_view2[int(view1_sample_points_view2[i, 1])-1:\
+                                                                           int(view1_sample_points_view2[i,1])+2,
+                                                                           int(view1_sample_points_view2[i, 0])-1:\
+                                                                           int(view1_sample_points_view2[i,0])+2]
+                                    view2_corresponding_node_patch = image_view2[int(view2_corresponding_node.sampled_point_uv[1])-1:\
+                                                                           int(view2_corresponding_node.sampled_point_uv[1])+2,
+                                                                           int(view2_corresponding_node.sampled_point_uv[0])-1:\
+                                                                           int(view2_corresponding_node.sampled_point_uv[0])+2]
+                                    if compare_local_texture(view1_sample_point_patch, view2_corresponding_node_patch) > 0.5:
+                                        corresponding_node_type = "sampledrejected"
                                     else:
                                         corresponding_node_type = "sampled"
-                                        
-                                else:
+                                except IndexError:
                                     corresponding_node_type = "sampledrejected"
                             else:
-                                corresponding_node_type = "depthrejected"
+                                corresponding_node_type = "sampled"
                         else:
-                            corresponding_3d_depth = np.array(view2_corresponding_node.points3d_depths)
-                            error = np.linalg.norm(view1_sample_points_view2_depth[i] - corresponding_3d_depth)
+                            corresponding_node_type = "sampledrejected"
+                    else:
+                        corresponding_node_type = "depthrejected"
+                else:
+                    corresponding_3d_depth = np.array(view2_corresponding_node.points3d_depths)
+                    error = np.linalg.norm(view1_sample_points_view2_depth[i] - corresponding_3d_depth)
 
-                            if np.min(error) < 0.2 * corresponding_3d_depth[np.argmin(error)]:
-                                if compare_center_patch:
-                                    try:
-                                        point_3d_coord = points3d_view2_pixcoord[view2_corresponding_node.points3d_indices[np.argmin[error]]]
-                                        point_3d_patch = image_view2[int(point_3d_coord[1])-1:\
-                                                                     int(point_3d_coord[1])+2,
-                                                                     int(point_3d_coord[0])-1:\
-                                                                     int(point_3d_coord[0])+2]
-                                        view1_sample_point_patch = image_view2[int(view1_sample_points_view2[i, 1])-1:\
-                                                                               int(view1_sample_points_view2[i,1])+2,
-                                                                               int(view1_sample_points_view2[i, 0])-1:\
-                                                                               int(view1_sample_points_view2[i,0])+2]
-                                        if compare_local_texture(view1_sample_point_patch, point_3d_patch) > 0.5:
-                                            corresponding_node_type = "rejectedoccupied3d"
-                                        else:
-                                            corresponding_node_type = "occupied3d"
-                                    except IndexError:
-                                        corresponding_node_type = "rejectedoccupied3d"
+                    if np.min(error) < 0.2 * corresponding_3d_depth[np.argmin(error)]:
+                        if compare_center_patch:
+                            try:
+                                point_3d_coord = points3d_view2_pixcoord[view2_corresponding_node.points3d_indices[np.argmin(error)]]
+                                point_3d_patch = image_view2[int(point_3d_coord[1])-1:\
+                                                             int(point_3d_coord[1])+2,
+                                                             int(point_3d_coord[0])-1:\
+                                                             int(point_3d_coord[0])+2]
+                                view1_sample_point_patch = image_view2[int(view1_sample_points_view2[i, 1])-1:\
+                                                                       int(view1_sample_points_view2[i,1])+2,
+                                                                       int(view1_sample_points_view2[i, 0])-1:\
+                                                                       int(view1_sample_points_view2[i,0])+2]
+                                if compare_local_texture(view1_sample_point_patch, point_3d_patch) > 0.5:
+                                    corresponding_node_type = "rejectedoccupied3d"
                                 else:
                                     corresponding_node_type = "occupied3d"
-                            else:
+                            except IndexError:
                                 corresponding_node_type = "rejectedoccupied3d"
-                    matching_log.append([view2, corresponding_node_type, error])
+                        else:
+                            corresponding_node_type = "occupied3d"
+                    else:
+                        corresponding_node_type = "rejectedoccupied3d"
+                
+                # 모든 경우에 대해 로그 추가
+                matching_log.append([view2, corresponding_node_type, error])
+
+            node_index = 0
+            view1_leaf_nodes = []
+            gather_leaf_nodes(view1_root, view1_leaf_nodes)
+            for node in view1_leaf_nodes:
+                if node.unoccupied:
+                    if node.depth_interpolated:
+                        node.matching_log[view2] = matching_log[node_index]
+                        if matching_log[node_index][1] in ["depthrejected", "missing", "culled"]:
+                            None
+                        else:
+                            node.inference_count += 1
+                        node.rejection_count += 1 if matching_log[node_index][1] in ["rejectedoccupied3d",
+                                                                                    "sampledrejected"] else 0
+                        node_index += 1
 
     sampled_points_total = []
     sampled_points_rgb_total = []
@@ -178,7 +200,7 @@ def augment(colmap_path, image_path, augment_path, camera_order, visibility_awar
                             sampled_points_total.append([node.sampled_point_world])
                             sampled_points_rgb_total.append([node.sampled_point_rgb])
                             sampled_points_uv_total.append([node.sampled_point_uv])
-                            sampled_points_neighbors_uv_total.append([node.sampled_point_neighbors_uv])
+                            sampled_points_neighbors_uv_total.append([node.sampled_point_neighbours_uv])
     print("total_Sampled_points: ", len(sampled_points_total))
     xyz = np.concatenate(sampled_points_total, axis=0)
     rgb = np.concatenate(sampled_points_rgb_total, axis=0)
