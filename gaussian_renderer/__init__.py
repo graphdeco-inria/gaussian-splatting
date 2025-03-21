@@ -110,7 +110,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             cov3D_precomp = cov3D_precomp)
         
     # Apply exposure to rendered image (training only)
-    if use_trained_exp:
+    if use_trained_exp and hasattr(viewpoint_camera, 'image_name'):
         exposure = pc.get_exposure_from_name(viewpoint_camera.image_name)
         rendered_image = torch.matmul(rendered_image.permute(1, 2, 0), exposure[:3, :3]).permute(2, 0, 1) + exposure[:3, 3,   None, None]
 
