@@ -130,7 +130,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Loss
 
-        bp_start.record()
 
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
@@ -154,6 +153,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             Ll1depth = Ll1depth.item()
         else:
             Ll1depth = 0
+       
+        bp_start.record()
 
         loss.backward()
 
@@ -173,7 +174,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 progress_bar.close()
 
             # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), render_start.elapsed_time(render_end), bp_start.elapsed_time(bp_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp)
+
+            iter_elapsed = iter_start.elapsed_time(iter_end)
+            render_elapsed = render_start.elapsed_time(render_end)
+            bp_elapsed = bp_start.elapsed_time(bp_end)
+
+            k1_elapsed = render_pkg["k1_time"]
+            k2_elapsed = render_pkg["k2_time"]
+
+            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_elapsed, render_elapsed, bp_elapsed, k1_elapsed, k2_elapsed, testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp)
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
@@ -229,13 +238,15 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-def training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_elapsed, render_elapsed, bp_elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp):
+def training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_elapsed, render_elapsed, bp_elapsed, k1_elapsed, k2_elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp):
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
         tb_writer.add_scalar('iter_time', iter_elapsed, iteration)
         tb_writer.add_scalar('render_time', render_elapsed, iteration)
         tb_writer.add_scalar('bp_time', bp_elapsed, iteration)
+        tb_writer.add_scalar('k1_time', k1_elapsed, iteration)
+        tb_writer.add_scalar('k2_time', k2_elapsed, iteration)
 
     # Report test and samples of training set
     if iteration in testing_iterations:
