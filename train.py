@@ -65,9 +65,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     render_start = torch.cuda.Event(enable_timing = True)
     render_end = torch.cuda.Event(enable_timing = True)
 
-    bp_start = torch.cuda.Event(enable_timing = True)
-    bp_end = torch.cuda.Event(enable_timing = True)
-
     use_sparse_adam = opt.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
     depth_l1_weight = get_expon_lr_func(opt.depth_l1_weight_init, opt.depth_l1_weight_final, max_steps=opt.iterations)
 
@@ -130,7 +127,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Loss
 
-
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = l1_loss(image, gt_image)
         if FUSED_SSIM_AVAILABLE:
@@ -156,7 +152,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
        
         bp_start.record()
 
-        loss.backward()
+        _, _, _, _, bp_time = loss.backward()
 
         bp_end.record()
 
@@ -177,8 +173,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             iter_elapsed = iter_start.elapsed_time(iter_end)
             render_elapsed = render_start.elapsed_time(render_end)
-            bp_elapsed = bp_start.elapsed_time(bp_end)
-
+            bp_elapsed = bp_time
             k1_elapsed = render_pkg["k1_time"]
             k2_elapsed = render_pkg["k2_time"]
 
