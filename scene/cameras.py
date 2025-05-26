@@ -20,7 +20,8 @@ class Camera(nn.Module):
     def __init__(self, resolution, colmap_id, R, T, FoVx, FoVy, depth_params, image, invdepthmap,
                  image_name, uid,
                  trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device = "cuda",
-                 train_test_exp = False, is_test_dataset = False, is_test_view = False
+                 train_test_exp = False, is_test_dataset = False, is_test_view = False,
+                 is_lidar_depth  = False, max_depth = 30.0
                  ):
         super(Camera, self).__init__()
 
@@ -39,13 +40,13 @@ class Camera(nn.Module):
             print(f"[Warning] Custom device {data_device} failed, fallback to default cuda device" )
             self.data_device = torch.device("cuda")
 
-        resized_image_rgb = PILtoTorch(image, resolution)
+        resized_image_rgb = PILtoTorch(image, resolution)# [3,h,w]
         gt_image = resized_image_rgb[:3, ...]
         self.alpha_mask = None
         if resized_image_rgb.shape[0] == 4:
             self.alpha_mask = resized_image_rgb[3:4, ...].to(self.data_device)
         else: 
-            self.alpha_mask = torch.ones_like(resized_image_rgb[0:1, ...].to(self.data_device))
+            self.alpha_mask = torch.ones_like(resized_image_rgb[0:1, ...].to(self.data_device))# [1,h,w] all 1
 
         if train_test_exp and is_test_view:
             if is_test_dataset:
@@ -61,8 +62,19 @@ class Camera(nn.Module):
         self.depth_reliable = False
         if invdepthmap is not None:
             self.depth_mask = torch.ones_like(self.alpha_mask)
-            self.invdepthmap = cv2.resize(invdepthmap, resolution)
-            self.invdepthmap[self.invdepthmap < 0] = 0
+            
+            # xy-new lidar depth to invdepth
+            if is_lidar_depth:
+                depth_raw = invdepthmap
+                depth_lin = depth_raw / 255.0 * max_depth
+                mask_np = depth_lin > 0
+                invdepth_lidar = np.zeros_like(depth_lin)
+                invdepth_lidar[mask_np] = 1.0 / (depth_lin[mask_np] + 1e-6)
+                
+                self.depth_mask = torch.from_numpy(mask_np).to(self.data_device)
+
+            self.invdepthmap = cv2.resize(invdepth_lidar, resolution)
+            self.invdepthmap[self.invdepthmap < 0] = 0            
             self.depth_reliable = True
 
             if depth_params is not None:
@@ -73,9 +85,9 @@ class Camera(nn.Module):
                 if depth_params["scale"] > 0:
                     self.invdepthmap = self.invdepthmap * depth_params["scale"] + depth_params["offset"]
 
-            if self.invdepthmap.ndim != 2:
-                self.invdepthmap = self.invdepthmap[..., 0]
-            self.invdepthmap = torch.from_numpy(self.invdepthmap[None]).to(self.data_device)
+            if self.invdepthmap.ndim != 2: # [h,w,3]
+                self.invdepthmap = self.invdepthmap[..., 0] # [h,w]
+            self.invdepthmap = torch.from_numpy(self.invdepthmap[None]).to(self.data_device) # [1,h,w]
 
         self.zfar = 100.0
         self.znear = 0.01

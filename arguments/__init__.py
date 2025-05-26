@@ -56,10 +56,13 @@ class ModelParams(ParamGroup):
         self.train_test_exp = False
         self.data_device = "cuda"
         self.eval = False
+        # xy-new
         self.skybox_locked = False
         self.skybox_num = 0
         self.scaffold_file = ""
         self.bounds_file = ""
+        self.is_lidar_depth = False
+        self.lidar_depth_max = 30.0
         super().__init__(parser, "Loading Parameters", sentinel) # add parameters into parser
 
     def extract(self, args):

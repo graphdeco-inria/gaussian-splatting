@@ -198,7 +198,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     relevant = (gaussians._opacity.grad != 0).squeeze() # points - opacity gradients != 0
                     gaussians.optimizer.step(relevant, gaussians.get_xyz.shape[0]) # no densification so need step relevant points
                     gaussians.optimizer.zero_grad(set_to_none = True)
-                                
+
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
