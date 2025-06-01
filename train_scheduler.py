@@ -24,6 +24,7 @@ from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+from utils.scheduler_utils import ImageClustering, GroupScheduler
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -86,13 +87,11 @@ def training(dataset,
     name_to_uid = {cam.image_name: cam.uid for cam in scene.getTrainCameras()}
     cameras = scene.getTrainCameras().copy()
     if bundle_training:
-        ordered_image_names = cluster_cameras(os.path.join(dataset.source_path, 'sparse/0'),
-                                              camera_order,
-                                              output_type="name")
-        ordered_uids = [name_to_uid[name] for name in ordered_image_names]
-        start_indices, cluster_sizes = bundle_start_index_generator(ordered_uids, 20)
-        n_interval = 0
-        group_uid_stack = ordered_uids.copy()
+        clustering = ImageClustering(dataset.source_path+"/sparse/0")
+        scheduler = GroupScheduler(cameras, clustering.ordered_cluster_names,
+                                   densify_until_iter = opt.densify_until_iter,
+                                   densify_from_iter = opt.densify_from_iter,
+                                   debug = False)
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -120,30 +119,9 @@ def training(dataset,
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
-        if bundle_training and iteration < opt.densify_until_iter and iteration > opt.densify_from_iter and iteration % 100 >= 80:
-            if iteration % 100 == 80:
-                start_idx = start_indices[n_interval] % len(ordered_uids)
-                end_idx = start_idx + 20
-                if end_idx <= len(ordered_uids):
-                    group_uid_stack = ordered_uids[start_idx:end_idx].copy()
-                else:
-                    first_part = ordered_uids[start_idx:].copy()
-                    second_part = ordered_uids[:end_idx % len(ordered_uids)].copy()
-                    group_uid_stack = first_part + second_part
-        
-            rand_idx = randint(0, len(group_uid_stack) - 1)
-            vind = group_uid_stack.pop(rand_idx)
+        if bundle_training:
+            vind = scheduler.scheduled_training_index(iteration)
             viewpoint_cam = cameras[vind]
-
-
-        # if bundle_training and iteration < opt.densify_until_iter and iteration > opt.densify_from_iter and cluster_sizes[n_interval] < 160 and iteration % 100 > 80:
-        #     densification_viewpoint_stack = scene.getTrainCameras().copy()
-        #     selected_idx = adaptive_cluster(start_indices[n_interval], sorted_keys, cluster_sizes[n_interval])
-        #     if selected_idx >= len(densification_viewpoint_stack):
-        #         selected_idx = selected_idx % len(densification_viewpoint_stack)
-        #     viewpoint_cam = densification_viewpoint_stack[selected_idx]
-
-
         else:
             if not viewpoint_stack:
                 viewpoint_stack = scene.getTrainCameras().copy()
@@ -240,14 +218,14 @@ def training(dataset,
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                if scheduler.densify_and_prune_flag:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)
-                    if bundle_training:
-                        n_interval += 1
+                    scheduler.densify_and_prune_flag = False
                 
-                if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+                if scheduler.reset_opacity_flag:
                     gaussians.reset_opacity()
+                    scheduler.reset_opacity_flag = False
 
             # Optimizer step
             if iteration < opt.iterations:

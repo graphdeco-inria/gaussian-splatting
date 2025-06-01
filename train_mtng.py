@@ -78,20 +78,17 @@ def training(dataset,
     use_sparse_adam = opt.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
     depth_l1_weight = get_expon_lr_func(opt.depth_l1_weight_init, opt.depth_l1_weight_final, max_steps=opt.iterations)
 
-    viewpoint_stack = scene.getTrainCameras().copy()
-    viewpoint_indices = list(range(len(viewpoint_stack)))
     ema_loss_for_log = 0.0
     ema_Ll1depth_for_log = 0.0
 
     name_to_uid = {cam.image_name: cam.uid for cam in scene.getTrainCameras()}
     cameras = scene.getTrainCameras().copy()
     if bundle_training:
-        ordered_image_names = cluster_cameras(os.path.join(dataset.source_path, 'sparse/0'),
-                                              camera_order,
-                                              output_type="name")
+        ordered_image_names = cluster_cameras(os.path.join(dataset.source_path, 'sparse/0'), camera_order, output_type="name")
         ordered_uids = [name_to_uid[name] for name in ordered_image_names]
         start_indices, cluster_sizes = bundle_start_index_generator(ordered_uids, 20)
         n_interval = 0
+
         group_uid_stack = ordered_uids.copy()
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
@@ -120,22 +117,43 @@ def training(dataset,
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
-        if bundle_training and iteration < opt.densify_until_iter and iteration > opt.densify_from_iter and iteration % 100 >= 80:
-            if iteration % 100 == 80:
+        if bundle_training and iteration > opt.densify_from_iter and iteration <= opt.densify_from_iter + len(ordered_uids)*20:
+            # 카메라 리스트를 ID를 키로 하는 딕셔너리로 변환
+            vind = ordered_uids[(iteration - opt.densify_from_iter) % len(ordered_uids)]
+            viewpoint_cam = cameras[vind]  # ID로 직접 접근
+            with open(os.path.join(args.model_path, "log.txt"), "a") as f:
+                f.write(f"[ITER {iteration}] Stage 1: Sequential - View ID: {vind}, Cycle {(iteration - opt.densify_from_iter) // len(ordered_uids) + 1}/5\n")
+        elif bundle_training and iteration < opt.densify_from_iter + len(ordered_uids)*40 and iteration > opt.densify_from_iter + len(ordered_uids)*20:
+            # 그룹 uid 스택 갱신이 필요한 경우
+            if (iteration - opt.densify_from_iter - len(ordered_uids)*20) % 20 == 0 or not group_uid_stack:
+                # 시작 인덱스 계산
                 start_idx = start_indices[n_interval] % len(ordered_uids)
+                # 종료 인덱스 계산 (순환을 고려)
                 end_idx = start_idx + 20
+                
+                # 순환 처리를 위한 안전한 인덱싱
                 if end_idx <= len(ordered_uids):
+                    # 단순한 경우: 순환 없이 연속된 인덱스
                     group_uid_stack = ordered_uids[start_idx:end_idx].copy()
                 else:
-                    first_part = ordered_uids[start_idx:].copy()
-                    second_part = ordered_uids[:end_idx % len(ordered_uids)].copy()
+                    # 순환이 필요한 경우: 두 부분을 연결
+                    first_part = ordered_uids[start_idx:]
+                    second_part = ordered_uids[:end_idx % len(ordered_uids)]
                     group_uid_stack = first_part + second_part
-        
+
+                # 빈 스택 방지를 위한 검사
+                if not group_uid_stack:
+                    print(f"Warning: Empty group_uid_stack created at iteration {iteration}. Falling back to full ordered_uids.")
+                    group_uid_stack = ordered_uids.copy()
+                
+                n_interval += 1
+
             rand_idx = randint(0, len(group_uid_stack) - 1)
             vind = group_uid_stack.pop(rand_idx)
             viewpoint_cam = cameras[vind]
-
-
+            with open(os.path.join(args.model_path, "log.txt"), "a") as f:
+                f.write(f"[ITER {iteration}] Stage 2: Cluster-based - View {vind}, Remaining in cluster: {len(group_uid_stack)}\n")
+        
         # if bundle_training and iteration < opt.densify_until_iter and iteration > opt.densify_from_iter and cluster_sizes[n_interval] < 160 and iteration % 100 > 80:
         #     densification_viewpoint_stack = scene.getTrainCameras().copy()
         #     selected_idx = adaptive_cluster(start_indices[n_interval], sorted_keys, cluster_sizes[n_interval])
@@ -145,12 +163,13 @@ def training(dataset,
 
 
         else:
-            if not viewpoint_stack:
-                viewpoint_stack = scene.getTrainCameras().copy()
-                viewpoint_indices = list(range(len(viewpoint_stack)))
-            rand_idx = randint(0, len(viewpoint_indices) - 1)
-            viewpoint_cam = viewpoint_stack.pop(rand_idx)
-            vind = viewpoint_indices.pop(rand_idx)
+            if not group_uid_stack:
+                group_uid_stack = ordered_uids.copy()
+            rand_idx = randint(0, len(group_uid_stack) - 1)
+            vind = group_uid_stack.pop(rand_idx)
+            viewpoint_cam = cameras[vind]
+            with open(os.path.join(args.model_path, "log.txt"), "a") as f:
+                f.write(f"[ITER {iteration}] Stage 3: Random - View {vind}, Remaining in viewpoint_stack: {len(group_uid_stack)}\n")
 
         # Render
         if (iteration - 1) == debug_from:
@@ -240,13 +259,19 @@ def training(dataset,
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                if iteration > opt.densify_from_iter and iteration <= opt.densify_from_iter + len(ordered_uids)*20 and (iteration - opt.densify_from_iter) % len(ordered_uids) == 0:  # Stage 1
+                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, None, radii)
+
+                elif iteration > opt.densify_from_iter + len(ordered_uids)*20 and iteration <= opt.densify_from_iter + len(ordered_uids)*40 and iteration % 100 == 0:  # Stage 2
+                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, None, radii)
+
+                elif iteration > opt.densify_from_iter + len(ordered_uids)*40 and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)
                     if bundle_training:
                         n_interval += 1
                 
-                if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
+                if (iteration % opt.opacity_reset_interval == 0 and iteration > opt.densify_from_iter + len(ordered_uids)*40) or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
             # Optimizer step

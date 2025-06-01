@@ -20,6 +20,8 @@ def build_covisibility_matrix(images, points3D):
         image_ids = point3D.image_ids
         for i in range(len(image_ids)):
             for j in range(i+1, len(image_ids)):
+                if image_ids[i] not in images.keys() or image_ids[j] not in images.keys():
+                    continue
                 id1, id2 = image_ids[i], image_ids[j]
                 idx1, idx2 = id_to_idx[id1], id_to_idx[id2]
                 covisibility_matrix[idx1, idx2] += 1
@@ -77,7 +79,7 @@ def create_sequence_from_covisibility_graph(covisibility_graph, min_covisibility
 
     return sequence
 
-def cluster_cameras(colmap_path, camera_order):
+def cluster_cameras(colmap_path, camera_order, output_type="index"):
     colmap_images, colmap_points3D, colmap_cameras = get_colmap_data(colmap_path)
     print(camera_order)
     if camera_order == 'covisibility':
@@ -86,6 +88,7 @@ def cluster_cameras(colmap_path, camera_order):
         covisibility_sequence = create_sequence_from_covisibility_graph(covisibility_graph)
 
         image_id_name = [[colmap_images[key].id, colmap_images[key].name] for key in colmap_images.keys()]
+        image_id_name_dict = {x[0]: x[1] for x in image_id_name}
         image_id_name_sorted = sorted(image_id_name, key=lambda x: x[1])
         test_id = []
         train_id = []
@@ -107,9 +110,12 @@ def cluster_cameras(colmap_path, camera_order):
                 train_only_visibility_idx.append(id)
         train_only_visibility_idx = np.array(train_only_visibility_idx)
         sorted_keys = train_only_visibility_idx  # sorted_indices 대신 sorted_keys로 할당
+        ordered_image_names = [image_id_name_dict[key] for key in sorted_keys]
+
 
     elif camera_order == 'PCA':
         image_idx_name = [[colmap_images[key].id, colmap_images[key].name] for key in colmap_images.keys()]
+        image_id_name_dict = {x[0]: x[1] for x in image_idx_name}
         image_idx_name_sorted = sorted(image_idx_name, key=lambda x: x[1])
         test_idx = []
         train_idx = []
@@ -137,17 +143,21 @@ def cluster_cameras(colmap_path, camera_order):
         sorted_indices = np.argsort(angles)
         sorted_cam_centers = cam_center_2d[sorted_indices]
         sorted_keys = np.array(key)[sorted_indices]
+        ordered_image_names = [image_id_name_dict[key] for key in sorted_keys]
 
     print(sorted_keys)
+    if output_type == "index":
+        return sorted_keys  
+    else:
+        return ordered_image_names
 
-    return sorted_keys
 
-def bundle_start_index_generator(sorted_keys, initial_interval):
+def bundle_start_index_generator(sorted_keys, group_size):
     start_indices = []
     cluster_sizes = []
     for i in range(200):
-        start_indices.append((initial_interval*i)%len(sorted_keys))
-        cluster_sizes.append(initial_interval)
+        start_indices.append((group_size*i)%len(sorted_keys))
+        cluster_sizes.append(group_size)
 
     return start_indices, cluster_sizes
 
