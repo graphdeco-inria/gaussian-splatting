@@ -229,7 +229,7 @@ class GaussianModel:
             xyz = torch.concat((groundbox_xyz.cuda(), xyz), dim=0)
             fused_color = torch.concat((groundbox_color.cuda(), fused_color), dim=0)
             
-            debug_xy = True
+            debug_xy = False
             if debug_xy:
                 folder = "/home/qinllgroup/hongxiangyu/git_project/gaussian-splatting-xy/data/tree_01_debug/mini3/outputs_debug"
                 sky_ply_path = os.path.join(folder, "skybox_scene_init.ply")
