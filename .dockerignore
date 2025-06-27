@@ -1,0 +1,54 @@
+# Git関連
+.git
+.gitignore
+.gitmodules
+
+# Docker関連
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# CI/CD関連
+.github
+
+# 開発環境関連
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Python関連
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache
+.coverage
+
+# ログとキャッシュ
+*.log
+logs/
+.cache/
+
+# 出力ディレクトリ
+output/
+results/
+*.ply
+
+# 一時ファイル
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# 大きなデータファイル
+*.zip
+*.tar.gz
+*.tar.bz2
+
+# 学習済みモデル（必要に応じて除外）
+# *.pth
+# *.pt

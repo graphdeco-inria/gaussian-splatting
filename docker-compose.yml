@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  gaussian-splatting:
+    build: .
+    image: gaussian-splatting:latest
+    container_name: gaussian-splatting
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./logs:/app/logs
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+  # 開発用コンテナ（ソースコードをマウント）
+  gaussian-splatting-dev:
+    build: .
+    image: gaussian-splatting:latest
+    container_name: gaussian-splatting-dev
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./output:/app/output
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    profiles:
+      - dev
