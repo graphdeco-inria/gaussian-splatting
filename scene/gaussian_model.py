@@ -130,6 +130,10 @@ class GaussianModel:
         return self.opacity_activation(self._opacity)
     
     @property
+    def get_opacity_raw(self):
+        return self._opacity
+
+    @property
     def get_exposure(self):
         return self._exposure
 
