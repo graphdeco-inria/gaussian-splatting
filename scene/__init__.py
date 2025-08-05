@@ -22,10 +22,12 @@ class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], train_cam_indices=None, test_cam_indices=None):
         """b
         :param path: Path to colmap scene main folder.
         """
+        self.train_cam_indices = train_cam_indices
+        self.test_cam_indices = test_cam_indices
         self.model_path = args.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
@@ -70,9 +72,9 @@ class Scene:
 
         for resolution_scale in resolution_scales:
             print("Loading Training Cameras")
-            self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args, scene_info.is_nerf_synthetic, False)
+            self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args, scene_info.is_nerf_synthetic, False, cam_indices=self.train_cam_indices)
             print("Loading Test Cameras")
-            self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args, scene_info.is_nerf_synthetic, True)
+            self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args, scene_info.is_nerf_synthetic, True, cam_indices=self.test_cam_indices)
 
         if self.loaded_iter:
             self.gaussians.load_ply(os.path.join(self.model_path,
