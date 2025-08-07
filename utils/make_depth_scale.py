@@ -35,7 +35,7 @@ def get_scales(key, cameras, images, points3d_ordered, args):
     if invmonodepthmap.ndim != 2:
         invmonodepthmap = invmonodepthmap[..., 0]
 
-    invmonodepthmap = invmonodepthmap.astype(np.float32) / (2**16)
+    invmonodepthmap = invmonodepthmap.astype(np.float32) / (2**16 - 1)
     s = invmonodepthmap.shape[0] / cam_intrinsic.height
 
     maps = (valid_xys * s).astype(np.float32)
