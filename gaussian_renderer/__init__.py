@@ -15,7 +15,7 @@ from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianR
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 
-def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, separate_sh = False, override_color = None, use_trained_exp=False):
+def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, separate_sh = False, override_color = None, use_trained_exp=False, orthographic=True):
     """
     Render the scene. 
     
@@ -33,21 +33,48 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
     tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
 
+    # raster_settings = GaussianRasterizationSettings(
+    #     image_height=int(viewpoint_camera.image_height),
+    #     image_width=int(viewpoint_camera.image_width),
+    #     tanfovx=tanfovx,
+    #     tanfovy=tanfovy,
+    #     bg=bg_color,
+    #     scale_modifier=scaling_modifier,
+    #     viewmatrix=viewpoint_camera.world_view_transform,
+    #     projmatrix=viewpoint_camera.full_proj_transform,
+    #     sh_degree=pc.active_sh_degree,
+    #     campos=viewpoint_camera.camera_center,
+    #     prefiltered=False,
+    #     debug=pipe.debug,
+    #     antialiasing=pipe.antialiasing
+    # )
+
+      # Set up rasterization configuration
+    if not orthographic:
+        tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
+        tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
+        full_proj_transform = viewpoint_camera.get_full_proj_transform(orthographic)
+    else:
+        tanfovx, tanfovy, full_proj_transform = viewpoint_camera.get_full_proj_transform(orthographic)
+
+
     raster_settings = GaussianRasterizationSettings(
-        image_height=int(viewpoint_camera.image_height),
-        image_width=int(viewpoint_camera.image_width),
-        tanfovx=tanfovx,
-        tanfovy=tanfovy,
-        bg=bg_color,
-        scale_modifier=scaling_modifier,
-        viewmatrix=viewpoint_camera.world_view_transform,
-        projmatrix=viewpoint_camera.full_proj_transform,
-        sh_degree=pc.active_sh_degree,
-        campos=viewpoint_camera.camera_center,
-        prefiltered=False,
-        debug=pipe.debug,
-        antialiasing=pipe.antialiasing
-    )
+      image_height=int(viewpoint_camera.image_height),
+      image_width=int(viewpoint_camera.image_width),
+      tanfovx=tanfovx,
+      tanfovy=tanfovy,
+      bg=bg_color,
+      scale_modifier=scaling_modifier,
+      viewmatrix=viewpoint_camera.world_view_transform,
+      projmatrix=full_proj_transform,
+      sh_degree=pc.active_sh_degree,
+      campos=viewpoint_camera.camera_center,
+      prefiltered=False,
+      debug=pipe.debug,
+      antialiasing=pipe.antialiasing,
+      orthographic=orthographic
+  )
+    
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
@@ -71,6 +98,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     # from SHs in Python, do it. If not, then SH -> RGB conversion will be done by rasterizer.
     shs = None
     colors_precomp = None
+    dc = None
     if override_color is None:
         if pipe.convert_SHs_python:
             shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
