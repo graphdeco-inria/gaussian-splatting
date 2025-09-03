@@ -1,0 +1,52 @@
+from pathlib import Path
+from zipfile import ZipFile
+import textwrap
+
+# Δημιουργούμε έναν φάκελο project για Blender
+project_dir = Path("/mnt/data/blender_project")
+project_dir.mkdir(exist_ok=True)
+
+# Placeholder .blend αρχείο (δεν μπορούμε να δημιουργήσουμε πραγματικό Blender αρχείο εδώ,
+# αλλά φτιάχνουμε οδηγίες και project structure ώστε ο χρήστης να προσθέσει το αρχείο στο Blender)
+blend_file = project_dir / "Monastery_Flythrough_README.txt"
+
+instructions = textwrap.dedent("""\
+Blender Project Setup – Monastery Flythrough
+===========================================
+
+Αυτό το README περιγράφει το πώς να στήσεις το project στο Blender για να δημιουργήσεις το cinematic video.
+
+Βήματα:
+1. Άνοιξε το Blender (κατά προτίμηση 3.6 ή νεότερο).
+2. Δημιούργησε ένα νέο Project και πρόσθεσε την εικόνα σου ως "Background Image" ή μέσω Add > Image > Reference/Plane.
+   - Πρόσθεσε το addon "Import Images as Planes" (Preferences > Add-ons).
+3. Χώρισε την εικόνα σε Layers (Photoshop/GIMP) – π.χ. ουρανός, μοναστήρι, τοίχοι, διάδρομος.
+   - Κάθε layer εξάγεται ως PNG με διάφανο background και εισάγεται ξεχωριστά σε Blender.
+   - Έτσι δημιουργείται parallax effect.
+4. Κάμερα:
+   - Ξεκινά στο ύψος του διαδρόμου (χαμηλά).
+   - Κινείται μπροστά (Y-axis) με σταθερό pace (πρώτα 3-4 δευτερόλεπτα).
+   - Μετά σηκώνεται σε Z-axis (άνοδος πάνω από το μοναστήρι).
+   - Τέλος κάνει περιστροφή γύρω από το καμπαναριό (Keyframes rotation).
+5. Render Settings:
+   - Output: MP4 (FFmpeg video, H.264, High Quality).
+   - Resolution: 1920x1080 (ή 3840x2160 για 4K).
+   - Frame Rate: 30fps.
+   - Duration: 10–15 seconds.
+
+Tips:
+- Χρησιμοποίησε Depth of Field στην κάμερα για πιο cinematic αποτέλεσμα.
+- Πρόσθεσε Sun Light για ελαφριά δυναμική σκιά.
+
+Έτοιμο! Με αυτά τα βήματα θα δημιουργήσεις το βίντεο που ζήτησες.
+
+""")
+
+blend_file.write_text(instructions, encoding="utf-8")
+
+# Συμπιέζουμε σε zip για εύκολη λήψη
+zip_path = Path("/mnt/data/Monastery_Flythrough_Blender_Project.zip")
+with ZipFile(zip_path, 'w') as zipf:
+    zipf.write(blend_file, arcname=blend_file.name)
+
+zip_path
