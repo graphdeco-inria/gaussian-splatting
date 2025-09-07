@@ -26,9 +26,11 @@ from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 import math
 from contextlib import contextmanager
+from copy import deepcopy
+import matplotlib.pyplot as plt
 
 from functools import partial
-from solver.gaussian_model_state import GaussianModelState, GaussianModelDampMatrix, GaussianModelParamGroupMask, GaussianModelSplatMask
+from solver.gaussian_model_state import GaussianModelState, GaussianModelScaleMatrix, GaussianModelParamGroupMask, GaussianModelSplatMask
 from solver.batch_training_loss import batch_training_loss
 from solver.solver_functions import LinearSolverFunctions
 from solver.conjugate_gradient import cg_damped, cgls_damped
@@ -109,29 +111,37 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
 
-    param_mask = GaussianModelParamGroupMask(mask_xyz=True, 
+    param_mask = GaussianModelParamGroupMask(mask_xyz=True,
                                              mask_features_dc=False, 
                                              mask_features_rest=False, 
                                              mask_scaling=False, 
                                              mask_rotation=False, 
                                              mask_opacity=False, 
-                                             mask_exposure=False)
+                                             mask_exposure=True)
 
     P = gaussians.get_xyz.shape[0]
 
-    damp = GaussianModelDampMatrix(xyz_damp=5e-2, 
-                                   features_dc_damp=5e-2, 
-                                   features_rest_damp=5e-2, 
-                                   scaling_damp=5e-2, 
-                                   rotation_damp=5e-2, 
-                                   opacity_damp=5e-2, 
-                                   exposure_damp=1e1) * 1
+    damp = GaussianModelScaleMatrix(xyz_scale=5e-2, 
+                                    features_dc_scale=5e-2, 
+                                    features_rest_scale=5e-2, 
+                                    scaling_scale=5e-2, 
+                                    rotation_scale=5e-2, 
+                                    opacity_scale=5e-2, 
+                                    exposure_scale=1e1) * 1e-2
+
+    rescale = GaussianModelScaleMatrix(xyz_scale=0.0001, 
+                                      features_dc_scale=0.0025, 
+                                      features_rest_scale=0.0001, 
+                                      scaling_scale=0.005, 
+                                      rotation_scale=0.001, 
+                                      opacity_scale=0.025, 
+                                      exposure_scale=1.0)
 
     loss_func = partial(batch_training_loss, iteration=jvp_start, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
-    solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=10, param_mask=param_mask, damp=damp, splat_mask=None)
+    solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=10, param_mask=param_mask, damp=damp, splat_mask=None, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
-    pcg_max_iter = 5
+    pcg_max_iter = 10
 
     for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
@@ -218,7 +228,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # Every 1000 its we increase the levels of SH up to a maximum degree
             if iteration % 10 == 0:
                 gaussians.oneupSHdegree()
-                pcg_max_iter += 5
 
             train_cam_provider = CamProvider(train_cameras, mode="random", sample_size=num_images)
             train_cam_provider.sample_new()
@@ -256,6 +265,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             g, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, train_scale)
             x0 = solver_functions.get_initial_solution()
 
+            # print("DEBUG use different initial guess")
+            # x0 = -g / (g.abs() + 1e-15)
+            # init_scale = 0.1
+            # x0.xyz_grad *= 0.0001 * init_scale
+            # x0.features_dc_grad *= 0.0025 * init_scale
+            # x0.features_rest_grad *= 0.0001 * init_scale
+            # x0.rotation_grad *= 0.001 * init_scale
+            # x0.scaling_grad *= 0.005 * init_scale
+            # x0.opacity_grad *= 0.025 * init_scale
+            # pcg_max_iter = 50
+
             s = cg_damped(Ax=Hx,
                           dot=solver_functions.dot,
                           saxpy=solver_functions.saxpy,
@@ -263,30 +283,42 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                           x0=x0,
                           M=preconditioner,
                           max_iter=pcg_max_iter,
-                          restart_iter=5)
+                          restart_iter=50)
+            
+            s = rescale * s
+
+            print("DEBUG copying old gaussians")
+            gaussians_old = deepcopy(gaussians)
 
             # Line search
-            alpha = 16.0
+            alpha = 0.6
             cur_alpha = 0.0
             best_alpha = 0.0
             val_scale = len(val_cameras) / len(val_cameras)
             best_loss = solver_functions.evaluate_loss(val_cameras, val_scale)[0]
             print(f"[ITER {iteration}] Line search start: alpha {cur_alpha}, loss {best_loss:.6f}")
-            for ls_iter in range(9):
+            increase_count = 0
+            while True:
                 gaussians.update_step(s * (alpha - cur_alpha))
                 cur_alpha = alpha
                 loss_scalar = solver_functions.evaluate_loss(val_cameras, val_scale)[0]
 
-                print(f"[ITER {iteration}] Line search iter {ls_iter}: alpha {cur_alpha}, loss {loss_scalar:.6f}")
+                print(f"[ITER {iteration}] alpha {cur_alpha}, loss {loss_scalar:.6f}")
 
                 if loss_scalar < best_loss:
                     best_loss = loss_scalar
                     best_alpha = cur_alpha
 
-                alpha *= 0.5
+                if loss_scalar > best_loss:
+                    increase_count += 1
+
+                if increase_count >= 5:
+                    break
+
+                alpha += 0.1
 
             gaussians.update_step(s * (best_alpha - cur_alpha))
-            best_loss = solver_functions.evaluate_loss(val_cameras, val_scale)[0]
+            best_loss, best_Ll1, best_Ll1depth,  = solver_functions.evaluate_loss(val_cameras, val_scale)
             print(f"[ITER {iteration}] alpha = {best_alpha}, loss = {best_loss}")
 
             xyz_grad_norm = s.xyz_grad.norm().item()
@@ -300,8 +332,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             print(f"[ITER {iteration}]")
             print(f"    Gradient norms: xyz {xyz_grad_norm:.4e}, features_dc {features_dc_grad_norm:.4e}, features_rest {features_rest_grad_norm:.4e}, scaling {scaling_grad_norm:.4e}, rotation {rotation_grad_norm:.4e}, opacity {opacity_grad_norm:.4e}, exposure {exposure_grad_norm:.4e}")
 
-            safe_interact(local=locals(), banner="Debugging main optimization loop...")
-            
+            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
+
+            loss, Ll1, Ll1depth = best_loss, best_Ll1, best_Ll1depth
 
 
         iter_end.record()
@@ -355,6 +388,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+
+        safe_interact(local=locals(), banner="Debugging main optimization loop...")
+            
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
@@ -422,6 +458,71 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
+
+def plot_loss_vs_step_size(iteration, l1_loss, scene : Scene, gaussians_start, renderFunc, renderArgs, train_test_exp, s):
+    torch.cuda.empty_cache()
+    num_val_images = 30
+    val_stride = max(1, len(scene.getTrainCameras()) // num_val_images)
+    val_indices = list(range(0, len(scene.getTrainCameras()), val_stride))
+    validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
+                          {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx] for idx in val_indices]} )
+
+    test_l1_losses= []
+    test_psnrs = []
+    train_l1_losses= []
+    train_psnrs = []
+
+    step_size = 0.1
+    num_steps = 20
+    with torch.no_grad():
+        for config in validation_configs:
+            if config['cameras'] and len(config['cameras']) > 0:
+                gaussians = deepcopy(gaussians_start)
+                for i in range(num_steps):
+                    alpha = i * step_size
+                    gaussians.update_step(step_size * s)
+                    
+                    l1_test = 0.0
+                    psnr_test = 0.0
+                    for idx, viewpoint in enumerate(config['cameras']):
+                        image = torch.clamp(renderFunc(viewpoint, gaussians, *renderArgs)["render"], 0.0, 1.0)
+                        gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
+                        if train_test_exp:
+                            image = image[..., image.shape[-1] // 2:]
+                            gt_image = gt_image[..., gt_image.shape[-1] // 2:]
+                        l1_test += l1_loss(image, gt_image).mean().double()
+                        psnr_test += psnr(image, gt_image).mean().double()
+                    psnr_test /= len(config['cameras'])
+                    l1_test /= len(config['cameras'])          
+
+                    print(f"alpha {alpha:.3f} l1 {l1_test:.6f} psnr {psnr_test:.2f}")
+                    if config['name'] == 'test':
+                        test_l1_losses.append(l1_test.item())
+                        test_psnrs.append(psnr_test.item())
+                    else:
+                        train_l1_losses.append(l1_test.item())
+                        train_psnrs.append(psnr_test.item())
+
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(np.arange(0, num_steps) * step_size, train_l1_losses, label='Train L1 Loss')
+    plt.plot(np.arange(0, num_steps) * step_size, test_l1_losses, label='Test L1 Loss')
+    plt.xlabel('Step size')
+    plt.ylabel('L1 Loss')
+    plt.title('L1 Loss vs Step Size (Normalized to PCG Step)')
+    plt.legend()
+    plt.grid(True)
+    plt.subplot(1, 2, 2)
+    plt.plot(np.arange(0, num_steps) * step_size, train_psnrs, label='Train PSNR')
+    plt.plot(np.arange(0, num_steps) * step_size, test_psnrs, label='Test PSNR')
+    plt.xlabel('Step size')
+    plt.ylabel('PSNR')
+    plt.title('PSNR vs Step Size (Normalized to PCG step)')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(f"figures/pcg_loss_vs_step_size_{iteration}.png"))
+
 
 if __name__ == "__main__":
 

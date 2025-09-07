@@ -1,48 +1,48 @@
 import torch
 import torch.autograd.forward_ad as fwAD
 
-class GaussianModelDampMatrix:
+class GaussianModelScaleMatrix:
     """
     Per parameter damping matrix for Gaussians
     """
-    def __init__(self, xyz_damp, features_dc_damp, features_rest_damp,
-                 scaling_damp, rotation_damp, opacity_damp, exposure_damp):
-        self.xyz_damp = xyz_damp
-        self.features_dc_damp = features_dc_damp
-        self.features_rest_damp = features_rest_damp
-        self.scaling_damp = scaling_damp
-        self.rotation_damp = rotation_damp
-        self.opacity_damp = opacity_damp
-        self.exposure_damp = exposure_damp
+    def __init__(self, xyz_scale, features_dc_scale, features_rest_scale,
+                 scaling_scale, rotation_scale, opacity_scale, exposure_scale):
+        self.xyz_scale = xyz_scale
+        self.features_dc_scale = features_dc_scale
+        self.features_rest_scale = features_rest_scale
+        self.scaling_scale = scaling_scale
+        self.rotation_scale = rotation_scale
+        self.opacity_scale = opacity_scale
+        self.exposure_scale = exposure_scale
 
     def __neg__(self):
-        return GaussianModelDampMatrix(-self.xyz_damp,
-                                       -self.features_dc_damp,
-                                       -self.features_rest_damp,
-                                       -self.scaling_damp,
-                                       -self.rotation_damp,
-                                       -self.opacity_damp,
-                                       -self.exposure_damp)
+        return GaussianModelScaleMatrix(-self.xyz_scale,
+                                       -self.features_dc_scale,
+                                       -self.features_rest_scale,
+                                       -self.scaling_scale,
+                                       -self.rotation_scale,
+                                       -self.opacity_scale,
+                                       -self.exposure_scale)
 
     def __add__(self, other):
         if isinstance(other, (int, float)):
-            return GaussianModelDampMatrix(self.xyz_damp + other,
-                                           self.features_dc_damp + other,
-                                           self.features_rest_damp + other,
-                                           self.scaling_damp + other,
-                                           self.rotation_damp + other,
-                                           self.opacity_damp + other,
-                                           self.exposure_damp + other)
+            return GaussianModelScaleMatrix(self.xyz_scale + other,
+                                           self.features_dc_scale + other,
+                                           self.features_rest_scale + other,
+                                           self.scaling_scale + other,
+                                           self.rotation_scale + other,
+                                           self.opacity_scale + other,
+                                           self.exposure_scale + other)
 
     def __mul__(self, other):
         if isinstance(other, (int, float)):
-            return GaussianModelDampMatrix(self.xyz_damp * other,
-                                           self.features_dc_damp * other,
-                                           self.features_rest_damp * other,
-                                           self.scaling_damp * other,
-                                           self.rotation_damp * other,
-                                           self.opacity_damp * other,
-                                           self.exposure_damp * other)
+            return GaussianModelScaleMatrix(self.xyz_scale * other,
+                                           self.features_dc_scale * other,
+                                           self.features_rest_scale * other,
+                                           self.scaling_scale * other,
+                                           self.rotation_scale * other,
+                                           self.opacity_scale * other,
+                                           self.exposure_scale * other)
         if isinstance(other, GaussianModelState):
             return other * self
         else:
@@ -356,15 +356,15 @@ class GaussianModelState:
                 self.opacity_grad * other.opacity_grad,
                 self.exposure_grad * other.exposure_grad
             )
-        elif isinstance(other, GaussianModelDampMatrix):
+        elif isinstance(other, GaussianModelScaleMatrix):
             return GaussianModelState(
-                self.xyz_grad * other.xyz_damp,
-                self.features_dc_grad * other.features_dc_damp,
-                self.features_rest_grad * other.features_rest_damp,
-                self.scaling_grad * other.scaling_damp,
-                self.rotation_grad * other.rotation_damp,
-                self.opacity_grad * other.opacity_damp,
-                self.exposure_grad * other.exposure_damp
+                self.xyz_grad * other.xyz_scale,
+                self.features_dc_grad * other.features_dc_scale,
+                self.features_rest_grad * other.features_rest_scale,
+                self.scaling_grad * other.scaling_scale,
+                self.rotation_grad * other.rotation_scale,
+                self.opacity_grad * other.opacity_scale,
+                self.exposure_grad * other.exposure_scale
             )
         else:
             raise TypeError(f"Can only multiply by scalar values, not {type(other)}")
@@ -383,7 +383,7 @@ class GaussianModelState:
                 self.opacity_grad / other,
                 self.exposure_grad / other
             )
-        if isinstance(other, GaussianModelState):
+        elif isinstance(other, GaussianModelState):
             return GaussianModelState(
                 self.xyz_grad / other.xyz_grad,
                 self.features_dc_grad / other.features_dc_grad,
@@ -392,6 +392,16 @@ class GaussianModelState:
                 self.rotation_grad / other.rotation_grad,
                 self.opacity_grad / other.opacity_grad,
                 self.exposure_grad / other.exposure_grad
+            )
+        elif isinstance(other, GaussianModelScaleMatrix):
+            return GaussianModelState(
+                self.xyz_grad / other.xyz_scale,
+                self.features_dc_grad / other.features_dc_scale,
+                self.features_rest_grad / other.features_rest_scale,
+                self.scaling_grad / other.scaling_scale,
+                self.rotation_grad / other.rotation_scale,
+                self.opacity_grad / other.opacity_scale,
+                self.exposure_grad / other.exposure_scale
             )
         else:
             raise TypeError(f"Can only divide by scalar values, not {type(other)}")
@@ -406,16 +416,16 @@ class GaussianModelState:
                 torch.sum(self.opacity_grad * other.opacity_grad) + \
                 torch.sum(self.exposure_grad * other.exposure_grad)
             s *= damp
-        elif isinstance(damp, GaussianModelDampMatrix):
-            s = damp.xyz_damp * torch.sum(self.xyz_grad * other.xyz_grad) + \
-                damp.features_dc_damp * torch.sum(self.features_dc_grad * other.features_dc_grad) + \
-                damp.features_rest_damp * torch.sum(self.features_rest_grad * other.features_rest_grad) + \
-                damp.scaling_damp * torch.sum(self.scaling_grad * other.scaling_grad) + \
-                damp.rotation_damp * torch.sum(self.rotation_grad * other.rotation_grad) + \
-                damp.opacity_damp * torch.sum(self.opacity_grad * other.opacity_grad) + \
-                damp.exposure_damp * torch.sum(self.exposure_grad * other.exposure_grad)
+        elif isinstance(damp, GaussianModelScaleMatrix):
+            s = damp.xyz_scale * torch.sum(self.xyz_grad * other.xyz_grad) + \
+                damp.features_dc_scale * torch.sum(self.features_dc_grad * other.features_dc_grad) + \
+                damp.features_rest_scale * torch.sum(self.features_rest_grad * other.features_rest_grad) + \
+                damp.scaling_scale * torch.sum(self.scaling_grad * other.scaling_grad) + \
+                damp.rotation_scale * torch.sum(self.rotation_grad * other.rotation_grad) + \
+                damp.opacity_scale * torch.sum(self.opacity_grad * other.opacity_grad) + \
+                damp.exposure_scale * torch.sum(self.exposure_grad * other.exposure_grad)
         else:
-            raise TypeError(f"damp must be a scalar or GaussianModelDampMatrix, not {type(damp)}")
+            raise TypeError(f"damp must be a scalar or GaussianModelScaleMatrix, not {type(damp)}")
 
         return s.item()
 
@@ -430,3 +440,13 @@ class GaussianModelState:
             torch.sqrt(self.exposure_grad)
         )
      
+    def abs(self):
+        return GaussianModelState(
+            torch.abs(self.xyz_grad),
+            torch.abs(self.features_dc_grad),
+            torch.abs(self.features_rest_grad),
+            torch.abs(self.scaling_grad),
+            torch.abs(self.rotation_grad),
+            torch.abs(self.opacity_grad),
+            torch.abs(self.exposure_grad)
+        )

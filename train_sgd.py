@@ -28,7 +28,7 @@ import math
 from contextlib import contextmanager
 
 from functools import partial
-from solver.gaussian_model_state import GaussianModelState, GaussianModelDampMatrix, GaussianModelParamGroupMask, GaussianModelSplatMask
+from solver.gaussian_model_state import GaussianModelState, GaussianModelScaleMatrix, GaussianModelParamGroupMask, GaussianModelSplatMask
 from solver.training_loss import scalar_training_loss
 from solver.solver_functions import LinearSolverFunctions
 from solver.conjugate_gradient import cgls_damped
@@ -230,7 +230,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             s = GaussianModelState.from_gaussians(gaussians) - GaussianModelState.from_gaussians(gaussians_old)
 
             safe_interact(local=locals(), banner="Debug prompt after training step")
-            plot_loss_vs_step_size(l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
+            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
@@ -303,7 +303,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 
-def plot_loss_vs_step_size(l1_loss, scene : Scene, gaussians_start, renderFunc, renderArgs, train_test_exp, s):
+def plot_loss_vs_step_size(iteration, l1_loss, scene : Scene, gaussians_start, renderFunc, renderArgs, train_test_exp, s):
     torch.cuda.empty_cache()
     num_val_images = 30
     val_stride = max(1, len(scene.getTrainCameras()) // num_val_images)
@@ -364,7 +364,7 @@ def plot_loss_vs_step_size(l1_loss, scene : Scene, gaussians_start, renderFunc, 
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(os.path.join("loss_vs_step_size.png"))
+    plt.savefig(os.path.join(f"figures/loss_vs_step_size_{iteration}.png"))
 
 if __name__ == "__main__":
 

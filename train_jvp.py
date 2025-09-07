@@ -28,7 +28,7 @@ import math
 from contextlib import contextmanager
 
 from functools import partial
-from solver.gaussian_model_state import GaussianModelState, GaussianModelDampMatrix, GaussianModelParamGroupMask, GaussianModelSplatMask
+from solver.gaussian_model_state import GaussianModelState, GaussianModelScaleMatrix, GaussianModelParamGroupMask, GaussianModelSplatMask
 from solver.batch_training_loss import batch_training_loss
 from solver.solver_functions import LinearSolverFunctions
 from solver.conjugate_gradient import cg_damped, cgls_damped
@@ -111,21 +111,21 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     P = gaussians.get_xyz.shape[0]
 
-    damp = GaussianModelDampMatrix(xyz_damp=5e-4, 
-                                   features_dc_damp=5e-5, 
-                                   features_rest_damp=5e-4, 
-                                   scaling_damp=5e-5, 
-                                   rotation_damp=5e-5, 
-                                   opacity_damp=5e-5, 
-                                   exposure_damp=1e1)
+    damp = GaussianModelScaleMatrix(xyz_scale=5e-4, 
+                                   features_dc_scale=5e-5, 
+                                   features_rest_scale=5e-4, 
+                                   scaling_scale=5e-5, 
+                                   rotation_scale=5e-5, 
+                                   opacity_scale=5e-5, 
+                                   exposure_scale=1e1)
 
-    lr = GaussianModelDampMatrix(xyz_damp=1e-2, 
-                                   features_dc_damp=2.5e-1, 
-                                   features_rest_damp=1e-2, 
-                                   scaling_damp=5e-2, 
-                                   rotation_damp=1e-2, 
-                                   opacity_damp=2.5e-2, 
-                                   exposure_damp=1e1)
+    lr = GaussianModelScaleMatrix(xyz_scale=1e-2, 
+                                   features_dc_scale=2.5e-1, 
+                                   features_rest_scale=1e-2, 
+                                   scaling_scale=5e-2, 
+                                   rotation_scale=1e-2, 
+                                   opacity_scale=2.5e-2, 
+                                   exposure_scale=1e1)
 
     loss_func = partial(batch_training_loss, iteration=jvp_start, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=True)
     solver_functions = LinearSolverFunctions(loss_func, gaussians, param_mask=param_mask, damp=damp, splat_mask=None)

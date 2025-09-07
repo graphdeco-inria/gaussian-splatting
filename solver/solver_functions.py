@@ -18,7 +18,7 @@ def print_backwards_graph(gfn, indent=0):
 
 class LinearSolverFunctions:
 
-    def __init__(self, loss_func, gaussians, batch_size=-1, param_mask=None, splat_mask=None, damp=None):
+    def __init__(self, loss_func, gaussians, batch_size=-1, param_mask=None, splat_mask=None, damp=None, rescale=None):
         """
         batch_size: The number of cameras that can be run in a single batch, this number should be independent of sample size
 
@@ -26,6 +26,10 @@ class LinearSolverFunctions:
 
         Damping:
         Damping will be added to the VJP and HV operations but not the JVP operation.
+
+        Rescaling:
+        Rescaling each variable to an appropriate range can help with conditioning.
+        Essentially, we are replacing J by JS, where S is a diagonal scaling matrix.
 
         """
 
@@ -36,7 +40,7 @@ class LinearSolverFunctions:
         self.param_mask = param_mask
         self.splat_mask = splat_mask
         self.damp = damp
-
+        self.rescale = rescale
 
 
     def get_initial_solution(self):
@@ -91,6 +95,9 @@ class LinearSolverFunctions:
         """
         Damping and scaling are not done in JVP
         """
+
+        if self.rescale is not None:
+            v = v * self.rescale
 
         assert isinstance(v, GaussianModelState), "v must be an instance of GaussianModelState"
         B = len(viewpoint_cams)
@@ -148,12 +155,19 @@ class LinearSolverFunctions:
         assert not torch.isnan(self.gaussians._rotation.grad).any(), "NaN detected in gaussians._rotation.grad"
         assert not torch.isnan(self.gaussians._opacity.grad).any(), "NaN detected in gaussians._opacity.grad"
 
-        return GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
+        res = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
+        if self.rescale is not None:
+            res = res * self.rescale
+        return res
 
 
     def gradient_and_loss_est(self, viewpoint_cams, scale):
         """
         viewpoint_cams is a subset of all cameras, scale should be set to the inverse probability of sampling those cameras
+        
+        Let sigma(x) be the loss function with Gaussian parameters x. Then this function computes the gradient for
+        sigma'(s) = sigma(x + s) where s = 0. Therefore, we don't need to apply damping, but we do need to apply scaling.
+
         """
 
         self.gaussians.zero_grad()
@@ -184,6 +198,9 @@ class LinearSolverFunctions:
 
         grad = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
 
+        if self.rescale is not None:
+            grad = grad * self.rescale
+
         return grad, loss_scalar
 
     def Hv(self, v, viewpoint_cams, scale):
@@ -191,7 +208,12 @@ class LinearSolverFunctions:
         Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
         scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
         Damping and scaling are applied to Hv
+        Rescaling is applied to v before computing Hv and to the result Hv but before damping
         """
+
+        if self.rescale is not None:
+            v = v * self.rescale
+
         self.gaussians.zero_grad()
 
         B = len(viewpoint_cams)
@@ -210,6 +232,10 @@ class LinearSolverFunctions:
                 torch.cuda.empty_cache()
 
         Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask) * scale
+
+        if self.rescale is not None:
+            Hv = Hv * self.rescale
+
         if self.damp is not None:
             Hv += self.damp * v
 

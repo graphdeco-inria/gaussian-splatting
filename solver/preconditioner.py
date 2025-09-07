@@ -37,7 +37,6 @@ class AdaHessianPreconditioner:
 
         D_accum = D_accum / num_iter
         D_accum = (D_accum * D_accum).sqrt()
-        safe_interact(local=locals(), banner="Debugging AdaHessianPreconditioner...")
         # D_accum.block_average_and_expand()
         self.D_sq = ((1 - self.beta2) / num_iter) * D_accum + self.beta2 * self.D_sq
 
