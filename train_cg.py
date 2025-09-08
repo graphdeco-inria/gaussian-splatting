@@ -31,6 +31,7 @@ import matplotlib.pyplot as plt
 
 from functools import partial
 from solver.gaussian_model_state import GaussianModelState, GaussianModelScaleMatrix, GaussianModelParamGroupMask, GaussianModelSplatMask
+from solver.training_loss import scalar_training_loss
 from solver.batch_training_loss import batch_training_loss
 from solver.solver_functions import LinearSolverFunctions
 from solver.conjugate_gradient import cg_damped, cgls_damped
@@ -111,7 +112,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
 
-    param_mask = GaussianModelParamGroupMask(mask_xyz=True,
+    param_mask = GaussianModelParamGroupMask(mask_xyz=False,
                                              mask_features_dc=False, 
                                              mask_features_rest=False, 
                                              mask_scaling=False, 
@@ -121,7 +122,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     P = gaussians.get_xyz.shape[0]
 
-    damp = GaussianModelScaleMatrix(xyz_scale=5e-2, 
+    damp = GaussianModelScaleMatrix(xyz_scale=5e-1, 
                                     features_dc_scale=5e-2, 
                                     features_rest_scale=5e-2, 
                                     scaling_scale=5e-2, 
@@ -137,11 +138,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                       opacity_scale=0.025, 
                                       exposure_scale=1.0)
 
-    loss_func = partial(batch_training_loss, iteration=jvp_start, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
+    loss_func = partial(batch_training_loss, iteration=jvp_start, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=True)
     solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=10, param_mask=param_mask, damp=damp, splat_mask=None, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
-    pcg_max_iter = 10
+    pcg_max_iter = 3
 
     for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
@@ -159,67 +160,75 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             except Exception as e:
                 network_gui.conn = None
 
-        use_first_order = iteration < jvp_start
+        use_first_order = iteration < jvp_start or iteration % 50 != 1
 
         iter_start.record()
         if use_first_order:
+            print(f"\n[ITER {iteration}] First order optimization")
 
             gaussians.update_learning_rate(iteration)
 
-            # Every 1000 its we increase the levels of SH up to a maximum degree
+            gaussians._xyz.requires_grad_(True)
+            gaussians._features_dc.requires_grad_(True)
+            gaussians._features_rest.requires_grad_(True)
+            gaussians._scaling.requires_grad_(True)
+            gaussians._rotation.requires_grad_(True)
+            gaussians._opacity.requires_grad_(True)
+            gaussians._exposure.requires_grad_(True)
+
+            # every 1000 its we increase the levels of sh up to a maximum degree
             if iteration % 1000 == 0:
                 gaussians.oneupSHdegree()
+
+            # render
+            if (iteration - 1) == debug_from:
+                pipe.debug = true
+
+            bg = torch.rand((3), device="cuda") if opt.random_background else background
 
             # Pick a random Camera
             if not viewpoint_stack:
                 viewpoint_stack = scene.getTrainCameras().copy()
                 viewpoint_indices = list(range(len(viewpoint_stack)))
-            rand_idx = randint(0, len(viewpoint_indices) - 1)
-            viewpoint_cam = viewpoint_stack[rand_idx]
-            vind = viewpoint_indices[rand_idx]
+
+            sgd_num_images = 20
+            num_batch_cameras = min(sgd_num_images, len(viewpoint_indices))
+            rand_indices = np.random.choice(viewpoint_indices, num_batch_cameras, replace=False)
+
+            # stride = np.random.randint(1, 4)
+            # rand_index_start = np.random.randint(0, len(viewpoint_indices) - num_batch_cameras * stride)
+            # rand_indices = list(range(rand_index_start, rand_index_start + num_batch_cameras * stride, stride))
+
+            # Same background for all cameras in the batch
+            bg = torch.rand((3), device="cuda") if opt.random_background else background
+            viewpoint_cams = []
+            for rand_idx in rand_indices:
+                viewpoint_cam = viewpoint_stack[rand_idx]
+                viewpoint_cams.append(viewpoint_cam)
 
             # Render
             if (iteration - 1) == debug_from:
                 pipe.debug = True
 
-            bg = torch.rand((3), device="cuda") if opt.random_background else background
+            loss_func = partial(scalar_training_loss, gaussians=gaussians, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
 
-            render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
-            image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
-
-            if viewpoint_cam.alpha_mask is not None:
-                alpha_mask = viewpoint_cam.alpha_mask.cuda()
-                image *= alpha_mask
-
-            # Loss
-            gt_image = viewpoint_cam.original_image.cuda()
-            Ll1 = l1_loss(image, gt_image)
-            if FUSED_SSIM_AVAILABLE:
-                ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
-            else:
-                ssim_value = ssim(image, gt_image)
-
-            loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
-
-            # Depth regularization
-            Ll1depth_pure = 0.0
-            if depth_l1_weight(iteration) > 0 and viewpoint_cam.depth_reliable:
-                invDepth = render_pkg["depth"]
-                mono_invdepth = viewpoint_cam.invdepthmap.cuda()
-                depth_mask = viewpoint_cam.depth_mask.cuda()
-
-                Ll1depth_pure = torch.abs((invDepth  - mono_invdepth) * depth_mask).mean()
-                Ll1depth = depth_l1_weight(iteration) * Ll1depth_pure 
-                loss += Ll1depth
-                Ll1depth = Ll1depth.item()
-            else:
-                Ll1depth = 0
+            gaussians.optimizer.zero_grad()
+            gaussians.exposure_optimizer.zero_grad()
+            for vc in viewpoint_cams:
+                loss, Ll1, Ll1depth = loss_func(viewpoint_cam=vc)
+                loss.backward()
 
             if iteration in testing_iterations:
-                P = gaussians.get_xyz.shape[0]
-                print(f"\n[ITER {iteration}] Loss: {loss.item():.6f}, P = {P}")
+                p = gaussians.get_xyz.shape[0]
+                print(f"\n[iter {iteration}] loss: {loss.item():.6f}, p = {p}")
 
-            loss.backward()
+            gaussians._xyz.requires_grad_(True)
+            gaussians._features_dc.requires_grad_(True)
+            gaussians._features_rest.requires_grad_(True)
+            gaussians._scaling.requires_grad_(True)
+            gaussians._rotation.requires_grad_(True)
+            gaussians._opacity.requires_grad_(True)
+            gaussians._exposure.requires_grad_(True)
 
         else:
 
@@ -243,7 +252,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 pipe.debug = True
 
             if iteration == jvp_start:
-                warmup_sample_size = 50
+                warmup_sample_size = 20
                 warmup_cam_provider = CamProvider(train_cameras, mode="random", max_stride=1, sample_size=warmup_sample_size)
                 scale = len(train_cameras) / warmup_sample_size
                 preconditioner.reset()
@@ -252,11 +261,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("preconditioner D_corrected.sqrt() norm ", solver_functions.dot(D_corrected.sqrt(), D_corrected.sqrt()))
             else:
 
-                update_sample_size = 50
+                update_sample_size = 40
                 cam_provider = CamProvider(batch_viewpoint_cams, mode="random", sample_size=update_sample_size)
                 scale = len(train_cameras) / update_sample_size
                 preconditioner.reset()
-                preconditioner.update(solver_functions.Hv, cam_provider, scale, num_iter=5)
+                preconditioner.update(solver_functions.Hv, cam_provider, scale, num_iter=10)
                 D_corrected = preconditioner.D_corrected
                 print("preconditioner D_corrected.sqrt() norm ", solver_functions.dot(D_corrected.sqrt(), D_corrected.sqrt()))
 
@@ -291,7 +300,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             gaussians_old = deepcopy(gaussians)
 
             # Line search
-            alpha = 0.6
+            alpha = 0.0
             cur_alpha = 0.0
             best_alpha = 0.0
             val_scale = len(val_cameras) / len(val_cameras)
@@ -336,6 +345,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             loss, Ll1, Ll1depth = best_loss, best_Ll1, best_Ll1depth
 
+            safe_interact(local=locals(), banner="After PCG step")
+
 
         iter_end.record()
         torch.cuda.synchronize()
@@ -375,6 +386,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # Optimizer step
             if use_first_order:
                 if iteration < opt.iterations:
+                    print("[ITER {}] First order optimizer step".format(iteration))
                     gaussians.exposure_optimizer.step()
                     gaussians.exposure_optimizer.zero_grad(set_to_none = True)
                     if use_sparse_adam:
@@ -389,7 +401,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
-        safe_interact(local=locals(), banner="Debugging main optimization loop...")
             
 
 def prepare_output_and_logger(args):    
@@ -422,7 +433,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
 
     # Report test and samples of training set
 
-    if iteration in testing_iterations or iteration >= jvp_start:
+    if iteration in testing_iterations or (iteration >= jvp_start and iteration % 10 == 1):
         torch.cuda.empty_cache()
         num_val_images = 10
         val_stride = max(1, len(scene.getTrainCameras()) // num_val_images)
