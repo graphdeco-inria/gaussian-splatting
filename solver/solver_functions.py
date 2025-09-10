@@ -126,7 +126,7 @@ class LinearSolverFunctions:
         # Assume vs is a MultiBatchLossImageState with the same batch size and order as the original viewpoint_cams
         assert isinstance(vs, MultiBatchLossImageState), "vs must be an instance of MultiBatchLossImageState"
         B = len(viewpoint_cams)
-        batch_size = batch_size if batch_size > 0 else B
+        batch_size = self.batch_size if self.batch_size > 0 else B
 
         for start_idx in range(0, B, batch_size):
             self.gaussians.zero_grad()
@@ -211,33 +211,35 @@ class LinearSolverFunctions:
         Rescaling is applied to v before computing Hv and to the result Hv but before damping
         """
 
-        if self.rescale is not None:
-            v = v * self.rescale
+        # if self.rescale is not None:
+        #     v = v * self.rescale
 
-        self.gaussians.zero_grad()
+        # self.gaussians.zero_grad()
 
-        B = len(viewpoint_cams)
-        batch_size = self.batch_size if self.batch_size > 0 else B
+        # B = len(viewpoint_cams)
+        # batch_size = self.batch_size if self.batch_size > 0 else B
 
-        for start_idx in range(0, B, batch_size):
-            with torch.enable_grad(), fwAD.dual_level(), self.gaussians.make_dual(v):
-                end_idx = min(start_idx + batch_size, B)
-                viewpoint_cams_batch = [viewpoint_cams[i] for i in range(start_idx, end_idx)]
-                loss_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cams=viewpoint_cams_batch)
-                loss_primal, loss_tangent = loss_dual.unpack_dual()
-                loss_primal.backward(loss_tangent, retain_graph=False)
+        # for start_idx in range(0, B, batch_size):
+        #     with torch.enable_grad(), fwAD.dual_level(), self.gaussians.make_dual(v):
+        #         end_idx = min(start_idx + batch_size, B)
+        #         viewpoint_cams_batch = [viewpoint_cams[i] for i in range(start_idx, end_idx)]
+        #         loss_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cams=viewpoint_cams_batch)
+        #         loss_primal, loss_tangent = loss_dual.unpack_dual()
+        #         loss_primal.backward(loss_tangent, retain_graph=False)
 
-                del loss_primal, loss_dual, loss_tangent
-                gc.collect()
-                torch.cuda.empty_cache()
+        #         del loss_primal, loss_dual, loss_tangent
+        #         gc.collect()
+        #         torch.cuda.empty_cache()
 
-        Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask) * scale
+        # Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask) * scale
 
-        if self.rescale is not None:
-            Hv = Hv * self.rescale
+        # if self.rescale is not None:
+        #     Hv = Hv * self.rescale
 
-        if self.damp is not None:
-            Hv += self.damp * v
+        # if self.damp is not None:
+        #     Hv += self.damp * v
+
+        Hv = v
 
         return Hv
 

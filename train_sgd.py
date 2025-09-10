@@ -320,8 +320,8 @@ def plot_loss_vs_step_size(iteration, l1_loss, scene : Scene, gaussians_start, r
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0:
                 gaussians = deepcopy(gaussians_start)
-                step_size = 0.02
-                for i in range(200):
+                step_size = 0.2
+                for i in range(20):
                     alpha = i * step_size
                     gaussians.update_step(step_size * s)
                     
@@ -348,16 +348,16 @@ def plot_loss_vs_step_size(iteration, l1_loss, scene : Scene, gaussians_start, r
 
     plt.figure(figsize=(12, 5))
     plt.subplot(1, 2, 1)
-    plt.plot(np.arange(0, 200) * step_size, train_l1_losses, label='Train L1 Loss')
-    plt.plot(np.arange(0, 200) * step_size, test_l1_losses, label='Test L1 Loss')
+    plt.plot(np.arange(0, len(train_l1_losses)) * step_size, train_l1_losses, label='Train L1 Loss')
+    plt.plot(np.arange(0, len(test_l1_losses)) * step_size, test_l1_losses, label='Test L1 Loss')
     plt.xlabel('Step size')
     plt.ylabel('L1 Loss')
     plt.title('L1 Loss vs Step Size (Normalized to ADAM step)')
     plt.legend()
     plt.grid(True)
     plt.subplot(1, 2, 2)
-    plt.plot(np.arange(0, 200) * step_size, train_psnrs, label='Train PSNR')
-    plt.plot(np.arange(0, 200) * step_size, test_psnrs, label='Test PSNR')
+    plt.plot(np.arange(0, len(train_psnrs)) * step_size, train_psnrs, label='Train PSNR')
+    plt.plot(np.arange(0, len(test_psnrs)) * step_size, test_psnrs, label='Test PSNR')
     plt.xlabel('Step size')
     plt.ylabel('PSNR')
     plt.title('PSNR vs Step Size (Normalized to ADAM step)')

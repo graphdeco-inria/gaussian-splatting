@@ -17,8 +17,8 @@ class CamProvider:
         self.viewpoint_cams = viewpoint_cams
         self.mode = mode
         self.max_stride = max_stride
-        self.sample_size = sample_size
         self.B = len(viewpoint_cams)
+        self.sample_size = sample_size if sample_size > 0 else self.B
         self.start_idx = 0
         self.cur_samples = None
 

@@ -30,6 +30,21 @@ class BatchLossImageState:
         self.sizes_list = sizes_list  # List of tuples (H, W) for each image
         self.has_depth = has_depth  # Boolean indicating if depth loss is included
 
+    def load_1d_tensor(self, T):
+        self.has_loss_image = True
+        self.loss_image = T.view(self.loss_image.shape)
+        self.Ll1_per_pixel = self.loss_image[:, :3, :, :]  # (B, 3, H, W)
+        self.ssim_loss_per_pixel = self.loss_image[:, 3:6, :, :] # (B, 3, H, W)
+        self.Ll1depth_per_pixel = self.loss_image[:, 6:, :, :]
+        self.Ll1_scalar = torch.linalg.vector_norm(self.Ll1_per_pixel.flatten(), ord=2) ** 2
+        self.ssim_loss_scalar = torch.linalg.vector_norm(self.ssim_loss_per_pixel.flatten(), ord=2) ** 2
+        self.Ll1depth_scalar = torch.linalg.vector_norm(self.Ll1depth_per_pixel.flatten(), ord=2) ** 2
+        self.loss_scalar = self.Ll1_scalar + self.ssim_loss_scalar + self.Ll1depth_scalar
+
+    def as_1d_tensor(self):
+        return self.loss_image.flatten()
+
+
     def remove_loss_image(self):
         """
         Remove loss image to save memory
@@ -162,6 +177,18 @@ class MultiBatchLossImageState:
     def check_invariant(self):
         for loss in self.batch_losses:
             loss.check_invariant()
+
+    def load_1d_tensor(self, T):
+        idx = 0
+        for loss in self.batch_losses:
+            N = loss.length
+            loss_tensor = T[idx:idx + N]
+            loss.load_1d_tensor(loss_tensor)
+            idx += N
+
+    def as_1d_tensor(self):
+        return torch.cat([loss.as_1d_tensor() for loss in self.batch_losses], dim=0)
+
 
     @property
     def length(self):
