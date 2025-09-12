@@ -37,6 +37,7 @@ from solver.solver_functions import LinearSolverFunctions
 from solver.conjugate_gradient import cg_damped, cgls_damped
 from solver.preconditioner import AdaHessianPreconditioner
 from solver.solver_utils import CamProvider
+from utils.ply_utils import write_gaussians_to_ply
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -277,17 +278,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             g, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, train_scale)
             x0 = solver_functions.get_initial_solution()
 
-            # print("DEBUG use different initial guess")
-            # x0 = -g / (g.abs() + 1e-15)
-            # init_scale = 0.1
-            # x0.xyz_grad *= 0.0001 * init_scale
-            # x0.features_dc_grad *= 0.0025 * init_scale
-            # x0.features_rest_grad *= 0.0001 * init_scale
-            # x0.rotation_grad *= 0.001 * init_scale
-            # x0.scaling_grad *= 0.005 * init_scale
-            # x0.opacity_grad *= 0.025 * init_scale
-            # pcg_max_iter = 50
-
             s = cg_damped(Ax=Hx,
                           dot=solver_functions.dot,
                           saxpy=solver_functions.saxpy,
@@ -297,6 +287,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                           max_iter=pcg_max_iter,
                           restart_iter=50)
 
+
             s = rescale * s
 
             print(f"[ITER {iteration}] s dot g = {solver_functions.dot(s, g):.6f}")
@@ -304,6 +295,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             print("DEBUG copying old gaussians")
             gaussians_old = deepcopy(gaussians)
+
+            print("DEBUG writing to ply file")
+            write_gaussians_to_ply(gaussians, s, f"pcg_gaussians_iter{iteration}.ply")
+            safe_interact(local=locals(), banner="Before PCG step")
 
             print("Line search cameras: ", val_indices)
 

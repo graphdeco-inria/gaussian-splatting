@@ -166,6 +166,19 @@ class GaussianModelState:
                    param_mask=param_mask,
                    splat_mask=splat_mask)
 
+    def apply_mask(self, param_mask=None, splat_mask=None):
+        return GaussianModelState(
+                self.xyz_grad,
+                self.features_dc_grad,
+                self.features_rest_grad,
+                self.scaling_grad,
+                self.rotation_grad,
+                self.opacity_grad,
+                self.exposure_grad,
+                param_mask=param_mask,
+                splat_mask=splat_mask)
+
+
     def clip(self):
         feat_dc_grad_norm = self.features_dc_grad.norm()
         feat_dc_grad_norm_max = self.features_dc_grad.norm(dim=-1).max()
