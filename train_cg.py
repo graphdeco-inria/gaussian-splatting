@@ -123,7 +123,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                     scaling_scale=5e-2, 
                                     rotation_scale=5e-2, 
                                     opacity_scale=5e-2, 
-                                    exposure_scale=1e1) * 1e1
+                                    exposure_scale=1e1) * 1e-2
 
     rescale = GaussianModelScaleMatrix(xyz_scale=0.0001, 
                                       features_dc_scale=0.0025, 
@@ -137,7 +137,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=10, param_mask=param_mask, damp=damp, splat_mask=None, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
-    pcg_max_iter = 3
+    pcg_max_iter = 30
 
     for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
@@ -155,7 +155,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             except Exception as e:
                 network_gui.conn = None
 
-        use_first_order = iteration < jvp_start or iteration % 5 != 1
+        use_first_order = iteration < jvp_start # or iteration % 5 != 1
 
         iter_start.record()
         if use_first_order:
@@ -276,6 +276,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             train_scale = len(train_cameras) / len(batch_viewpoint_cams)
             Hx = partial(solver_functions.Hv, viewpoint_cams=batch_viewpoint_cams, scale=train_scale)
             g, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, train_scale)
+
+            print(f"g norm = {solver_functions.dot(g, g):.6f}")
+
             x0 = solver_functions.get_initial_solution()
 
             s = cg_damped(Ax=Hx,
@@ -290,15 +293,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             s = rescale * s
 
-            print(f"[ITER {iteration}] s dot g = {solver_functions.dot(s, g):.6f}")
-            # safe_interact(local=locals(), banner="Before line search")
+            print(f"[ITER {iteration}] s dot g = {solver_functions.dot(s, g):.6e}")
+            safe_interact(local=locals(), banner="Before line search")
 
             print("DEBUG copying old gaussians")
             gaussians_old = deepcopy(gaussians)
 
-            print("DEBUG writing to ply file")
-            write_gaussians_to_ply(gaussians, s, f"pcg_gaussians_iter{iteration}.ply")
-            safe_interact(local=locals(), banner="Before PCG step")
+            # print("DEBUG writing to ply file")
+            # write_gaussians_to_ply(gaussians, s, f"pcg_gaussians_iter{iteration}.ply")
+            # safe_interact(local=locals(), banner="Before PCG step")
 
             print("Line search cameras: ", val_indices)
 
@@ -526,9 +529,9 @@ def plot_loss_vs_step_size(iteration, l1_loss, scene : Scene, gaussians_start, r
                 alpha = 0.0
                 while alpha < end_alpha:
                     if alpha > mid_alpha:
-                        step_size = (end_alpha - mid_alpha) / 20.0
+                        step_size = (end_alpha - mid_alpha) / 10.0
                     else:
-                        step_size = (mid_alpha) / 20.0
+                        step_size = (mid_alpha) / 10.0
                     
                     l1_test = 0.0
                     psnr_test = 0.0

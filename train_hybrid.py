@@ -137,7 +137,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=10, param_mask=param_mask, damp=damp, splat_mask=None, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
-    pcg_max_iter = 3
+    pcg_max_iter = 30
 
     for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
@@ -292,7 +292,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             dot = solver_functions.dot
             s_adam = -g / (g.abs() + 1e-15) * rescale
 
-            s_sgd = s_adam - dot(s_adam, Hx(s_pcg)) / dot(s_pcg, Hx(s_pcg)) * s_pcg
+            Hs_pcg = Hx(s_pcg)
+            s_sgd = s_adam - dot(s_adam, Hs_pcg) / dot(s_pcg, Hs_pcg) * s_pcg
+
+            # DEBUG
+            print("setting s_sgd to just be the projection on s_pcg")
+            s_sgd = dot(s_adam, Hs_pcg) / dot(s_pcg, Hs_pcg) * s_pcg
+
+            safe_interact(local=locals(), banner="Before line search pcg")
+            gaussians_old = deepcopy(gaussians)
 
             # Line search on the pcg direction
             alpha_pcg = 0.0
@@ -303,6 +311,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             print(f"[ITER {iteration}] PCG Line search start: alpha {cur_alpha_pcg:.2f}, loss {best_loss_pcg:.6f}")
             increase_count_pcg = 0
             while True:
+                # DEBUG
+                break
                 gaussians.update_step(s_pcg * (alpha_pcg - cur_alpha_pcg))
                 cur_alpha_pcg = alpha_pcg
                 loss_scalar = solver_functions.evaluate_loss(val_cameras, val_scale)[0]
@@ -318,10 +328,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if increase_count_pcg >= 5:
                     break
 
-                if alpha_pcg == 0.0:
-                    alpha_pcg += 0.1
-                else:
-                    alpha_pcg *= 1.2
+                alpha_pcg += 0.2
+                if alpha_pcg > 2.0:
+                    break
 
             gaussians.update_step(s_pcg * (best_alpha_pcg - cur_alpha_pcg))
 
@@ -353,7 +362,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             gaussians.update_step(s_sgd * (best_alpha_sgd - cur_alpha_sgd))
 
             best_loss, best_Ll1, best_Ll1depth,  = solver_functions.evaluate_loss(val_cameras, val_scale)
-            print(f"[ITER {iteration}] alpha = {best_alpha}, loss = {best_loss}")
+            print(f"[ITER {iteration}] loss = {best_loss}")
 
             s = s_pcg * best_alpha_pcg + s_sgd * best_alpha_sgd
             adam_end_alpha = math.sqrt(dot(s_adam, s_adam)) / math.sqrt(dot(s, s))
@@ -379,11 +388,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             print(f"    Gradient norms: xyz {xyz_grad_norm:.4e}, features_dc {features_dc_grad_norm:.4e}, features_rest {features_rest_grad_norm:.4e}, scaling {scaling_grad_norm:.4e}, rotation {rotation_grad_norm:.4e}, opacity {opacity_grad_norm:.4e}, exposure {exposure_grad_norm:.4e}")
             print(f"    Gradient max norms: xyz {xyz_grad_norm_max:.4e}, features_dc {features_dc_grad_norm_max:.4e}, features_rest {features_rest_grad_norm_max:.4e}, scaling {scaling_grad_norm_max:.4e}, rotation {rotation_grad_norm_max:.4e}, opacity {opacity_grad_norm_max:.4e}, exposure {exposure_grad_norm_max:.4e}")
 
-            end_alpha = adam_end_alpha * 1.5 if adam_end_alpha > alpha else alpha * 1.5
+            end_alpha = adam_end_alpha * 1.5 if adam_end_alpha > 1.0 else 1.5
 
-            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s, mid_alpha=alpha, end_alpha=end_alpha, train_indices=train_indices, val_indices=val_indices, loss_func=loss_func, image_name="hybrid_all")
+            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s, mid_alpha=1, end_alpha=end_alpha, train_indices=train_indices, val_indices=val_indices, loss_func=loss_func, image_name="hybrid_all")
 
-            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s_adam, mid_alpha=alpha, end_alpha=end_alpha, train_indices=train_indices, val_indices=val_indices, loss_func=loss_func, image_name="sgd_all")
+            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s_adam, mid_alpha=1, end_alpha=end_alpha, train_indices=train_indices, val_indices=val_indices, loss_func=loss_func, image_name="sgd_all")
 
             loss, Ll1, Ll1depth = best_loss, best_Ll1, best_Ll1depth
 
@@ -543,9 +552,9 @@ def plot_loss_vs_step_size(iteration, l1_loss, scene : Scene, gaussians_start, r
                 alpha = 0.0
                 while alpha < end_alpha:
                     if alpha > mid_alpha:
-                        step_size = (end_alpha - mid_alpha) / 20.0
+                        step_size = (end_alpha - mid_alpha) / 15.0
                     else:
-                        step_size = (mid_alpha) / 20.0
+                        step_size = (mid_alpha) / 15.0
                     
                     l1_test = 0.0
                     psnr_test = 0.0

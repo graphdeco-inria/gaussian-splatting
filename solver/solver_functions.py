@@ -211,35 +211,33 @@ class LinearSolverFunctions:
         Rescaling is applied to v before computing Hv and to the result Hv but before damping
         """
 
-        # if self.rescale is not None:
-        #     v = v * self.rescale
+        if self.rescale is not None:
+            v = v * self.rescale
 
-        # self.gaussians.zero_grad()
+        self.gaussians.zero_grad()
 
-        # B = len(viewpoint_cams)
-        # batch_size = self.batch_size if self.batch_size > 0 else B
+        B = len(viewpoint_cams)
+        batch_size = self.batch_size if self.batch_size > 0 else B
 
-        # for start_idx in range(0, B, batch_size):
-        #     with torch.enable_grad(), fwAD.dual_level(), self.gaussians.make_dual(v):
-        #         end_idx = min(start_idx + batch_size, B)
-        #         viewpoint_cams_batch = [viewpoint_cams[i] for i in range(start_idx, end_idx)]
-        #         loss_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cams=viewpoint_cams_batch)
-        #         loss_primal, loss_tangent = loss_dual.unpack_dual()
-        #         loss_primal.backward(loss_tangent, retain_graph=False)
+        for start_idx in range(0, B, batch_size):
+            with torch.enable_grad(), fwAD.dual_level(), self.gaussians.make_dual(v):
+                end_idx = min(start_idx + batch_size, B)
+                viewpoint_cams_batch = [viewpoint_cams[i] for i in range(start_idx, end_idx)]
+                loss_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cams=viewpoint_cams_batch)
+                loss_primal, loss_tangent = loss_dual.unpack_dual()
+                loss_primal.backward(loss_tangent, retain_graph=False)
 
-        #         del loss_primal, loss_dual, loss_tangent
-        #         gc.collect()
-        #         torch.cuda.empty_cache()
+                del loss_primal, loss_dual, loss_tangent
+                gc.collect()
+                torch.cuda.empty_cache()
 
-        # Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask) * scale
+        Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask) * scale
 
-        # if self.rescale is not None:
-        #     Hv = Hv * self.rescale
+        if self.rescale is not None:
+            Hv = Hv * self.rescale
 
-        # if self.damp is not None:
-        #     Hv += self.damp * v
-
-        Hv = v
+        if self.damp is not None:
+            Hv += self.damp * v
 
         return Hv
 
