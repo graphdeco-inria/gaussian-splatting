@@ -1,3 +1,134 @@
+# 3D Gaussian Splatting Windows 11 using Visual Studio 2022 and CUDA 12.8
+
+## My Setup
+
+- GPU - NVIDIA RTX 3060 TI - 8GB VRAM
+- CPU - AMD RRyzen 5 3600 6-Core Processor
+- RAM - 32 GB - CORSAIR 3200 MHz
+- SSD - NVMe2 Kingston 1 TB Read 6000 Mb/s \& write 4000 Mb/s
+
+## 📋 Environment Variables
+To make this guide adaptable, we'll use variables for file paths. Replace the example paths below with the actual locations on your system.
+
+``` shell
+# Path to your project directory
+$PROJECT_PATH="C:\Users\YourUser\source\repos\gaussian-splatting"
+
+# Path to your video file for processing
+$VIDEO_FILE="VID_20250920_140344.mp4"
+
+# Name of your project folder
+$PROJECT_NAME="PokemonLego"
+
+# Path to your Anaconda installation
+$ANACONDA_PATH="C:\Users\YourUser\anaconda3"
+
+# Path to COLMAP installation
+$COLMAP_PATH="C:\colmap"
+
+# Path to FFMPEG binaries
+$FFMPEG_PATH="C:\ffmpeg\bin"
+
+# Path to VS 2019 Build Tools MSVC binaries
+$VS2019_BUILD_TOOLS_PATH="C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Tools\MSVC\14.29.30133\bin\Hostx64\x64"
+
+# Path to your specific CUDA version
+$CUDA_12_8_PATH="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+```
+
+## 🛠️ Prerequisites Installation
+<section class='section' id='prerequisites'>
+First, you need to install the necessary software and libraries. Restart your PC after installing tools that modify the system PATH to ensure changes take effect.
+
+- Git: Required to clone the project repository. You can test if it's installed by typing git --version in a command prompt.
+
+  - [Download Git](https://git-scm.com/downloads/)
+
+- Conda: An environment manager. We recommend Anaconda for its ease of use, but MiniConda is a great lightweight alternative. Important: During installation, check the box to add Conda to your system's PATH.
+
+  - [Download Anaconda](https://www.anaconda.com/download)
+
+- Visual Studio 2022: Must be installed before the CUDA Toolkit. During installation, select the **Desktop development with C++**.
+
+  - [Download Visual Studio 2022](https://visualstudio.microsoft.com/downloads/)
+
+  - **RESTART YOUR PC**
+
+- CUDA Toolkit: This guide was tested with version 12.8, but newer versions (12.x) should work. You can check your installed version with nvcc --version.
+
+  - [Download CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive)
+  - If you have a previous CUDA Version installed the modifications are listed in the [section](id='CudaVersions')
+
+- COLMAP: Use the pre-compiled Windows binary for an easy setup.
+
+  - Download the latest release asset named colmap-*-windows-cuda.zip.
+
+  - Unzip the file and move the resulting folder to a simple path (e.g., $COLMAP_PATH).
+
+  - Add this path to your system's environment variables.
+
+  - [Download COLMAP](https://github.com/colmap/colmap/releases)
+
+- ImageMagick: Used for image processing. Ensure you add it to your system's PATH during installation.
+
+  - [Download ImageMagick](https://imagemagick.org/script/download.php)
+
+- FFMPEG: Essential for extracting frames from video files.
+
+  - Download a build (e.g., ffmpeg-git-essentials.7z from gyan.dev).
+
+  - Unzip the file and move the folder to a simple path.
+
+  - Add the bin subdirectory to your system's PATH (e.g., $FFMPEG_PATH).
+
+  - [Download FFMPEG](https://www.gyan.dev/ffmpeg/builds/)
+
+**(RESTART YOUR PC)**
+
+### A Note on Visual Studio Compatibility
+The project has known compatibility issues with the Visual Studio 2022 compiler. To resolve this, you must also install the VS 2019 Build Tools.
+
+1. Download the Visual Studio 2019 Build Tools from the [VS older downloads page](https://visualstudio.microsoft.com/vs/older-downloads/) (requires a free Microsoft account).
+
+2. Run the installer and select the "Desktop development with C++" package.
+
+3. In the installation details panel on the right, ensure that the MSVC v142 toolset is checked.
+
+4. (Optional but recommended) Add the path to the VS 2019 compiler to your system's PATH variable.
+
+  - Example: $VS2019_BUILD_TOOLS_PATH
+
+5. (RESTART YOUR PC)
+
+</section >
+
+## ⚙️ Managing Multiple CUDA Versions
+<section class='section' id='CUDAVersions'>
+
+If you have other CUDA versions installed, follow these steps to ensure the correct version (12.8) is used.
+
+Open your System Environment Variables settings.
+
+In "System variables," find or create the CUDA_PATH variable and set its value to your CUDA 12.8 installation directory.
+
+Example: $CUDA_12_8_PATH
+
+Create a new system variable named CUDA_PATH_V12_8 with the same value.
+
+In the Path system variable, find the two entries for CUDA 12.8 and move them to the top of the list. If they don't exist, create them.
+
+Example Entries:
+
+$CUDA_12_8_PATH\libnvvp
+
+$CUDA_12_8_PATH\bin
+
+Close all terminal windows. Open a new one and verify the version with nvcc --version. It should now report 12.8.
+
+</section>
+
+------------------------------------------------------Original authors----------------------------------------------------------------------------
+
 # 3D Gaussian Splatting for Real-Time Radiance Field Rendering
 Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) | [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |<br>
