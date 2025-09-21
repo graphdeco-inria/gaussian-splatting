@@ -1,20 +1,34 @@
-name: gaussian_splatting
+# environment.yml
+name: gaussian-splatting
 channels:
-  - pytorch
   - conda-forge
+  - nvidia
+  - pytorch
+  - anaconda
   - defaults
 dependencies:
-  - cudatoolkit=11.6
+  # --- Conda Packages ---
+  - python=3.9
+  - pip
+  - ipython
   - plyfile
-  - python=3.7.13
-  - pip=22.3.1
-  - pytorch=1.12.1
-  - torchaudio=0.12.1
-  - torchvision=0.13.1
   - tqdm
+  # -- Build Tools & CUDA --
+  - vs2019_win-64      # For compiling custom extensions on Windows
+  - cuda-toolkit=12.8  # Explicit CUDA toolkit from the nvidia channel
+
+  # --- Pip Packages ---
   - pip:
+    # -- PyTorch for CUDA 12.8 --
+    # Note: If this fails, you may need to install PyTorch manually
+    # following the instructions on their official website.
+    - torch==2.7.1
+    - torchvision==0.22.1
+    - torchaudio==2.7.1
+    # -- Other Dependencies --
+    - opencv-python
+    - joblib
+    # -- Local Submodules --
     - submodules/diff-gaussian-rasterization
     - submodules/simple-knn
     - submodules/fused-ssim
-    - opencv-python
-    - joblib
