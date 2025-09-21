@@ -321,11 +321,12 @@ SIBR_gaussianViewer_app.exe -m $PROJECT_PATH\output\$PROJECT_NAME
 # Example:
 # SIBR_gaussianViewer_app.exe -m C:\Users\filho\source\repos\gaussian-splatting\output\PokemonLego
 ```
+6. On how to use the viewer follow the original authors instructions
 **Note:** If you rename the output folder, you must also open the cfg_args file inside it and update the model_path variable to reflect the new name.
 
 </section>
 
-------------------------------------------------------Original authors----------------------------------------------------------------------------
+----------------------------------------------------------------------------Original authors----------------------------------------------------------------------------
 
 # 3D Gaussian Splatting for Real-Time Radiance Field Rendering
 Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
