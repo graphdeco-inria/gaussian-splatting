@@ -7,6 +7,13 @@
 - RAM - 32 GB - CORSAIR 3200 MHz
 - SSD - NVMe2 Kingston 1 TB Read 6000 Mb/s \& write 4000 Mb/s
 
+## References
+
+The following tutorial was built with the helpfull tips and explanations provided by:
+- [Successfully installed on Windows 11 with Nvidia RTX 5090 + CUDA 12.8 #1215](https://github.com/graphdeco-inria/gaussian-splatting/issues/1215)
+- [Latest Visual Studio 2022 (17.10) not compatiable with CUDA #833](https://github.com/graphdeco-inria/gaussian-splatting/issues/833#issuecomment-2627463581)
+- [gaussian-splatting-Windows](https://github.com/jonstephens85/gaussian-splatting-Windows?tab=readme-ov-file)
+
 ## 📋 Environment Variables
 To make this guide adaptable, we'll use variables for file paths. Replace the example paths below with the actual locations on your system.
 
@@ -57,7 +64,7 @@ First, you need to install the necessary software and libraries. Restart your PC
 - CUDA Toolkit: This guide was tested with version 12.8, but newer versions (12.x) should work. You can check your installed version with nvcc --version.
 
   - [Download CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit-archive)
-  - If you have a previous CUDA Version installed the modifications are listed in the [section](id='CudaVersions')
+  - If you have a previous CUDA Version installed the modifications are listed in the [CUDA section](#managing-multiple-cuda-versions)
 
 - COLMAP: Use the pre-compiled Windows binary for an easy setup.
 
@@ -124,6 +131,197 @@ $CUDA_12_8_PATH\libnvvp
 $CUDA_12_8_PATH\bin
 
 Close all terminal windows. Open a new one and verify the version with nvcc --version. It should now report 12.8.
+
+</section>
+
+## 🚀 Project Setup and Configuration
+<section class='section' id='ProjectSetup'>
+
+Now, let's clone the repository and set up the Conda environment.
+
+### Clone the Repository
+
+Open a terminal and run the following command to clone the project and its submodules.
+
+```Bash
+
+git clone https://github.com/graphdeco-inria/gaussian-splatting --recursive
+```
+
+### Customize the Environment File
+
+The provided environment.yml has been modified to include the VS 2019 build tools and a specific CUDA version, simplifying the setup. Replace the existing file's content with this:
+
+```YAML
+
+# environment.yml
+name: gaussian-splatting
+channels:
+  - conda-forge
+  - nvidia
+  - pytorch
+  - anaconda
+  - defaults
+dependencies:
+  # --- Conda Packages ---
+  - python=3.9
+  - pip
+  - ipython
+  - plyfile
+  - tqdm
+  # -- Build Tools & CUDA --
+  - vs2019_win-64      # For compiling custom extensions on Windows
+  - cuda-toolkit=12.8  # Explicit CUDA toolkit from the nvidia channel
+
+  # --- Pip Packages ---
+  - pip:
+    # -- PyTorch for CUDA 12.8 --
+    # Note: If this fails, you may need to install PyTorch manually
+    # following the instructions on their official website.
+    - torch==2.7.1
+    - torchvision==0.22.1
+    - torchaudio==2.7.1
+    # -- Other Dependencies --
+    - opencv-python
+    - joblib
+    # -- Local Submodules --
+    - submodules/diff-gaussian-rasterization
+    - submodules/simple-knn
+    - submodules/fused-ssim
+```
+
+### Minor Code Fix
+
+A small code modification is required in one of the submodules. Open the file submodules/simple-knn/simple-knn.cu and add the following line at the top:
+
+```C
+
+#include <float.h>
+```
+
+### Create and Activate the Environment
+
+Navigate to your project folder in the terminal and run these commands.
+
+```Bash
+
+# Navigate to the project directory
+cd $PROJECT_PATH
+
+# Ensure submodules are up to date
+git submodule update --init --recursive
+
+# Set the target CUDA architecture for your GPU
+# (e.g., 8.6 for RTX 30-series, 9.0 for RTX 40-series)
+# Find yours at: https://developer.nvidia.com/cuda-gpus
+set TORCH_CUDA_ARCH_LIST=8.6
+
+# Create the conda environment from the file
+conda env create -f environment.yml
+
+# Activate the new environment
+conda activate gaussian-splatting
+```
+</section>
+
+## 📸 Data Preparation
+<section class='section' id='DataPreparation'>
+Prepare your video and images for processing.
+
+1. Inside the $PROJECT_PATH directory, create a data folder.
+
+2. Inside data, create a folder for your project (e.g., data/$PROJECT_NAME).
+
+3. Use FFMPEG to extract frames from your video. The -vf fps=2 argument extracts 2 frames per second. Adjust as needed.
+
+```Bash
+
+# Example:
+ffmpeg -i $VIDEO_FILE -qscale:v 1 -qmin 1 -vf fps=2 %04d.jpeg
+```
+
+4. Inside your project folder (data/$PROJECT_NAME), create an input folder.
+
+5. Move all the extracted .jpeg frames into this input folder.
+
+</section>
+
+## 🧠 Processing and Training
+<section class='section' id='ProcessingTraining'>
+
+With the environment active, you can now process the images and train the model.
+
+### Process Images with COLMAP
+
+This step generates the camera positions and point cloud. Make sure your Conda environment is active (conda activate gaussian-splatting).
+
+```Bash
+
+# Navigate to the project root
+cd $PROJECT_PATH
+
+# Run the conversion script
+python convert.py -s data/$PROJECT_NAME
+
+# Example:
+# python convert.py -s data/PokemonLego
+```
+### Train the Gaussian Model
+
+Now, start the training process.
+
+```Bash
+
+# Run the training script
+python train.py -s data/$PROJECT_NAME
+
+# Example:
+# python train.py -s data/PokemonLego
+```
+
+### Troubleshooting: OMP Error
+If you encounter the following error during training:
+```OMP: Error #15: Initializing libiomp5md.dll, but found mk2iomp5md.dll already initialized.```
+
+This is caused by a conflict between OpenMP libraries. To fix it:
+
+1. Navigate to your Conda environment's binary folder.
+
+  - Example: ```$ANACONDA_PATH\envs\gaussian-splatting\Library\bin```
+
+2. Delete the file libiomp5md.dll.
+
+3. Run the training command again.
+
+</section>
+
+## ✨ Viewing the Results
+<section class='section' id='ViewingResults'>
+To view your trained model, you'll need the **SIBR viewer**.
+
+1. Download the pre-compiled viewer binaries from the [official page](https://www.google.com/search?q=https://repo-sam.inria.fr/fungraph/sibr-core/sibr_core_win_bin-2_0_1.zip).
+
+2. Unzip the package.
+
+3. Copy the viewers folder from the unzipped files into the root of your $PROJECT_PATH directory.
+
+4. Navigate to the viewer's binary directory in a terminal.
+
+```Bash
+
+cd $PROJECT_PATH\viewers\bin
+```
+
+5. Run the viewer, pointing it to your trained model's output folder.
+```Bash
+
+# Command structure
+SIBR_gaussianViewer_app.exe -m $PROJECT_PATH\output\$PROJECT_NAME
+
+# Example:
+# SIBR_gaussianViewer_app.exe -m C:\Users\filho\source\repos\gaussian-splatting\output\PokemonLego
+```
+**Note:** If you rename the output folder, you must also open the cfg_args file inside it and update the model_path variable to reflect the new name.
 
 </section>
 
