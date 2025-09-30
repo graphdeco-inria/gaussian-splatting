@@ -136,6 +136,20 @@ class GaussianModelState:
                    splat_mask=splat_mask)
 
     @classmethod
+    def randn_like_gaussians(cls, gaussians, param_mask=None, splat_mask=None):
+        def randn_like(T):
+            return torch.randn(T.shape, device=T.device, dtype=T.dtype)
+        return cls(randn_like(gaussians._xyz),
+                   randn_like(gaussians._features_dc),
+                   randn_like(gaussians._features_rest),
+                   randn_like(gaussians._scaling),
+                   randn_like(gaussians._rotation),
+                   randn_like(gaussians._opacity),
+                   randn_like(gaussians._exposure),
+                   param_mask=param_mask,
+                   splat_mask=splat_mask)
+
+    @classmethod
     def from_gaussians(cls, gaussians, param_mask=None, splat_mask=None):
         return cls(gaussians._xyz.data.clone(),
                    gaussians._features_dc.data.clone(),
@@ -165,6 +179,36 @@ class GaussianModelState:
                    exposure_grad,
                    param_mask=param_mask,
                    splat_mask=splat_mask)
+
+    @classmethod
+    def from_tangent_grad(cls, gaussians_model_state, param_mask=None, splat_mask=None):
+        xyz_grad = gaussians_model_state.xyz_grad.grad if gaussians_model_state.xyz_grad.grad is not None else torch.zeros_like(gaussians_model_state.xyz_grad)
+        features_dc_grad = gaussians_model_state.features_dc_grad.grad if gaussians_model_state.features_dc_grad.grad is not None else torch.zeros_like(gaussians_model_state.features_dc_grad)
+        features_rest_grad = gaussians_model_state.features_rest_grad.grad if gaussians_model_state.features_rest_grad.grad is not None else torch.zeros_like(gaussians_model_state.features_rest_grad)
+        scaling_grad = gaussians_model_state.scaling_grad.grad if gaussians_model_state.scaling_grad.grad is not None else torch.zeros_like(gaussians_model_state.scaling_grad)
+        rotation_grad = gaussians_model_state.rotation_grad.grad if gaussians_model_state.rotation_grad.grad is not None else torch.zeros_like(gaussians_model_state.rotation_grad)
+        opacity_grad = gaussians_model_state.opacity_grad.grad if gaussians_model_state.opacity_grad.grad is not None else torch.zeros_like(gaussians_model_state.opacity_grad)
+        exposure_grad = gaussians_model_state.exposure_grad.grad if gaussians_model_state.exposure_grad.grad is not None else torch.zeros_like(gaussians_model_state.exposure_grad)
+        return cls(xyz_grad,
+                   features_dc_grad,
+                   features_rest_grad,
+                   scaling_grad,
+                   rotation_grad,
+                   opacity_grad,
+                   exposure_grad,
+                   param_mask=param_mask,
+                   splat_mask=splat_mask)
+
+
+    def requires_grad_(self, requires_grad=True):
+        self.xyz_grad.requires_grad_(requires_grad)
+        self.features_dc_grad.requires_grad_(requires_grad)
+        self.features_rest_grad.requires_grad_(requires_grad)
+        self.scaling_grad.requires_grad_(requires_grad)
+        self.rotation_grad.requires_grad_(requires_grad)
+        self.opacity_grad.requires_grad_(requires_grad)
+        self.exposure_grad.requires_grad_(requires_grad)
+        return self
 
     def apply_mask(self, param_mask=None, splat_mask=None):
         return GaussianModelState(

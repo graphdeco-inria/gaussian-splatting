@@ -203,6 +203,86 @@ class LinearSolverFunctions:
 
         return grad, loss_scalar
 
+    def Hv_all(self, v, viewpoint_cams, scale):
+        """
+        Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
+        scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
+        Damping and scaling are applied to Hv
+        Rescaling is applied to v before computing Hv and to the result Hv but before damping
+        """
+
+        v.requires_grad_(True)
+
+        if self.rescale is not None:
+            v = v * self.rescale
+
+        self.gaussians.zero_grad()
+
+        loss_total = 0.0
+
+        for vc in viewpoint_cams:
+            with torch.enable_grad():
+                with fwAD.dual_level(), self.gaussians.make_dual(v):
+                    loss_dual, Ll1_dual, Ll1_depth_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cam=vc)
+                    loss_primal, loss_tangent = fwAD.unpack_dual(loss_dual)
+                    loss_total += loss_primal
+                loss_tangent.backward(retain_graph=False)
+
+        Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
+        g = GaussianModelState.from_tangent_grad(v, param_mask=self.param_mask, splat_mask=self.splat_mask)
+
+
+        if self.rescale is not None:
+            Hv = Hv * self.rescale
+            g = g * self.rescale
+
+        if self.damp is not None:
+            Hv += self.damp * v
+
+        v.requires_grad_(False)
+
+        return loss_total, g, Hv
+
+    def Hv2(self, v, viewpoint_cams, scale):
+        """
+        Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
+        scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
+        Damping and scaling are applied to Hv
+        Rescaling is applied to v before computing Hv and to the result Hv but before damping
+        """
+
+        v.requires_grad_(True)
+
+        if self.rescale is not None:
+            v = v * self.rescale
+
+        self.gaussians.zero_grad()
+
+        loss_total = 0.0
+
+        for vc in viewpoint_cams:
+            with torch.enable_grad():
+                with fwAD.dual_level(), self.gaussians.make_dual(v):
+                    loss_dual, Ll1_dual, Ll1_depth_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cam=vc)
+                    loss_primal, loss_tangent = fwAD.unpack_dual(loss_dual)
+                    loss_total += loss_primal
+                loss_tangent.backward(retain_graph=False)
+
+        Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
+        g = GaussianModelState.from_tangent_grad(v, param_mask=self.param_mask, splat_mask=self.splat_mask)
+
+        if self.rescale is not None:
+            Hv = Hv * self.rescale
+            g = g * self.rescale
+
+        if self.damp is not None:
+            Hv += self.damp * v
+
+        v.requires_grad_(False)
+
+        return Hv
+
+
     def Hv(self, v, viewpoint_cams, scale):
         """
         Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
@@ -211,8 +291,8 @@ class LinearSolverFunctions:
         Rescaling is applied to v before computing Hv and to the result Hv but before damping
         """
 
-        if self.rescale is not None:
-            v = v * self.rescale
+        # if self.rescale is not None:
+        #     v = v * self.rescale
 
         self.gaussians.zero_grad()
 
@@ -233,11 +313,11 @@ class LinearSolverFunctions:
 
         Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask) * scale
 
-        if self.rescale is not None:
-            Hv = Hv * self.rescale
+        # if self.rescale is not None:
+        #     Hv = Hv * self.rescale
 
-        if self.damp is not None:
-            Hv += self.damp * v
+        # if self.damp is not None:
+        #     Hv += self.damp * v
 
         return Hv
 
