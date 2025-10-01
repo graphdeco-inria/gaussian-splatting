@@ -46,5 +46,5 @@ class AdaHessianPreconditioner:
 
     def __call__(self, v):
         D_corrected = self.D_sq / (1 - self.beta2 ** self.iteration)
-        # return v / (D_corrected.sqrt() + self.eps)
-        return v / (D_corrected)
+        return v / (D_corrected.sqrt() + self.eps)
+        # return v / (D_corrected + self.eps)

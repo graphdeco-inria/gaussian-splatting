@@ -199,6 +199,26 @@ class GaussianModelState:
                    param_mask=param_mask,
                    splat_mask=splat_mask)
 
+    def detach(self):
+        self.xyz_grad = self.xyz_grad.detach()
+        self.features_dc_grad = self.features_dc_grad.detach()
+        self.features_rest_grad = self.features_rest_grad.detach()
+        self.scaling_grad = self.scaling_grad.detach()
+        self.rotation_grad = self.rotation_grad.detach()
+        self.opacity_grad = self.opacity_grad.detach()
+        self.exposure_grad = self.exposure_grad.detach()
+        return self
+
+    def clone(self):
+        return GaussianModelState(
+            self.xyz_grad.clone(),
+            self.features_dc_grad.clone(),
+            self.features_rest_grad.clone(),
+            self.scaling_grad.clone(),
+            self.rotation_grad.clone(),
+            self.opacity_grad.clone(),
+            self.exposure_grad.clone()
+        )
 
     def requires_grad_(self, requires_grad=True):
         self.xyz_grad.requires_grad_(requires_grad)

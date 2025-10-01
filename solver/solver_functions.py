@@ -161,7 +161,7 @@ class LinearSolverFunctions:
         return res
 
 
-    def gradient_and_loss_est(self, viewpoint_cams, scale):
+    def gradient_and_loss_est(self, viewpoint_cams, scale, use_rescale=False):
         """
         viewpoint_cams is a subset of all cameras, scale should be set to the inverse probability of sampling those cameras
         
@@ -198,12 +198,12 @@ class LinearSolverFunctions:
 
         grad = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
 
-        if self.rescale is not None:
+        if self.rescale is not None and use_rescale:
             grad = grad * self.rescale
 
         return grad, loss_scalar
 
-    def Hv_all(self, v, viewpoint_cams, scale):
+    def Hv_all(self, v, viewpoint_cams, scale, use_rescale=False):
         """
         Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
         scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
@@ -211,10 +211,10 @@ class LinearSolverFunctions:
         Rescaling is applied to v before computing Hv and to the result Hv but before damping
         """
 
-        v.requires_grad_(True)
-
-        if self.rescale is not None:
+        if self.rescale is not None and use_rescale:
             v = v * self.rescale
+
+        v = v.detach().requires_grad_(True)
 
         self.gaussians.zero_grad()
 
@@ -232,18 +232,17 @@ class LinearSolverFunctions:
         g = GaussianModelState.from_tangent_grad(v, param_mask=self.param_mask, splat_mask=self.splat_mask)
 
 
-        if self.rescale is not None:
+        if self.rescale is not None and use_rescale:
             Hv = Hv * self.rescale
             g = g * self.rescale
 
         if self.damp is not None:
+            raise NotImplementedError("Damping is not supported right now because not sure if applying damping to H or SHS")
             Hv += self.damp * v
-
-        v.requires_grad_(False)
 
         return loss_total, g, Hv
 
-    def Hv2(self, v, viewpoint_cams, scale):
+    def Hv2(self, v, viewpoint_cams, scale, use_rescale=False):
         """
         Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
         scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
@@ -251,10 +250,10 @@ class LinearSolverFunctions:
         Rescaling is applied to v before computing Hv and to the result Hv but before damping
         """
 
-        v.requires_grad_(True)
-
-        if self.rescale is not None:
+        if self.rescale is not None and use_rescale:
             v = v * self.rescale
+
+        v = v.detach().requires_grad_(True)
 
         self.gaussians.zero_grad()
 
@@ -271,7 +270,7 @@ class LinearSolverFunctions:
         Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
         g = GaussianModelState.from_tangent_grad(v, param_mask=self.param_mask, splat_mask=self.splat_mask)
 
-        if self.rescale is not None:
+        if self.rescale is not None and use_rescale:
             Hv = Hv * self.rescale
             g = g * self.rescale
 
@@ -283,7 +282,7 @@ class LinearSolverFunctions:
         return Hv
 
 
-    def Hv(self, v, viewpoint_cams, scale):
+    def Hv(self, v, viewpoint_cams, scale, use_rescale=False):
         """
         Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
         scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
@@ -291,8 +290,8 @@ class LinearSolverFunctions:
         Rescaling is applied to v before computing Hv and to the result Hv but before damping
         """
 
-        # if self.rescale is not None:
-        #     v = v * self.rescale
+        if self.rescale is not None and use_rescale:
+            v = v * self.rescale
 
         self.gaussians.zero_grad()
 
@@ -313,11 +312,12 @@ class LinearSolverFunctions:
 
         Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask) * scale
 
-        # if self.rescale is not None:
-        #     Hv = Hv * self.rescale
+        if self.rescale is not None and use_rescale:
+            Hv = Hv * self.rescale
 
-        # if self.damp is not None:
-        #     Hv += self.damp * v
+        if self.damp is not None:
+            raise NotImplementedError("Damping is not supported right now because not sure if applying damping to H or SJTJS")
+            Hv += self.damp * v
 
         return Hv
 
