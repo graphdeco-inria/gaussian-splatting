@@ -107,24 +107,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
 
-    param_mask = GaussianModelParamGroupMask(mask_xyz=False,
-                                             mask_features_dc=False, 
-                                             mask_features_rest=False, 
-                                             mask_scaling=False, 
-                                             mask_rotation=False, 
-                                             mask_opacity=False, 
-                                             mask_exposure=True)
-
     P = gaussians.get_xyz.shape[0]
-
-    damp = GaussianModelScaleMatrix(xyz_scale=5e-2, 
-                                    features_dc_scale=5e-2, 
-                                    features_rest_scale=5e-2, 
-                                    scaling_scale=5e-2, 
-                                    rotation_scale=5e-2, 
-                                    opacity_scale=5e-2, 
-                                    exposure_scale=1e1) * 1e-2
-
     rescale = GaussianModelScaleMatrix(xyz_scale=0.0001, 
                                       features_dc_scale=0.0025, 
                                       features_rest_scale=0.0001, 
@@ -134,7 +117,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                       exposure_scale=1.0)
 
     loss_func = partial(batch_training_loss, iteration=jvp_start, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
-    solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=10, param_mask=param_mask, damp=damp, splat_mask=None, rescale=rescale)
+    solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=10, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
     pcg_max_iter = 30
@@ -242,7 +225,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             print(f"\n[ITER {iteration}] Second order optimization, training cameras = {train_indices}, val cameras = {val_indices}")
 
-            train_cam_provider = CamProvider(train_cameras, mode="random", sample_size=-1)
+            train_cam_provider = CamProvider(train_cameras, mode="random", sample_size=num_images)
             train_cam_provider.sample_new()
             batch_viewpoint_cams = train_cam_provider.get_cur_batch()
 
@@ -255,126 +238,108 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration - 1) == debug_from:
                 pipe.debug = True
 
-            if iteration == jvp_start:
-                warmup_sample_size = 20
-                warmup_cam_provider = CamProvider(train_cameras, mode="random", max_stride=1, sample_size=warmup_sample_size)
-                scale = len(train_cameras) / warmup_sample_size
-                preconditioner.reset()
-                preconditioner.update(solver_functions.Hv, warmup_cam_provider, scale, num_iter=10)
-                D_corrected = preconditioner.D_corrected
-                print("preconditioner D_corrected.sqrt() norm ", solver_functions.dot(D_corrected.sqrt(), D_corrected.sqrt()))
-            else:
+            SHSx = partial(solver_functions.Hv, viewpoint_cams=batch_viewpoint_cams, scale=1, use_rescale=True)
 
-                update_sample_size = 20
-                cam_provider = CamProvider(batch_viewpoint_cams, mode="random", sample_size=update_sample_size)
-                scale = len(train_cameras) / update_sample_size
-                preconditioner.reset()
-                preconditioner.update(solver_functions.Hv, cam_provider, scale, num_iter=10)
-                D_corrected = preconditioner.D_corrected
-                print("preconditioner D_corrected.sqrt() norm ", solver_functions.dot(D_corrected.sqrt(), D_corrected.sqrt()))
+            warmup_sample_size = min(1, len(batch_viewpoint_cams))
+            warmup_cam_provider = CamProvider(batch_viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
+            preconditioner.reset()
+            preconditioner.update(SHSx, warmup_cam_provider, len(batch_viewpoint_cams) / warmup_sample_size, num_iter=20)
 
-            train_scale = len(train_cameras) / len(batch_viewpoint_cams)
-            Hx = partial(solver_functions.Hv, viewpoint_cams=batch_viewpoint_cams, scale=train_scale)
-            g, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, train_scale)
-
-            print(f"g norm = {solver_functions.dot(g, g):.6f}")
+            Sg, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, 1, use_rescale=True)
 
             x0 = solver_functions.get_initial_solution()
 
-            s = cg_damped(Ax=Hx,
+            y = cg_damped(Ax=SHSx,
                           dot=solver_functions.dot,
                           saxpy=solver_functions.saxpy,
-                          b=-g,
+                          b=-Sg,
                           x0=x0,
                           M=preconditioner,
-                          max_iter=pcg_max_iter,
-                          restart_iter=50)
+                          max_iter=20,
+                          restart_iter=3)
 
+            g, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, 1, use_rescale=False)
 
-            s = rescale * s
+            s = rescale * y
+            s_adam = -g / (g.abs() + 1e-15) * rescale
 
-            print(f"[ITER {iteration}] s dot g = {solver_functions.dot(s, g):.6e}")
-            safe_interact(local=locals(), banner="Before line search")
+            v = s
+            v_stepsize = math.sqrt(v.dot(v))
+            v = v / v_stepsize
+            v_adam = s_adam
+            v_stepsize_adam = math.sqrt(v_adam.dot(v_adam))
+            v_adam = v_adam / v_stepsize_adam
 
-            print("DEBUG copying old gaussians")
-            gaussians_old = deepcopy(gaussians)
+            gv = solver_functions.dot(g, v)
+            JtJv = solver_functions.Hv(v, batch_viewpoint_cams, scale=1, use_rescale=False)
+            vJtJv = solver_functions.dot(v, JtJv)
 
-            # print("DEBUG writing to ply file")
-            # write_gaussians_to_ply(gaussians, s, f"pcg_gaussians_iter{iteration}.ply")
-            # safe_interact(local=locals(), banner="Before PCG step")
-
-            print("Line search cameras: ", val_indices)
-
-            # Line search
-            alpha = 0.0
-            cur_alpha = 0.0
+            loss_0 = start_loss
+            best_loss = loss_0
             best_alpha = 0.0
-            val_scale = len(val_cameras) / len(val_cameras)
-            best_loss = solver_functions.evaluate_loss(val_cameras, val_scale)[0]
-            print(f"[ITER {iteration}] Line search start: alpha {cur_alpha:.2f}, loss {best_loss:.6f}")
-            increase_count = 0
-            while True:
-                gaussians.update_step(s * (alpha - cur_alpha))
-                cur_alpha = alpha
-                loss_scalar = solver_functions.evaluate_loss(val_cameras, val_scale)[0]
 
-                print(f"[ITER {iteration}] alpha {cur_alpha:.2f}, loss {loss_scalar:.6f}")
+            alphas = []
+            losses_alpha = []
+            losses_first_order = []
+            losses_gn = []
+            losses_adam = []
 
-                if loss_scalar < best_loss:
-                    best_loss = loss_scalar
-                    best_alpha = cur_alpha
-                    increase_count = 0
+            with torch.no_grad():
+                for i in range(-20, 120, 1):
+                    step_size = 3
+                    alpha = i * step_size
+                    gaussians_copy = deepcopy(gaussians)
+                    gaussians_copy.update_step(alpha * v)
 
-                if loss_scalar > best_loss:
-                    increase_count += 1
+                    loss_alpha = 0.0
+                    for vc in batch_viewpoint_cams:
+                        loss_alpha += scalar_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)[0]
 
-                if increase_count >= 5:
-                    break
+                    losses_alpha.append(loss_alpha.item())
+                    alphas.append(alpha)
 
-                if alpha == 0.0:
-                    alpha += 0.1
-                else:
-                    alpha *= 1.2
+                    losses_first_order.append((loss_0 + alpha * gv).item())
+                    losses_gn.append((loss_0 + alpha * gv + 0.5 * (alpha ** 2) * vJtJv).item())
 
-            gaussians.update_step(s * (best_alpha - cur_alpha))
-            best_loss, best_Ll1, best_Ll1depth,  = solver_functions.evaluate_loss(val_cameras, val_scale)
-            print(f"[ITER {iteration}] alpha = {best_alpha}, loss = {best_loss}")
+                    gaussians_copy = deepcopy(gaussians)
+                    gaussians_copy.update_step(alpha * v_adam)
 
-            # DEBUG
-            dot = solver_functions.dot
-            adam_step = -g / (g.abs() + 1e-15) * rescale
-            adam_end_alpha = math.sqrt(dot(adam_step, adam_step)) / math.sqrt(dot(s, s))
-            adam_step = adam_step / adam_end_alpha
-            # safe_interact(local=locals(), banner="Before SGD step")
+                    loss_adam = 0.0
+                    for vc in batch_viewpoint_cams:
+                        loss_adam += scalar_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)[0]
+                    losses_adam.append(loss_adam.item())
 
-            xyz_grad_norm = s.xyz_grad.norm(dim=-1).mean()
-            features_dc_grad_norm = s.features_dc_grad.norm(dim=-1).mean()
-            features_rest_grad_norm = s.features_rest_grad.norm(dim=-1).mean()
-            scaling_grad_norm = s.scaling_grad.norm(dim=-1).mean()
-            rotation_grad_norm = s.rotation_grad.norm(dim=-1).mean()
-            opacity_grad_norm = s.opacity_grad.norm(dim=-1).mean()
-            exposure_grad_norm = s.exposure_grad.norm(dim=-1).mean()
+                    if loss_alpha < best_loss:
+                        best_loss = loss_alpha
+                        best_alpha = alpha
 
-            xyz_grad_norm_max = s.xyz_grad.norm(dim=-1).max()
-            features_dc_grad_norm_max = s.features_dc_grad.norm(dim=-1).max()
-            features_rest_grad_norm_max = s.features_rest_grad.norm(dim=-1).max()
-            scaling_grad_norm_max = s.scaling_grad.norm(dim=-1).max()
-            rotation_grad_norm_max = s.rotation_grad.norm(dim=-1).max()
-            opacity_grad_norm_max = s.opacity_grad.norm(dim=-1).max()
-            exposure_grad_norm_max = s.exposure_grad.norm(dim=-1).max()
+                    print(f"loss = {loss_alpha.item():.6f}, adam = {loss_adam.item():.6f}, alpha = {alpha:.6f}")
 
-            print(f"[ITER {iteration}]")
-            print(f"    Gradient norms: xyz {xyz_grad_norm:.4e}, features_dc {features_dc_grad_norm:.4e}, features_rest {features_rest_grad_norm:.4e}, scaling {scaling_grad_norm:.4e}, rotation {rotation_grad_norm:.4e}, opacity {opacity_grad_norm:.4e}, exposure {exposure_grad_norm:.4e}")
-            print(f"    Gradient max norms: xyz {xyz_grad_norm_max:.4e}, features_dc {features_dc_grad_norm_max:.4e}, features_rest {features_rest_grad_norm_max:.4e}, scaling {scaling_grad_norm_max:.4e}, rotation {rotation_grad_norm_max:.4e}, opacity {opacity_grad_norm_max:.4e}, exposure {exposure_grad_norm_max:.4e}")
+            gaussians.update_step(s * best_alpha)
 
-            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s, mid_alpha=alpha, end_alpha=adam_end_alpha * 2, train_indices=train_indices, val_indices=val_indices, loss_func=loss_func, image_name="pcg_all")
+            plt.plot(alphas, losses_alpha, label="Actual loss", alpha=0.5)
+            plt.plot(alphas, losses_first_order, label="First order approx", alpha=0.5)
+            plt.plot(alphas, losses_gn, label="Gauss-Newton approx", alpha=0.5)
+            plt.plot(alphas, losses_adam, label="Adam direction", alpha=0.5)
 
-            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, adam_step, mid_alpha=alpha, end_alpha=adam_end_alpha * 2, train_indices=train_indices, val_indices=val_indices, loss_func=loss_func, image_name="sgd_all")
+            # Plot vertical line at x = 0 and x = v_stepsize
+            plt.axvline(x=0, color='k', linestyle='--', label='No update')
+            plt.axvline(x=v_stepsize, color='r', linestyle='--', label='GN taken step')
+            plt.axvline(x=v_stepsize_adam, color='g', linestyle='--', label='Adam taken step')
 
-            loss, Ll1, Ll1depth = best_loss, best_Ll1, best_Ll1depth
+            plt.xlabel("Step size")
+            plt.ylabel("Loss")
 
-            # safe_interact(local=locals(), banner="After PCG step")
+            plt.legend()
 
+            print("before savefig")
+            plt.savefig("loss_vs_alpha.png")
+
+            safe_interact(local=locals(), banner="After PCG step")
+
+            loss, Ll1, Ll1depth  = solver_functions.evaluate_loss(val_cameras, 1)
+
+            
 
         iter_end.record()
         torch.cuda.synchronize()

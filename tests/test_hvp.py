@@ -82,55 +82,52 @@ def training(dataset, opt, pipe, checkpoint, num_images):
         viewpoint_cam = viewpoint_stack[rand_idx]
         viewpoint_cams.append(viewpoint_cam)
 
+    gaussians.zero_grad()
+    for vc in viewpoint_cams:
+        ref_loss_scalar_i = reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
+        ref_loss_scalar_i.backward()
+    ref_g = GaussianModelState.from_gaussians_grad(gaussians)
 
-    loss_func = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
-    cur_state = LinearSolverFunctions(loss_func, gaussians, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
+
+    loss_func = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
+    cur_state_gn = LinearSolverFunctions(loss_func, gaussians, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
 
-    loss_func_gn = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
-    cur_state_gn = LinearSolverFunctions(loss_func_gn, gaussians, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
+    SHSx = partial(cur_state_gn.Hv2, viewpoint_cams=viewpoint_cams, scale=1, use_rescale=True)
 
-    ref_loss_scalar = 0.0
-    for vc in viewpoint_cams:
-        ref_loss_scalar += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
-
-    gaussians.zero_grad()
-    ref_loss_scalar.backward()
-    ref_g = GaussianModelState.from_gaussians_grad(gaussians)
-
-    loss_scalar1 = 0.0
-    for vc in viewpoint_cams:
-        loss_scalar1 += scalar_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)[0]
-    gaussians.zero_grad()
-    loss_scalar1.backward()
-    g1 = GaussianModelState.from_gaussians_grad(gaussians)
-
-    g = g1 * rescale
-
-    warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=1)
+    warmup_sample_size = min(5, len(viewpoint_cams))
+    warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
     preconditioner.reset()
-    preconditioner.update(cur_state_gn.Hv, warmup_cam_provider, 1, num_iter=10)
+    # preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=5)
 
-    x0 = GaussianModelState.zero_like_gaussians(gaussians)
-    Hx = partial(cur_state_gn.Hv, viewpoint_cams=viewpoint_cams, scale=1)
-    pcg_max_iter = 30
-    s = cg_damped(Ax=Hx,
-                  dot=cur_state.dot,
-                  saxpy=cur_state.saxpy,
-                  b=-g,
+    zero_vec = GaussianModelState.zero_like_gaussians(gaussians)
+    start_loss, Sg, _ = cur_state_gn.Hv_all(zero_vec, viewpoint_cams, scale=1, use_rescale=True)
+
+    x0 = cur_state_gn.get_initial_solution()
+
+    y = cg_damped(Ax=SHSx,
+                  dot=cur_state_gn.dot,
+                  saxpy=cur_state_gn.saxpy,
+                  b=-Sg,
                   x0=x0,
                   M=preconditioner,
-                  max_iter=pcg_max_iter,
-                  restart_iter=50)
+                  max_iter=50,
+                  restart_iter=3)
+
+    s = rescale * y
 
     # v = GaussianModelState.zero_like_gaussians(gaussians)
     # v.xyz_grad[0:100, :] = 1
     # v = GaussianModelState.randn_like_gaussians(gaussians) * rescale
     # v = -ref_g / (ref_g.abs() + 1e-15) * rescale
     v = s
-    v = v / math.sqrt(v.dot(v))
-    loss_scalar, g, Hv = cur_state.Hv_all(v, viewpoint_cams, scale=1)
+    v_stepsize = math.sqrt(v.dot(v))
+    v = v / v_stepsize
+
+    loss_func = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
+    cur_state = LinearSolverFunctions(loss_func, gaussians, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
+    loss_scalar, g, Hv = cur_state.Hv_all(v, viewpoint_cams, scale=1, use_rescale=False)
 
     # import code; code.interact(local=locals(), banner="before assert")
     # assert (g.xyz_grad - ref_g.xyz_grad).abs().max() < 1e-10
@@ -140,11 +137,8 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     # assert (g.rotation_grad - ref_g.rotation_grad).abs().max() < 1e-10
     # assert (g.opacity_grad - ref_g.opacity_grad).abs().max() < 1e-10
 
-    cur_state_gn = LinearSolverFunctions(loss_func_gn, gaussians, param_mask=None, damp=0.0, splat_mask=None)
-    JtJv = cur_state_gn.Hv(v, viewpoint_cams, scale=1)
+    JtJv = cur_state.Hv2(v, viewpoint_cams, scale=1, use_rescale=False)
     vJtJv = v.dot(JtJv)
-
-    print(f"loss_scalar: {loss_scalar}, ref_loss_scalar: {ref_loss_scalar}")
 
     alpha = 0.0
     cur_alpha = 0.0
@@ -155,16 +149,17 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     losses_alpha = []
     alphas = []
 
-    loss_0 = ref_loss_scalar.item()
+    loss_0 = loss_scalar.item()
 
+    ref_gv = ref_g.dot(v)
     gv = g.dot(v)
     vHv = v.dot(Hv)
 
     import code; code.interact(local=locals(), banner="after loss compute")
 
     for i in range(-50, 100, 1):
-        step_size = 0.001
-        # step_size = 1
+        # step_size = 0.01
+        step_size = 3
         alpha = i * step_size
         gaussians_copy = deepcopy(gaussians)
         gaussians_copy.update_step(alpha * v)
@@ -176,23 +171,29 @@ def training(dataset, opt, pipe, checkpoint, num_images):
         losses_alpha.append(loss_alpha.item())
         alphas.append(alpha)
 
-        losses_first_order.append(loss_0 + alpha * gv)
-        losses_gn.append(loss_0 + alpha * gv + 0.5 * (alpha ** 2) * vJtJv)
-        losses_second_order.append(loss_0 + alpha * gv + 0.5 * (alpha ** 2) * vHv)
+        losses_first_order.append(loss_0 + alpha * ref_gv)
+        losses_gn.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vJtJv)
+        losses_second_order.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vHv)
 
         print("alpha:", alpha, "loss_alpha:", loss_alpha.item())
 
-    plt.plot(alphas, losses_alpha, label="Actual loss")
-    plt.plot(alphas, losses_first_order, label="First order approx")
-    plt.plot(alphas, losses_gn, label="Gauss-Newton approx")
-    plt.plot(alphas, losses_second_order, label="Second order approx")
+    plt.plot(alphas, losses_alpha, label="Actual loss", alpha=0.5)
+    plt.plot(alphas, losses_first_order, label="First order approx", alpha=0.5)
+    plt.plot(alphas, losses_gn, label="Gauss-Newton approx", alpha=0.5)
+    plt.plot(alphas, losses_second_order, label="Second order approx", alpha=0.5)
+
+    # Plot vertical line at x = 0 and x = v_stepsize
+    plt.axvline(x=0, color='k', linestyle='--', label='No update')
+    plt.axvline(x=v_stepsize, color='r', linestyle='--', label='Taken step')
 
     plt.xlabel("Step size")
     plt.ylabel("Loss")
 
     plt.legend()
 
+    print("before savefig")
     plt.savefig("loss_vs_alpha.png")
+    print("after savefig")
 
 
 
