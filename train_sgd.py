@@ -230,7 +230,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             s = GaussianModelState.from_gaussians(gaussians) - GaussianModelState.from_gaussians(gaussians_old)
 
             safe_interact(local=locals(), banner="Debug prompt after training step")
-            plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
+            # plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
