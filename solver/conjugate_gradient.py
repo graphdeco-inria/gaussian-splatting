@@ -49,6 +49,103 @@ def conjugate_gradient(
 
     return x
 
+def step_to_boundary(x, p, radius, dot):
+    radius_sq = radius * radius
+    p_dot_p = dot(p, p)
+    x_dot_x = dot(x, x)
+    x_dot_p = dot(x, p)
+
+    assert x_dot_x < radius_sq, "x is already outside the trust region"
+
+    a = p_dot_p
+    b = 2 * x_dot_p
+    c = x_dot_x - radius_sq
+
+    tau = (-b + math.sqrt(b * b - 4 * a * c)) / (2 * a)
+
+    return tau
+
+
+def cg_steihaug(
+    Ax,             # A @ x, here A is assumed to be SPD
+    dot,            # dot(x, y)
+    saxpy,          # ax + y
+    b,              # right-hand side
+    x0,             # initial guess
+    M=None,         # preconditioner M ~ A^-1
+    tr_radius=1.0, # trust region radius
+    tol=1e-10,
+    atol=0.0,
+    max_iter=1000,
+    restart_iter=5, # restart every `restart_iter` iterations
+    callback=None,
+    verbose=False
+):
+    x = x0
+    iter_total = 0
+
+    break_flag = False
+
+    while iter_total < max_iter:
+        print(f"Restarting CG iteration {iter_total + 1}...") if verbose else None
+
+        r = saxpy(-1.0, Ax(x), b)         # r = b - A x
+        res = dot(r, r)
+        z = M(r) if M is not None else r  # z = M r
+        p = z
+
+        print(f"[Iter {iter_total}] res: {res:.2e}")
+        
+        # import code; code.interact(local=locals(), banner="Debugging CG...")
+
+        for k in range(restart_iter):
+            gamma = dot(r, z)                       # gamma = <r, z>
+            q = Ax(p)                               # q = A p
+            delta = dot(p, q)                       # delta = <q, p>
+            if delta < 1e-15:
+                print("Early termination: delta is too small.")
+                tau = step_to_boundary(x, p, radius=tr_radius, dot=dot)
+                x = saxpy(tau, p, x)
+                break_flag = True
+                break
+            alpha = gamma / delta
+            x_next = saxpy(alpha, p, x)             # x = x + alpha * p
+            if dot(x_next, x_next) >= tr_radius * tr_radius:
+                tau = step_to_boundary(x, p, radius=tr_radius, dot=dot)
+                x = saxpy(tau, p, x)
+                break_flag = True
+                break
+            x = x_next
+            del x_next
+            r = saxpy(-alpha, q, r)                 # r = r - alpha * q
+            res = dot(r, r)
+            z = M(r) if M is not None else r        # z = M r
+            gamma_prev = gamma
+            # TODO: One of these inner products is redundant
+            gamma = dot(r, z)                       # Update gamma
+            beta = gamma / gamma_prev
+            p = saxpy(beta, p, z)                   # p = z + beta * p
+
+            # if verbose:
+            x_norm = math.sqrt(dot(x, x))
+            print(f"[Iter {iter_total+1}] res: {res:.2e}, |x|: {x_norm:.2e}")
+            # import code; code.interact(local=locals(), banner="Debugging CG...")
+
+            iter_total += 1
+            if iter_total >= max_iter:
+                break_flag = True
+                break
+
+        if break_flag:
+            break
+
+    r = saxpy(-1.0, Ax(x), b)         # r = b - A x
+    res = dot(r, r)
+    print(f"Final residual norm: {res:.2e}")
+
+    return x
+
+
 def cg_damped(
     Ax,             # A @ x, here A is assumed to be SPD
     dot,            # dot(x, y)
@@ -77,6 +174,7 @@ def cg_damped(
         p = z
 
         print(f"[Iter {iter_total}] res: {res:.2e}")
+        
         # import code; code.interact(local=locals(), banner="Debugging CG...")
 
         for k in range(restart_iter):
@@ -85,6 +183,7 @@ def cg_damped(
             delta = dot(p, q)                       # delta = <q, p>
             if delta < 1e-15:
                 print("Early termination: delta is too small.")
+                import code; code.interact(local=locals(), banner="Debugging CG...")
                 break_flag = True
                 break
             alpha = gamma / delta
@@ -93,6 +192,7 @@ def cg_damped(
             res = dot(r, r)
             z = M(r) if M is not None else r        # z = M r
             gamma_prev = gamma
+            # TODO: One of these inner products is redundant
             gamma = dot(r, z)                       # Update gamma
             beta = gamma / gamma_prev
             p = saxpy(beta, p, z)                   # p = z + beta * p
