@@ -35,7 +35,7 @@ from solver.training_loss import scalar_training_loss
 from solver.batch_training_loss import batch_training_loss
 from solver.training_loss_hessian import scalar_training_loss_hessian
 from solver.solver_functions import LinearSolverFunctions
-from solver.conjugate_gradient import cg_damped, cgls_damped
+from solver.conjugate_gradient import cg_damped, cg_steihaug
 from solver.preconditioner import AdaHessianPreconditioner
 from solver.solver_utils import CamProvider
 from utils.ply_utils import write_gaussians_to_ply
@@ -118,7 +118,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                       exposure_scale=1.0)
 
     loss_func = partial(batch_training_loss, iteration=jvp_start, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
-    solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=5, rescale=rescale)
+    solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=1, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
     pcg_max_iter = 30
@@ -229,7 +229,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             print(f"\n[ITER {iteration}] Second order optimization, training cameras = {train_indices}, val cameras = {val_indices}")
 
-            train_cam_provider = CamProvider(train_cameras, mode="random", sample_size=num_images)
+            train_cam_provider = CamProvider(train_cameras, mode="random", sample_size=-1) # sample_size=num_images)
             train_cam_provider.sample_new()
             batch_viewpoint_cams = train_cam_provider.get_cur_batch()
 
@@ -249,8 +249,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             preconditioner.reset()
             preconditioner.update(SHSx, warmup_cam_provider, len(batch_viewpoint_cams) / warmup_sample_size, num_iter=50)
 
-            # safe_interact(local=locals(), banner="Before PCG step")
-
             Sg, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, 1, use_rescale=True)
             g, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, 1, use_rescale=False)
 
@@ -258,14 +256,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # x0_adam = -g / (g.abs() + 1e-15)
 
 
-            y = cg_damped(Ax=SHSx,
-                          dot=solver_functions.dot,
-                          saxpy=solver_functions.saxpy,
-                          b=-Sg,
-                          x0=x0,
-                          M=preconditioner,
-                          max_iter=20,
-                          restart_iter=3)
+            safe_interact(local=locals(), banner="before PCG")
+
+            y = cg_steihaug(Ax=SHSx,
+                            dot=solver_functions.dot,
+                            saxpy=solver_functions.saxpy,
+                            b=-Sg,
+                            x0=x0,
+                            M=preconditioner,
+                            tr_radius=5e4,
+                            max_iter=20,
+                            restart_iter=3)
 
 
             s = rescale * y
@@ -293,7 +294,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             losses_adam = []
 
             with torch.no_grad():
-                for i in range(-20, 60, 1):
+                for i in range(-10, 50, 1):
                     step_size = 3
                     alpha = i * step_size
                     gaussians_copy = deepcopy(gaussians)
@@ -306,8 +307,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     losses_alpha.append(loss_alpha.item())
                     alphas.append(alpha)
 
-                    losses_first_order.append((loss_0 + alpha * gv).item())
-                    losses_gn.append((loss_0 + alpha * gv + 0.5 * (alpha ** 2) * vJtJv).item())
+                    losses_first_order.append((loss_0 + alpha * gv))
+                    losses_gn.append((loss_0 + alpha * gv + 0.5 * (alpha ** 2) * vJtJv))
 
                     gaussians_copy = deepcopy(gaussians)
                     gaussians_copy.update_step(alpha * v_adam)

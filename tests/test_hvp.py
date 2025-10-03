@@ -99,18 +99,20 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     warmup_sample_size = min(5, len(viewpoint_cams))
     warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
     preconditioner.reset()
-    # preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=5)
+    preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=5)
 
     zero_vec = GaussianModelState.zero_like_gaussians(gaussians)
     start_loss, Sg, _ = cur_state_gn.Hv_all(zero_vec, viewpoint_cams, scale=1, use_rescale=True)
+    start_loss, g, _ = cur_state_gn.Hv_all(zero_vec, viewpoint_cams, scale=1, use_rescale=False)
 
     x0 = cur_state_gn.get_initial_solution()
+    x0_adam = -g / (g.abs() + 1e-15)
 
     y = cg_damped(Ax=SHSx,
                   dot=cur_state_gn.dot,
                   saxpy=cur_state_gn.saxpy,
                   b=-Sg,
-                  x0=x0,
+                  x0=x0_adam,
                   M=preconditioner,
                   max_iter=50,
                   restart_iter=3)
@@ -124,6 +126,9 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     v = s
     v_stepsize = math.sqrt(v.dot(v))
     v = v / v_stepsize
+    v_adam = -ref_g / (ref_g.abs() + 1e-15) * rescale
+    v_stepsize_adam = math.sqrt(v_adam.dot(v_adam))
+    v_adam = v_adam / v_stepsize_adam
 
     loss_func = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
     cur_state = LinearSolverFunctions(loss_func, gaussians, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
@@ -147,6 +152,7 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     losses_gn = []
     losses_second_order = []
     losses_alpha = []
+    losses_adam = []
     alphas = []
 
     loss_0 = loss_scalar.item()
@@ -157,34 +163,45 @@ def training(dataset, opt, pipe, checkpoint, num_images):
 
     import code; code.interact(local=locals(), banner="after loss compute")
 
-    for i in range(-50, 100, 1):
-        # step_size = 0.01
-        step_size = 3
-        alpha = i * step_size
-        gaussians_copy = deepcopy(gaussians)
-        gaussians_copy.update_step(alpha * v)
+    with torch.no_grad():
+        for i in range(-30, 60, 1):
+            # step_size = 0.01
+            step_size = 2
+            alpha = i * step_size
+            gaussians_copy = deepcopy(gaussians)
+            gaussians_copy.update_step(alpha * v)
 
-        loss_alpha = 0.0
-        for vc in viewpoint_cams:
-            loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
+            loss_alpha = 0.0
+            for vc in viewpoint_cams:
+                loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
 
-        losses_alpha.append(loss_alpha.item())
-        alphas.append(alpha)
+            losses_alpha.append(loss_alpha.item())
+            alphas.append(alpha)
 
-        losses_first_order.append(loss_0 + alpha * ref_gv)
-        losses_gn.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vJtJv)
-        losses_second_order.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vHv)
+            losses_first_order.append(loss_0 + alpha * ref_gv)
+            losses_gn.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vJtJv)
+            losses_second_order.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vHv)
 
-        print("alpha:", alpha, "loss_alpha:", loss_alpha.item())
+            gaussians_copy = deepcopy(gaussians)
+            gaussians_copy.update_step(alpha * v_adam)
+
+            loss_adam = 0.0
+            for vc in viewpoint_cams:
+                loss_adam += scalar_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)[0]
+            losses_adam.append(loss_adam.item())
+
+            print("alpha:", alpha, "loss_alpha:", loss_alpha.item(), "loss_adam:", loss_adam.item())
 
     plt.plot(alphas, losses_alpha, label="Actual loss", alpha=0.5)
     plt.plot(alphas, losses_first_order, label="First order approx", alpha=0.5)
     plt.plot(alphas, losses_gn, label="Gauss-Newton approx", alpha=0.5)
     plt.plot(alphas, losses_second_order, label="Second order approx", alpha=0.5)
+    plt.plot(alphas, losses_adam, label="Adam step", alpha=0.5)
 
     # Plot vertical line at x = 0 and x = v_stepsize
     plt.axvline(x=0, color='k', linestyle='--', label='No update')
-    plt.axvline(x=v_stepsize, color='r', linestyle='--', label='Taken step')
+    # plt.axvline(x=v_stepsize, color='r', linestyle='--', label='Taken step')
+    plt.axvline(x=v_stepsize_adam, color='g', linestyle='--', label='Adam step')
 
     plt.xlabel("Step size")
     plt.ylabel("Loss")

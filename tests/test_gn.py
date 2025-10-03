@@ -82,26 +82,24 @@ def training(dataset, opt, pipe, checkpoint, num_images):
         viewpoint_cam = viewpoint_stack[rand_idx]
         viewpoint_cams.append(viewpoint_cam)
 
-    ref_loss_scalar = 0.0
-    for vc in viewpoint_cams:
-        ref_loss_scalar += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
-
     gaussians.zero_grad()
-    ref_loss_scalar.backward()
+    for vc in viewpoint_cams:
+        ref_loss_scalar_i = reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
+        ref_loss_scalar_i.backward()
     ref_g = GaussianModelState.from_gaussians_grad(gaussians)
 
 
     loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
-    cur_state_gn = LinearSolverFunctions(loss_func, gaussians, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
+    cur_state_gn = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
 
     SHSx = partial(cur_state_gn.Hv, viewpoint_cams=viewpoint_cams, scale=1, use_rescale=True)
 
-    warmup_sample_size = min(1, len(viewpoint_cams))
+    warmup_sample_size = min(5, len(viewpoint_cams))
     warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
     preconditioner.reset()
-    preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=20)
+    preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=50)
 
     Sg, start_loss = cur_state_gn.gradient_and_loss_est(viewpoint_cams, 1, use_rescale=True)
     g, start_loss = cur_state_gn.gradient_and_loss_est(viewpoint_cams, 1)
@@ -114,7 +112,7 @@ def training(dataset, opt, pipe, checkpoint, num_images):
                   b=-Sg,
                   x0=x0,
                   M=preconditioner,
-                  max_iter=20,
+                  max_iter=40,
                   restart_iter=3)
 
     s = rescale * y

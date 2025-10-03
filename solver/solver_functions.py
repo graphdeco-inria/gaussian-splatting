@@ -186,9 +186,9 @@ class LinearSolverFunctions:
 
                 loss = loss * scale
 
-                loss_scalar += loss.loss_scalar
-                Ll1_scalar += loss.Ll1_scalar
-                Ll1depth_scalar += loss.Ll1depth_scalar
+                loss_scalar += loss.loss_scalar.item()
+                Ll1_scalar += loss.Ll1_scalar.item()
+                Ll1depth_scalar += loss.Ll1depth_scalar.item()
 
                 loss.loss_scalar.backward(retain_graph=False)
 
