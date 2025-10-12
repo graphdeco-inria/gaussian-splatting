@@ -114,10 +114,15 @@ def training(dataset, opt, pipe, checkpoint, num_images):
                   b=-Sg,
                   x0=x0_adam,
                   M=preconditioner,
-                  max_iter=50,
+                  # max_iter=50,
+                  max_iter=1,
                   restart_iter=3)
 
     s = rescale * y
+    s_adam = -g / (g.abs() + 1e-15) * rescale
+
+    # DEBUG
+    s = s_adam
 
     # v = GaussianModelState.zero_like_gaussians(gaussians)
     # v.xyz_grad[0:100, :] = 1
@@ -155,7 +160,7 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     losses_adam = []
     alphas = []
 
-    loss_0 = loss_scalar.item()
+    loss_0 = loss_scalar
 
     ref_gv = ref_g.dot(v)
     gv = g.dot(v)

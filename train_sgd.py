@@ -210,9 +210,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
-            gaussians_old = deepcopy(gaussians)
+            # gaussians_old = deepcopy(gaussians)
 
-            safe_interact(local=locals(), banner="Debug prompt before optimizer step")
+            # safe_interact(local=locals(), banner="Debug prompt before optimizer step")
 
 
             # Optimizer step
@@ -227,9 +227,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     gaussians.optimizer.step()
                     gaussians.optimizer.zero_grad(set_to_none = True)
 
-            s = GaussianModelState.from_gaussians(gaussians) - GaussianModelState.from_gaussians(gaussians_old)
+            # s = GaussianModelState.from_gaussians(gaussians) - GaussianModelState.from_gaussians(gaussians_old)
 
-            safe_interact(local=locals(), banner="Debug prompt after training step")
+            # safe_interact(local=locals(), banner="Debug prompt after training step")
             # plot_loss_vs_step_size(iteration, l1_loss, scene, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
 
             if (iteration in checkpoint_iterations):
@@ -266,7 +266,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
 
     # Report test and samples of training set
 
-    if iteration in testing_iterations:
+    if iteration in testing_iterations or iteration % 100 == 0:
         torch.cuda.empty_cache()
         num_val_images = 30
         val_stride = max(1, len(scene.getTrainCameras()) // num_val_images)

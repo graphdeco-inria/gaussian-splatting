@@ -92,7 +92,7 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
     cur_state_gn = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
-    preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
+    preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
 
     SHSx = partial(cur_state_gn.Hv, viewpoint_cams=viewpoint_cams, scale=1, use_rescale=True)
 
@@ -112,11 +112,15 @@ def training(dataset, opt, pipe, checkpoint, num_images):
                   b=-Sg,
                   x0=x0,
                   M=preconditioner,
-                  max_iter=40,
+                  max_iter=10,
+                  # max_iter=1,
                   restart_iter=3)
 
     s = rescale * y
     s_adam = -g / (g.abs() + 1e-15) * rescale
+
+    # DEBUG
+    # s = s_adam
 
     v = s
     v_stepsize = math.sqrt(v.dot(v))
@@ -150,7 +154,7 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     losses_adam = []
     alphas = []
 
-    loss_0 = loss_scalar.item()
+    loss_0 = loss_scalar
 
     ref_gv = ref_g.dot(v)
     gv = g.dot(v)
@@ -185,7 +189,7 @@ def training(dataset, opt, pipe, checkpoint, num_images):
                 loss_adam += scalar_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)[0]
             losses_adam.append(loss_adam.item())
 
-            print("alpha:", alpha, "loss_alpha:", loss_alpha.item(), "loss_adam:", loss_adam.item())
+            print("alpha:", alpha, "loss_alpha:", loss_alpha.item(), "loss_adam:", loss_adam.item(), "gn approx:", losses_gn[-1], "2nd order approx:", losses_second_order[-1])
 
 
     plt.plot(alphas, losses_alpha, label="Actual loss", alpha=0.5)

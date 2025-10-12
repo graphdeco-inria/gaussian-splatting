@@ -203,7 +203,7 @@ class LinearSolverFunctions:
 
         return grad, loss_scalar
 
-    def Hv_all(self, v, viewpoint_cams, scale, use_rescale=False):
+    def Hv_all(self, v, viewpoint_cams, scale, use_rescale=False, use_damping=False):
         """
         Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
         scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
@@ -212,9 +212,11 @@ class LinearSolverFunctions:
         """
 
         if self.rescale is not None and use_rescale:
-            v = v * self.rescale
+            Sv = v * self.rescale
+        else:
+            Sv = v
 
-        v = v.detach().requires_grad_(True)
+        Sv = Sv.detach().requires_grad_(True)
 
         self.gaussians.zero_grad()
 
@@ -222,27 +224,31 @@ class LinearSolverFunctions:
 
         for vc in viewpoint_cams:
             with torch.enable_grad():
-                with fwAD.dual_level(), self.gaussians.make_dual(v):
+                with fwAD.dual_level(), self.gaussians.make_dual(Sv):
                     loss_dual, Ll1_dual, Ll1_depth_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cam=vc)
                     loss_primal, loss_tangent = fwAD.unpack_dual(loss_dual)
-                    loss_total += loss_primal
+                    loss_total += loss_primal.item()
                 loss_tangent.backward(retain_graph=False)
 
-        Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
-        g = GaussianModelState.from_tangent_grad(v, param_mask=self.param_mask, splat_mask=self.splat_mask)
+                del loss_primal, loss_dual, loss_tangent, Ll1_dual, Ll1_depth_dual
+                gc.collect()
+                torch.cuda.empty_cache()
+
+        with torch.no_grad():
+            Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
+            g = GaussianModelState.from_tangent_grad(Sv, param_mask=self.param_mask, splat_mask=self.splat_mask)
 
 
-        if self.rescale is not None and use_rescale:
-            Hv = Hv * self.rescale
-            g = g * self.rescale
+            if self.rescale is not None and use_rescale:
+                Hv = Hv * self.rescale
+                g = g * self.rescale
 
-        if self.damp is not None:
-            raise NotImplementedError("Damping is not supported right now because not sure if applying damping to H or SHS")
-            Hv += self.damp * v
+            if self.damp is not None and use_damping:
+                Hv += self.damp * v
 
         return loss_total, g, Hv
 
-    def Hv2(self, v, viewpoint_cams, scale, use_rescale=False):
+    def Hv2(self, v, viewpoint_cams, scale, use_rescale=False, use_damping=False):
         """
         Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
         scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
@@ -251,9 +257,11 @@ class LinearSolverFunctions:
         """
 
         if self.rescale is not None and use_rescale:
-            v = v * self.rescale
+            Sv = v * self.rescale
+        else:
+            Sv = v
 
-        v = v.detach().requires_grad_(True)
+        Sv = Sv.detach().requires_grad_(True)
 
         self.gaussians.zero_grad()
 
@@ -261,28 +269,31 @@ class LinearSolverFunctions:
 
         for vc in viewpoint_cams:
             with torch.enable_grad():
-                with fwAD.dual_level(), self.gaussians.make_dual(v):
+                with fwAD.dual_level(), self.gaussians.make_dual(Sv):
                     loss_dual, Ll1_dual, Ll1_depth_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cam=vc)
                     loss_primal, loss_tangent = fwAD.unpack_dual(loss_dual)
-                    loss_total += loss_primal
+                    loss_total += loss_primal.item()
                 loss_tangent.backward(retain_graph=False)
 
-        Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
-        g = GaussianModelState.from_tangent_grad(v, param_mask=self.param_mask, splat_mask=self.splat_mask)
+            del loss_primal, loss_dual, loss_tangent, Ll1_dual, Ll1_depth_dual
+            gc.collect()
+            torch.cuda.empty_cache()
 
-        if self.rescale is not None and use_rescale:
-            Hv = Hv * self.rescale
-            g = g * self.rescale
+        with torch.no_grad():
+            Hv = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
+            g = GaussianModelState.from_tangent_grad(Sv, param_mask=self.param_mask, splat_mask=self.splat_mask)
 
-        if self.damp is not None:
-            Hv += self.damp * v
+            if self.rescale is not None and use_rescale:
+                Hv = Hv * self.rescale
+                g = g * self.rescale
 
-        v.requires_grad_(False)
+            if self.damp is not None and use_damping:
+                Hv += self.damp * v
 
         return Hv
 
 
-    def Hv(self, v, viewpoint_cams, scale, use_rescale=False):
+    def Hv(self, v, viewpoint_cams, scale, use_rescale=False, use_damping=False):
         """
         Compute 1 forward and backward pass to get the Hessian-vector product Hv of viewpoint_cams
         scale is a scaling factor to apply to the loss to get an unbiased estimate of the full loss.
@@ -291,7 +302,9 @@ class LinearSolverFunctions:
         """
 
         if self.rescale is not None and use_rescale:
-            v = v * self.rescale
+            Sv = v * self.rescale
+        else:
+            Sv = v
 
         self.gaussians.zero_grad()
 
@@ -299,7 +312,7 @@ class LinearSolverFunctions:
         batch_size = self.batch_size if self.batch_size > 0 else B
 
         for start_idx in range(0, B, batch_size):
-            with torch.enable_grad(), fwAD.dual_level(), self.gaussians.make_dual(v):
+            with torch.enable_grad(), fwAD.dual_level(), self.gaussians.make_dual(Sv):
                 end_idx = min(start_idx + batch_size, B)
                 viewpoint_cams_batch = [viewpoint_cams[i] for i in range(start_idx, end_idx)]
                 loss_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cams=viewpoint_cams_batch)
@@ -315,8 +328,8 @@ class LinearSolverFunctions:
         if self.rescale is not None and use_rescale:
             Hv = Hv * self.rescale
 
-        if self.damp is not None:
-            raise NotImplementedError("Damping is not supported right now because not sure if applying damping to H or SJTJS")
+        if self.damp is not None and use_damping:
+            # raise NotImplementedError("Damping is not supported right now because not sure if applying damping to H or SJTJS")
             Hv += self.damp * v
 
         return Hv
