@@ -1,0 +1,54 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+/*!
+@page howto_cameras_paths  Cameras, Paths and Dataset Alignment
+
+@section cameras_section Cameras
+
+Calibrated cameras come from the SfM method used. We support bundler <code>.out</code> (http://www.cs.cornell.edu/~snavely/bundler/bundler-v0.4-manual.html), Blender <code>.lookat</code>, Colmap <code>cameras.txt/images.txt</code> and to a certain extent VisualSFM <code>.nvm</code> files.
+Each format has different constraints, and they are not always compatible. Internally, we convert to an <code>sibr::InputCamera</code> data structure.
+
+
+@section paths_section Paths
+
+We can read paths, i.e., a sequence of cameras, in any of the above formats in the interactive viewers for most renderers, typically in the main "View" panel, and the "Load path" button. The path can be played either by interpolated between the views ("Play" button), or just playing the exact cameras ("Play (No Interp)"). We also have an internal <code>.path</code> binary path format.
+You can define key cameras in the same menu using the "Add key" button.
+
+Paths can be played by most renderers by running the renderer in offscreen mode:
+```
+SIBR_renderer_app.exe --offscreen --pathFile path.(out|lookat|tst|path) [--outPath optionalOutputPath --noExit]
+```
+
+By default, the application exits when this operation is performed. Rendering the same path is the easiest way to compare different algorithms, and works for most of the *Projects* provided.
+
+
+@section align_section Aligning datasets and transforming paths
+
+We provide the <code>alignMeshes</code> tools to align two different reconstructions of the same multi-view dataset, see also the dataset tools page (@ref sibr_projects_dataset_tools).
+If you need to align your dataset <code>dataset2Align</code> (e.g., a colmap reconstruction) to a reference dataset <code>refDataset</code> (e.g., a RealityCapture reconstruction) you can use the alignMeshes command (in <code>install\bin</code>).
+*Important note: both datasets must have the same (or a subset of the same) images, calibrated cameras and a fully reconstructed mesh*
+```
+alignMeshes_rwdi.exe --path2Align dataset2Align --pathRef refDataset --out outputPath
+alignMeshes.exe --path2Align dataset2Align --pathRef refDataset --out outputPath
+```
+This will align the two datasets, and write the aligned mesh in <code>outputPath</code> as well as the file <code>transform.txt</code> that contains the transformation matrix of the <code>dataset2Align</code> to <code>refDataset</code>.
+
+Please note that alignMeshes may not manage to completely align meshes: please lalways compare the aligned mesh with the target (e.g., using meshlab). If alignmeshes fails, an alternative is to use a manual tool such as CloudCompare or meshlab.
+
+You can then transform a camera path defined in the first dataset to the a path in the reference dataset:
+
+```
+cameraConverter_rwdi.exe --input inputPath.(out|lookat|path|tst) --output outputPath.(out|lookat|path|tst)
+cameraConverter.exe --input inputPath.(out|lookat|path|tst) --output outputPath.(out|lookat|path|tst)
+```
+
+ */

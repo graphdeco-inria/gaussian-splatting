@@ -1,0 +1,38 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+#version 420
+
+// Attributes
+layout(location = 0) in vec3 in_vertex;
+layout(location = 1) in vec3 in_color;
+layout(location = 2) in vec2 in_uv;
+//layout(location = 3) in vec3 in_normal;
+
+// Uniforms
+uniform vec3 position = vec3(0.0,0.0,0.0); // Position in NDC space
+uniform float scale = 1.0;
+uniform vec2 viewport = vec2(1.0);
+uniform bool forceOpacity = true;
+
+out INTERFACE {
+	vec4 col;
+	vec2 uv;
+} Out ;
+
+void main(){
+	// Should be in -1,1
+	// Multiply by the w component to stay at a constant screen size.
+	gl_Position = vec4(position.xy+scale*in_vertex.xy/viewport, 0.0, 1.0);
+	Out.uv = in_uv;
+	Out.col = vec4(in_color, forceOpacity ? 1.0 : in_vertex.z);
+}

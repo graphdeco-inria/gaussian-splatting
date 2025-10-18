@@ -1,0 +1,34 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+#version 420
+
+uniform mat4 MVP;
+uniform mat4 invMV;
+uniform bool hasColor = true;
+uniform vec3 defaultColor = vec3(0.9,0.9,0.9);
+
+layout(location = 0) in vec3 in_vertex;
+layout(location = 1) in vec3 in_color;
+layout(location = 3) in vec3 in_normal;
+
+out vec3 color_vert;
+out vec3 vertexPos; 
+out vec3 normalPos;
+
+void main(void) {
+	gl_Position = MVP * vec4(in_vertex,1.0);
+	vertexPos = vec3(MVP * vec4(in_vertex,1.0));
+	normalPos = vec3(vec4(in_normal,1.0));
+	
+	color_vert = hasColor ? in_color : defaultColor;
+}

@@ -1,0 +1,113 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page sibr_projects_dataset_tools Dataset Preprocessing Tools
+
+This page contains the documentation for various tools developed for treating multi-view datasets used for image-based rendering. These deal with calibrated cameras (typically with Structure-from-Motion / SfM), 3D meshes reconstructed with SfM and Multi-View Stereo (MVS) and various other utilities.
+
+For information on datasets, see the @ref howto_generate_dataset.
+
+We next present a set preprocessing tools used in the various toolchains to prepare data for IBR *Projects*.
+
+\subsection sibr_projects_dataset_tools_preprocess_tools Preprocessing tools
+
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_cameraConverter cameraConverter
+
+Utility to convert between camera path formats (blender: .lookAt, bundler: .out, colmap: .txt, internal binary format: .bin,...). This is useful for comparisons (see the \ref comparisonsPage)
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_clippingPlanes clippingPlanes
+
+Calculates near and far planes for each image and writes to file clipping_planes.txt. This is used while creating the dataset. In some cases (e.g., [Chaurasia 13] and [Ortiz-Cayon 15] we need to have the same clipping planes for all images).
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_converters converters
+
+Converters include python scripts to generate various files. In *install/scripts*, run
+```
+python generate_list_images.py --imagesPath IMAGESPATH
+
+[--outputPath OUTPUTPATH ]
+[--filename FILENAME ]
+```
+That generates "list_images.txt" file in a directory IMAGESPATH containing images, optional arguments are the outputpath and filename.
+
+```
+ibr_preprocess_rc_to_sibr.py
+```
+See \ref howto_generate_dataset 
+
+```
+simplify_mesh.py
+```
+Used in *fullcolmapProcess* (see below), and uses *meshlabServer* to simplify a mesh.
+
+```
+wedge_to_vertices_uvs.py
+```
+converts a mesh from wedge uvs to vertex uvs, again using *meshlabServer*.
+
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_cropFromCenter cropFromCenter
+
+Utility to crop images so they are centered and have the same size. Used for preprocessing in [Chaurasia 13] and [Ortiz-Cayon 15].
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_distordCrop distordCrop
+
+Undistort images and then send to *cropFromCenter* above.
+
+\subpage sibr_projects_dataset_tools_preprocess_tools_fullColmapProcess fullColmapProcess: from images to a colmap dataset
+
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_nvmToSIBR nvmToSIBR
+
+Convert from VisualSFM .nvm format for calibrated cameras to SIBR format
+
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_unwrapMesh unwrapMesh
+
+```
+unwrapMesh_rwdi.exe or
+unwrapMesh.exe
+        --appPath      define a custom app path (default: "./")
+        --help         display this help message (default: disabled)
+        --output       path to the output mesh (default: "")
+        --path         path to the mesh [required]
+        --size         target UV map width (approx.) (default: 4096)
+        --texture-name name of the texture to reference in the output mesh (Meshlab compatible) (default: "TEXTURE_NAME_TO_PUT_IN_THE_FILE")
+        --visu         save visualisation (default: disabled)
+```
+
+Calls xatlas to compute UV coordinates of a mesh (not adapted to complex meshes, works but really long); typical use involves calling simplify mesh first.
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_textureMesh textureMesh
+
+```
+textureMesh_rwdi.exe or
+textureMesh.exe
+		--path PATH_TO_DATASET [required]
+		--output PATH_TO_OUTPUT_FILE.png [required]
+	    --size [default=8192]
+		--flood 
+		--poisson
+```
+
+Given a mesh with UV coordinates (typically using unwrapMesh) and calibrated cameras, produces a texture atlas, with optional arguments for texture resolution, flood or poisson filling.
+
+\subsection Deprecated
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_tonemapper tonemapper
+
+\subsubsection sibr_projects_dataset_tools_preprocess_tools_meshroomPythonScripts meshroomPythonScripts
+Utilities for Meshroom use (untested)
+
+*/

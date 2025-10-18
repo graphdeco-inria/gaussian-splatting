@@ -1,0 +1,162 @@
+{
+    "siftExtraction_ImageSize": {
+        "default": 3200,
+        "low": 1000,
+        "medium": 1600,
+        "average": 3200,
+        "high": 2400,
+        "extreme": 3200
+    },
+    "siftExtraction_EstimateAffineShape": {
+        "default": false,
+        "low": false,
+        "medium": false,
+        "average": false,
+        "high": true,
+        "extreme": true
+    },
+    "siftExtraction_DomainSizePooling": {
+        "default": false,
+        "low": false,
+        "medium": false,
+        "average": false,
+        "high": false,
+        "extreme": true
+    },
+    "siftExtraction_MaxNumFeatures": {
+        "default": 16000,
+        "low": 8192,
+        "medium": 8192,
+        "average": 8192,
+        "high": 8192,
+        "extreme": 8192
+    },
+    "imageReader_SingleCamera": {
+        "default": false,
+        "low": true,
+        "medium": true,
+        "average": true,
+        "high": true,
+        "extreme": true
+    },
+    "exhaustiveMatcher_ExhaustiveMatchingBlockSize": {
+        "default": 50,
+        "low": 50,
+        "medium": 50,
+        "average": 50,
+        "high": 50,
+        "extreme": 50
+    },
+    "mapper_MapperDotbaLocalMaxNumIterations": {
+        "default": 25,
+        "low": 12,
+        "medium": 16,
+        "average": 25,
+        "high": 30,
+        "extreme": 40
+    },
+    "mapper_MapperDotbaGlobalMaxNumIterations": {
+        "default": 50,
+        "low": 25,
+        "medium": 33,
+        "average": 50,
+        "high": 75,
+        "extreme": 100
+    },
+    "mapper_MapperDotbaGlobalImagesRatio": {
+        "default": 1.100001,
+        "low": 1.32,
+        "medium": 1.21,
+        "average": 1.100001,
+        "high": 1.100001,
+        "extreme": 1.100001
+    },
+    "mapper_MapperDotbaGlobalPointsRatio": {
+        "default": 1.100001,
+        "low": 1.32,
+        "medium": 1.21,
+        "average": 1.100001,
+        "high": 1.100001,
+        "extreme": 1.100001
+    },
+    "mapper_MapperDotbaGlobalMaxRefinements": {
+        "default": 5,
+        "low": 2,
+        "medium": 2,
+        "average": 5,
+        "high": 5,
+        "extreme": 5
+    },
+    "mapper_MapperDotbaLocalMaxRefinements": {
+        "default": 2,
+        "low": 2,
+        "medium": 2,
+        "average": 2,
+        "high": 3,
+        "extreme": 3
+    },
+    "patchMatchStereo_PatchMatchStereoDotMaxImageSize": {
+        "default": -1,
+        "low": 1000,
+        "medium": 1600,
+        "average": -1,
+        "high": 2400,
+        "extreme": -1
+    },
+    "patchMatchStereo_PatchMatchStereoDotWindowRadius": {
+        "default": 5,
+        "low": 4,
+        "medium": 4,
+        "average": 5,
+        "high": 5,
+        "extreme": 5
+    },
+    "patchMatchStereo_PatchMatchStereoDotWindowStep": {
+        "default": 1,
+        "low": 2,
+        "medium": 2,
+        "average": 1,
+        "high": 1,
+        "extreme": 1
+    },
+    "patchMatchStereo_PatchMatchStereoDotNumSamples": {
+        "default": 15,
+        "low": 7,
+        "medium": 10,
+        "average": 15,
+        "high": 15,
+        "extreme": 15
+    },
+    "patchMatchStereo_PatchMatchStereoDotNumIterations": {
+        "default": 5,
+        "low": 3,
+        "medium": 5,
+        "average": 5,
+        "high": 5,
+        "extreme": 5
+    },
+    "patchMatchStereo_PatchMatchStereoDotGeomConsistency": {
+        "default": 1,
+        "low": 0,
+        "medium": 0,
+        "average": 1,
+        "high": 1,
+        "extreme": 1
+    },
+    "stereoFusion_CheckNumImages": {
+        "default": 50,
+        "low": 25,
+        "medium": 33,
+        "average": 50,
+        "high": 50,
+        "extreme": 50
+    },
+    "stereoFusion_MaxImageSize": {
+        "default": -1,
+        "low": 1000,
+        "medium": 1600,
+        "average": -1,
+        "high": 2400,
+        "extreme": -1
+    }
+}

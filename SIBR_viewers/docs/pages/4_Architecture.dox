@@ -1,0 +1,57 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page architecture Architecture
+
+This is a diagram describing the overall SIBR architecture:
+@image html sibr_new_architecture.png "Architecture Diagram" width=700px
+
+SIBR is built using layers.
+
+@section Core
+
+SIBR core module exposes internal libraries (system, graphics, assets, scene, raycaster, imgproc, view, renderer, video) which can be used to implement multiple IBR algorithms.
+
+@subsection system
+At the very low level, we have **core/system** that contains OS tools (e.g. filesystems), mathematical tools (e.g. vector operations), and standard tools (e.g. string operations). It also contains a configuration file (Config.hpp) that defines many useful macros/const.
+
+In short:
+- we use STL and C++11 (std::shared_ptr are heavily used)
+- we use Boost Libraries to manage filesystems.
+- we use Eigen for math tools. (Dev tips: Please use sibr::Vector<NumComp, Type> (e.g. sibr::Vector3f), because they define important flags.)
+
+@subsection graphics
+Next we expose **core/graphics** which contains graphics tools, such as images, meshes, textures, rendertargets, shaders,... We use OpenCV for managing images and image operations. Note that we wrapped OpenCV's cv::Mat in sibr::Image to control/check types statically. See sibr::Image class for details.
+
+@subsection assets
+The classes contained in **core/assets** represent basic resource files present in IBR datasets. These classes are useful for loading and reading different types of files found in a typical dataset.
+
+@subsection scene
+**core/scene** contains a full IBR dataset representation and storage, based on multiple components that form a "scene". A good example is sibr::BasicIBRScene, containing a default set of assets (cameras, images, proxies etc.) which can be initialized by means of a scene metadata file.
+
+@subsection raycaster
+The **core/raycaster** library provides raycasting and intersection test utilities, wrapping Intel Embree for fast ray/triangle tests.
+
+@subsection imgproc
+Basic image processing utilities cam be found in **core/imgproc**. For more complex tasks, you can use OpenCV algorithms as our Images are backed by OpenCV matrices.
+
+@subsection video
+You can load and save videos using the **core/video** module. It internally relies on ffmpeg.
+
+@subsection view
+The **core/view** library exposes tools for making viewer apps for live rendering and debugging of the algorithms. It define a basic view interface along with interactive camera modes, a multi-window management system,...
+
+@subsection renderer
+The classes in **core/renderer** library implements general rendering passes and functionalities required for many IBR applications. usually, when designing a View for a custom rendering algorithm, you will use multiple renderers, some customs and some out-of-the-box.
+
+ */

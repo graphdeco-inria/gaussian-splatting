@@ -1,0 +1,146 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page ulrPage Unstructured Lumigraph Rendering (ULR)
+
+\section ulr_intro Introduction
+
+This *Project* contains three specialized implementations of Unstructured Lumigraph Rendering \[Buelher 2001\]; we refer the reader to that paper for technical details. In contrast to the original paper, our method blends input images on a *per-pixel* basis. In a nutshell the rendering apps in this *Project* first render a depth buffer for the novel (current) view, then for a subset *S* of input images reproject each visible 3D point into each image in *S*, and then blend the result according to the blending weights as defined in the original paper.
+
+This *Project* contains two renderings apps: `SIBR_ulr_app` which is the original (slow) version, `SIBR_ulrv2_app` that contains the second and third versions of the ULR.
+
+The original version of ULR first selects a subset of the original images using angle and position criteria on the CPU, then uses a multi-pass ping-pong shader to rank the 4 best-cost images for each pixel, by storing these four color values and their weights in rendertargets and iteratively updating them while keeping them sorted. 
+
+Version 2 removes the need for the ping-pong best-cost image update, by iterating on the selected cameras in one shader. The corresponding images and depth maps are passed as a list of textures. The maximum supported number of cameras is determined by the maximum texture slot count in fragment shaders.
+
+Version 3 stores images and depth maps as texture 2D arrays, and pack all cameras in a uniform buffer object. This allows all cameras to be considered and do the selection entirely on the GPU. The maximum supported number of cameras is determined by the maximum texture array layer count and uniform buffer object size.
+
+\subsection ulr_authors Authors
+
+This *Project* was written by: Gaurav Chaurasia, Sebastien Bonopera, Theo Thonat, Simon Rodriguez, Sebastien Bonopera, Jerome Esnault, Siddhant Prakashand George Drettakis, who also supervised the entire *Project*.
+
+<hr>
+
+\section ulr_howToUse How to use
+
+\subsection ulr_binary Use the binary distribution
+
+The easiest way to use *SIBR* to run ULR is to download the binary distribution. All steps described below, including all preprocessing for your datasets will work using this code.
+Download the distribution from the page: https://sibr.gitlabpages.inria.fr/download.html (Core, 57Mb); unzip the file and rename the directory "install".
+
+
+\subsection ulr_howToUse_checkout Checkout the code
+
+ULR is already available as part of the SIBR Core code. You will need to checkout SIBR Core as mentioned in \ref sibr_checkout .
+
+\subsection ulr_howToUse_configure Configuration
+
+As for most of the projects, ULR can be configured through SIBR Core CMake configuration by selecting `SIBR_IBR_ULR` variable before running the configuration (see \ref sibr_configure_cmake).
+
+\subsection ulr_howToUse_build Build & Install
+
+You can build and install ULR via running ALL_BUILD and/or INSTALL in sibr_projects.sln solution (as mentioned in \ref sibr_compile Compiling
+) or through `sibr_ulr*` specific targets in sibr_projects.sln solution.
+Dont forget to build INSTALL if you use ALL_BUILD.
+
+\subsection ulr_howToUse_run Run
+
+After installing ULR, several apps should be available in `install\bin`, notably :
+
+- sibr_ulr_app.exe (or sibr_ulr_app_d.exe / sibr_ulr_app_rwdi.exe depending on the configuration of the target) : this is the legacy version of ULR
+- sibr_ulrv2_app.exe (or sibr_ulrv2_app_d.exe / sibr_ulrv2_app_rwdi.exe depending on the configuration of the target) : this updated version gives you the choice between three different implementations of ULR (with GPU optimization and other tweaks)
+
+Both can be run by running the executable with a path to a working dataset:
+
+	sibr_ulrv2_app.exe --path PATH_TO_DATASET
+
+Our interactive viewer has a main view running the algorithm and a top view to visualize the position of the calibrated cameras. By default you are in WASD mode, and can toggle to trackball using the "y" key. Please see the page [Interface](https://sibr.gitlabpages.inria.fr/docs/develop/howto_sibr_useful_objects.html) for more details on the interface.
+
+For example datasets see below \ref ulr_howToUse_example_datasets.
+
+\subsection Playing paths from the command line
+
+Paths can be played by the ulr renderers by running the renderer in offscreen mode:
+```
+SIBR_ulrv2_app.exe --path PATH_TO_DATASET --offscreen --pathFile path.(out|lookat|tst|path) [--outPath optionalOutputPath --noExit]
+```
+By default, the application exits when this operation is performed. This is the easiest way to compare algorithms, although interactive options exist for some *Projects*.
+
+<hr>
+
+\subsection ulr_howToUse_dataset Datasets
+
+\subsubsection ulr_howToUse_dataset_structure Dataset structure
+
+A ULR dataset only requires standard SfM/MVS data to function: to generate such a dataset from your input images see:
+
+\ref howto_generate_dataset
+
+A standard SIBR dataset contains *cameras* and the *mesh* required for the algorithm to run; no additional preprocessing is required.
+
+\subsubsection ulr_howToUse_example_datasets Example Datasets
+
+Some example datasets can be found here:
+	https://repo-sam.inria.fr/fungraph/sibr-datasets/datasets.html
+
+You dan download the ULR only package for each dataset. 
+Feel free to download and experiment, for example with (now famous) Museum Front 27 dataset. Goto the install\bin directory:
+
+```
+	wget https://repo-sam.inria.fr/fungraph/sibr-datasets/museum_front27_ulr.zip
+	sibr_ulrv2_app.exe --path museum_front27\sibr_cm
+```
+
+<hr>
+
+\subsubsection ulr_howToUse_run_cliOptions CLI options
+
+ | name                 | type      | Required  | default value             | description                                   |
+ | -------------------- | --------- | --------- | ------------------------- | --------------------------------------------- |
+ | **Basic app options**            |||||
+ | appPath              | string    | false     |   "./"                    | define a custom app path                      |
+ | help                 | bool      | false     |   false                   | display this help message                     |
+ | **Basic window options**         |||||
+ | width                | int       | false     |   720                     | initial window width                          |
+ | height               | int       | false     |   480                     | initial window height                         |
+ | vsync                | int       | false     |   1                       | enable vertical sync                          |
+ | fullscreen           | bool      | false     |   false                   | set the window to fullscreen                  |
+ | hd                   | bool      | false     |   false                   | rescale UI elements for high-density screens  |
+ | nogui                | bool      | false     |   false                   | do not use ImGui                              |
+ | gldebug              | bool      | false     |   false                   | enable OpenGL error callback                  |
+ | **Basic rendering options**      |||||
+ | scene                | string    | false     |   "scene_metadata.txt"    | scene metadata file                           |
+ | rendering-size       | Vector2i  | false     |   { 0, 0 }                | size at which rendering is performed          |
+ | texture-width        | int       | false     |   0                       | size of the input data in memory              |
+ | texture-ratio        | float     | false     |   1.0f                    |                                               |
+ | rendering-mode       | int       | false     |   RENDERMODE_MONO         | select mono (0) or stereo (1) rendering mode  |
+ | focal-pt             | Vector3f  | false     |   { 0.0f, 0.0f, 0.0f }    |                                               |
+ | colmap_fovXfovY_flag | Switch    | false     |   false                   |                                               |
+ | **Basic dataset options**        |||||
+ | path                 | string    | true      |                           | path to the dataset root                      |
+ | dataset_type         | string    | false     |   ""                      | type of dataset                               |
+ | **ULR specific options**         |||||
+ | v                    | int       | false     |   3                       | ULR implementation version                    |
+ | soft-visibility      | bool      | false     |   false                   | generate and use soft visibility masks        |
+ | masks                | bool      | false     |   false                   | use binary masks                              |
+ | masks-param          | string    | false     |   ""                      |                                               |
+ | masks-param-extra    | string    | false     |   ""                      |                                               |
+ | invert               | bool      | false     |   false                   | invert the masks                              |
+ | alphas               | bool      | false     |   false                   |                                               |
+ | poisson-blend        | bool      | false     |   false                   | apply Poisson-filling to the ULR result       |
+
+
+\subsection ulr_references References
+\[Buehler 2001\] C. Buehler, M. Bosse, L. McMillan, S. Gortler, and M. Cohen. "Unstructured lumigraph
+rendering." In Proceedings SIGGRAPH 2001, pp. 425-432. ACM, 2001. https://www.ics.uci.edu/~gopi/ICS280Win02/UnstructuredLumigraph.pdf
+*/

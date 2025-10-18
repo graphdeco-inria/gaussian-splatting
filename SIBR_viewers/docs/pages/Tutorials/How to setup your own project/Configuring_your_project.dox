@@ -1,0 +1,204 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page configure_project Configuring your project
+
+@ingroup setup_project
+
+@section gen_setup_config General setup
+
+- Create a repository in `src/projects/my_project` (name your project at your convenience)
+- Setup your project structure as stated in @ref project_structure
+- Use the following sample files (form the following sections) for your `CMakeLists.txt` files and `Config.hpp` structure
+- Re-run configure for the main SIBR `CMakeLists.txt`.
+- The project should be automatically detected; If so, check `BUILD_IBR_MY_PROJECT` (`MY_PROJECT` being your project name folder) in CMake and re-generate.
+
+@section all_sec Main project configuration
+
+This `CMakeLists.txt` is the one in the root of your project. It is registering the subdirectories of your project against the main CMake.\n
+It will also provide you with an additional project wide install target.\n
+
+@code
+set(SIBR_PROJECT "my_project") # Please replace my_project with your project folder name
+project(sibr_${SIBR_PROJECT}_all)
+
+# Update this with the folders included in your project
+add_subdirectory(apps)
+add_subdirectory(preprocess)
+add_subdirectory(renderer)
+
+include(install_runtime)
+subdirectory_target(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR} "projects/${SIBR_PROJECT}")
+@endcode
+
+@section listing_sec Listing app & preprocesses projects
+
+This `CMakeLists.txt` is registering the CMake projects in subdirectories against the main CMake of your SIBR project, putting them together in a custom named group.\n
+They will appear as multiple solutions in a subdirectory in Visual Studio for instance.\n
+Useful to group the `apps/` or `preprocess/` executables of a project.\n
+\n
+You can use it as sample structure for `apps/CMakeLists.txt` and `preprocess/CMakeLists.txt`.
+
+@code
+project(sibr_my_apps_group)																					# Please rename this project at your convenience
+add_subdirectory(my_app_1/)
+add_subdirectory(my_app_2/)
+#...
+@endcode
+
+
+@section exe_sec App and preprocess projects
+
+This example can be used for application and preprocess executables.\n
+The parts to modify are the project name, the linked libraries and the folder property.\n
+Put the `CMakeLists.txt` in your application project directory.
+
+@code
+set(SIBR_PROJECT "my_project") # Please replace my_project with your project folder name
+project(sibr_${SIBR_PROJECT}_app)																					# Please rename this project at your convenience
+
+file(GLOB SOURCES "*.cpp" "*.h" "*.hpp")
+source_group("Source Files" FILES ${SOURCES})
+
+# Define build output for project
+add_executable(${PROJECT_NAME} ${SOURCES})
+
+# Define dependencies
+target_link_libraries(${PROJECT_NAME}
+	${Boost_LIBRARIES}
+	${ASSIMP_LIBRARIES}
+	${GLEW_LIBRARIES}
+	${OPENGL_LIBRARIES}
+  	${OpenCV_LIBRARIES}
+	sibr_system
+
+	# you can add your internal or external dependencies here (sibr_renderer, sibr_view, sibr_graphics, sibr_assets,...)
+)
+
+# Define location in solution.
+set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "projects/${SIBR_PROJECT}/apps")
+
+## High level macro to install in an homogen way all our ibr targets
+include(install_runtime)
+ibr_install_target(${PROJECT_NAME}
+    INSTALL_PDB                         ## mean install also MSVC IDE *.pdb file (DEST according to target type)
+    STANDALONE  ${INSTALL_STANDALONE}   ## mean call install_runtime with bundle dependencies resolution
+    COMPONENT   ${PROJECT_NAME}_install ## will create custom target to install only this project
+)
+@endcode
+
+@section scripts_sec Scripts projects
+
+You can also add scripts projects. Scripts are bundled in the install/scripts folder, which ensures you have access to utility functions and SIBR binaries.\n
+
+@code
+set(SIBR_PROJECT "my_project") # Please replace my_project with your project folder name
+project(sibr_${SIBR_PROJECT}_scripts)	
+
+file(GLOB_RECURSE SCRIPTS "*.py") #add any scripts files / wildcards here
+
+add_custom_target(${PROJECT_NAME} ALL)
+
+include(install_runtime)
+set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "projects/${SIBR_PROJECT}/preprocess")
+ibr_install_rsc(${PROJECT_NAME} TYPE "scripts" FILES ${SCRIPTS} RELATIVE) # you can use FOLDER option if you want the scripts to be stored in a specific folder
+@endcode
+
+@section lib_sec Library project
+
+This example can be used for libraries, in `renderer\CMakeLists.txt`.\n
+The parts to modify are the project name, the linked libraries, the export/import flag for Windows libraries, and the folder property. \n
+Put the `CMakeLists.txt` in your library project directory.\n
+This example also supports displaying shaders and copying them to the bin/resources common directory.
+
+@code
+set(SIBR_PROJECT "my_project")
+project(sibr_${SIBR_PROJECT})																					# Please rename this project at your convenience
+
+file(GLOB SOURCES "*.cpp" "*.h" "*.hpp")
+source_group("Source Files" FILES ${SOURCES})
+
+file(GLOB SHADERS "shaders/*.frag" "shaders/*.vert" "shaders/*.geom" "shaders/*.fp" "shaders/*.vp" "shaders/*.gp")
+source_group("Source Files\\shaders" FILES ${SHADERS})
+
+# Redefine sources and all the files to display in the IDE.
+file(GLOB SOURCES "*.cpp" "*.h" "*.hpp" "shaders/*.frag" "shaders/*.vert" "shaders/*.geom"  "shaders/*.fp" "shaders/*.vp" "shaders/*.gp")
+
+# Declare library.
+add_library(${PROJECT_NAME} SHARED ${SOURCES})
+
+# Define dependencies.
+include_directories(${Boost_INCLUDE_DIRS} .)
+target_link_libraries(${PROJECT_NAME}
+	${Boost_LIBRARIES}
+	${ASSIMP_LIBRARIES}
+	${GLEW_LIBRARIES}
+	${OPENGL_LIBRARIES}
+	${OpenCV_LIBRARIES}
+	glfw3
+	sibr_system
+
+	# you can add your internal or external dependencies here (sibr_renderer, sibr_view, sibr_graphics, sibr_assets,...)
+)
+
+# Define export/import flag.
+add_definitions( -DSIBR_MY_LIBRARY_EXPORTS -DBOOST_ALL_DYN_LINK  )											# Please refactor it with your library export/import flag from Config.hpp
+
+# Define location in solution.
+set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "projects/${SIBR_PROJECT}/renderer")
+
+## High level macro to install in an homogen way all our ibr targets
+include(install_runtime)
+ibr_install_target(${PROJECT_NAME}
+    INSTALL_PDB                         ## mean install also MSVC IDE *.pdb file (DEST according to target type)
+	SHADERS "${SHADERS}"				## You can also add scripts and resources with the corresponding keyword (SCRIPTS, RESOURCES)
+	RSC_FOLDER "${SIBR_PROJECT}"		## Resources will be stored in this subfolder in their respective resource folder (scripts, shaders, resources)
+    COMPONENT   ${PROJECT_NAME}_install ## will create custom target to install only this project
+)
+@endcode
+
+To handle export/import of library methods properly on Windows, you also need a `Config.hpp` file in your library directory.
+
+@code
+#ifndef __SIBR_MY_LIBRARY_CONFIG_HPP__																		// Please refactor it with your library name
+# define __SIBR_MY_LIBRARY_CONFIG_HPP__																		// Please refactor it with your library name
+
+# include <core/system/Config.hpp>
+
+# ifdef SIBR_OS_WINDOWS
+#  ifdef SIBR_STATIC_DEFINE
+#    define SIBR_EXPORT
+#    define SIBR_NO_EXPORT
+#  else
+#    ifndef SIBR_MY_LIBRARY_EXPORT																			// Please refactor it with your library name
+#      ifdef SIBR_MY_LIBRARY_EXPORTS																		// Please refactor it with your library name
+/* We are building this library */
+#        define SIBR_MY_LIBRARY_EXPORT __declspec(dllexport)												// Please refactor it with your library name
+#      else
+/* We are using this library */
+#        define SIBR_MY_LIBRARY_EXPORT __declspec(dllimport)												// Please refactor it with your library name
+#      endif
+#    endif
+#    ifndef SIBR_NO_EXPORT
+#      define SIBR_NO_EXPORT
+#    endif
+#  endif
+# else
+#  define SIBR_MY_LIBRARY_EXPORT																			// Please refactor it with your library name
+# endif
+
+#endif  //__SIBR_MY_LIBRARY_CONFIG_HPP__																	// Please refactor it with your library name
+
+@endcode
+ */
+

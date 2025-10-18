@@ -1,0 +1,228 @@
+{
+    "steps" : [
+        {
+            "if": "${car_data}",
+            "name": "car_data_process",
+            "function": "rc_tools.car_data_process",
+            "function_args": {
+                "path": "${path}"
+            }
+        },
+        {
+            "name": "preprocess_for_rc",
+            "function": "rc_tools.preprocess_for_rc",
+            "function_args": {
+                "path": "${path}",
+                "video_name": "${video_name}",
+                "do_validation_split": "${do_validation_split}",
+                "valid_skip": "${valid_skip}"
+            }
+        },
+        {
+            "if" : "${calib_only}", 
+            "name": "calib_only",
+            "app": "RC",
+            "optional_arg1": [ 
+                "${do_train}", 
+                "-addFolder", "${path}/input/train/" 
+            ],
+            "optional_arg2": [ "${do_validation}", 
+                "-addFolder", "${path}/input/validation/"
+            ],
+            "optional_arg3": [ "${do_video}", 
+                "-importVideo", "${video_filename}", "${path}/input/test_video_frames/", "${one_over_fps}" 
+            ],
+            "optional_arg4": [ "${do_test}", 
+                "-addFolder", "${path}/input/test/"
+            ],
+            "command_args": [
+                "-align" ,
+                "-selectMaximalComponent" ,
+                "-selectAllImages" ,
+                "-enableAlignment", "false" ,
+                "-selectImage", "*validation_*" ,
+                "-enableAlignment", "true" ,
+                "-exportRegistration", "${path}/rcScene/validation_cameras/bundle.out", "${config_folder}/registrationConfig.xml" ,
+                "-selectAllImages" ,
+                "-enableAlignment", "false" ,
+                "-selectImage", "*${path_prefix}*",
+                "-enableAlignment", "true" ,
+                "-exportRegistration", "${path}/rcScene/test_path_cameras/bundle.out", "${config_folder}/registrationConfig.xml" ,
+                "-selectAllImages" ,
+                "-enableAlignment", "false" ,
+                "-selectImage", "*train_*" ,
+                "-enableAlignment", "true" ,
+                "-exportRegistration", "${path}/rcScene/train_cameras/bundle.out", "${config_folder}/registrationConfig.xml" ,
+                "-save", "${path}/rcProj/RCproject.rcproj" ,
+                "-quit"
+            ]
+        },
+        {
+            "if": "${video_only}",
+            "name": "fix_video_only",
+            "function": "rc_tools.fix_video_only",
+            "function_args": {
+                "path": "${path}"
+             }
+        },
+        {
+            "if" : "${do_mvs}", 
+            "name": "run_rc",
+            "app": "RC",
+            "optional_arg1": [ 
+                "${do_train}", 
+                "-addFolder", "${path}/input/train/" 
+            ],
+            "optional_arg2": [ "${do_validation}", 
+                "-addFolder", "${path}/input/validation/"
+            ],
+            "optional_arg3": [ "${do_video}", 
+                "-importVideo", "${video_filename}", "${path}/input/test_video_frames/", "${one_over_fps}" 
+            ],
+            "optional_arg4": [ "${do_test}", 
+                "-addFolder", "${path}/input/test/"
+            ],
+            "command_args": [
+                "-align" ,
+                "-selectMaximalComponent" ,
+                "-selectAllImages" ,
+                "-enableAlignment", "false" ,
+                "-selectImage", "*validation_*" ,
+                "-enableAlignment", "true" ,
+                "-exportRegistration", "${path}/rcScene/validation_cameras/bundle.out", "${config_folder}/registrationConfig.xml" ,
+                "-selectAllImages" ,
+                "-enableAlignment", "false" ,
+                "-selectImage", "*${path_prefix}*" ,
+                "-enableAlignment", "true" ,
+                "-exportRegistration", "${path}/rcScene/test_path_cameras/bundle.out", "${config_folder}/registrationConfig.xml" ,
+                "-selectAllImages" ,
+                "-enableAlignment", "false" ,
+                "-selectImage", "*train_*" ,
+                "-enableAlignment", "true" ,
+                "-exportRegistration", "${path}/rcScene/train_cameras/bundle.out", "${config_folder}/registrationConfig.xml",
+                "-setReconstructionRegionAuto" ,
+                "-scaleReconstructionRegion", "1.4", "1.4", "2.5", "center", "factor" ,
+                "-selectAllImages" ,
+                "-enableAlignment", "false" ,
+                "-selectImage", "*${path_prefix}*" ,
+                "-enableAlignment", "true" ,
+                "-save", "${path}/rcProj/RCproject.rcproj" 
+            ],
+            "optional_final_arg": [ "${auto_recon_area}",
+                "-quit"
+            ]
+        },
+        {
+            "if" : "${do_mvs}", 
+            "name": "run_rc_mvs",
+            "app": "RC",
+            "command_args": [ 
+                "-load", "${path}/rcProj/RCproject.rcproj" ,
+                "-selectMaximalComponent" ,
+                "-selectAllImages" ,
+                "-enableAlignment", "false" ,
+                "-selectImage", "*train_*" ,
+                "-enableAlignment", "true" ,
+                "-calculateNormalModel" ,
+                "-calculateTexture" ,
+                "-selectMarginalTriangles" ,
+                "-removeSelectedTriangles" ,
+                "-save", "${path}/rcProj/RCproject.rcproj" ,
+                "-renameSelectedModel", "${model_name}" ,
+                "-exportModel", "${model_name}", "${mesh_obj_filename}", "${config_folder}/exportModel.xml" ,
+                "-deselectModelTriangles" ,
+                "-exportModel", "${model_name}", "${mesh_ply_filename}", "${config_folder}/exportModel.xml" ,
+                "-quit"
+            ]
+        },
+        {
+            "name": "densify_mesh",
+            "function": "rc_tools.densify_mesh",
+            "function_args": {
+                "mesh_path": "${path}/rcScene/meshes/mesh.obj"
+            }
+        },
+        {
+            "name": "dense_mesh",
+            "app": "RC",
+            "command_args": [
+                "-load", "${path}/rcProj/RCProject.rcproj",
+                "-selectMaximalComponent",
+                "-importModel" , "${path}/rcScene/meshes/dense_mesh.obj",
+                "-renameSelectedModel",  "RCTest",
+                "-exportModel",  "RCTest",  "${path}/rcScene/meshes/dense_point_cloud.xyz", "${config_folder}/exportModel.xml" ,
+                "-quit"
+            ]
+        },
+        {
+            "name": "rc_to_colmap_validation_cameras",
+            "function": "rc_tools.rc_to_colmap",
+            "function_args": {
+                "rc_path": "${path}/rcScene/validation_cameras",
+                "out_path": "${path}/colmap_1000/validation_colmap",
+                "create_colmap": "0",
+                "target_width": "${target_width}"
+            }
+        },
+        {
+            "name": "rc_to_colmap_path_cameras",
+            "function": "rc_tools.rc_to_colmap",
+            "function_args": {
+                "rc_path": "${path}/rcScene/test_path_cameras",
+                "out_path": "${path}/colmap_1000/test_path_colmap",
+                "create_colmap": "0",
+                "target_width": "${target_width}"
+            }
+        },
+        {
+            "name": "crop_cameras",
+            "function": "rc_tools.crop_images",
+            "function_args": {
+                "path_data": "${path}/rcScene/train_cameras/",
+                "path_dest": "${path}/rcScene/cropped_train_cameras/"
+            }
+        },
+        {
+            "name": "rc_to_colmap_1000_cropped_cameras",
+            "function": "rc_tools.rc_to_colmap",
+            "function_args": {
+                "rc_path": "${path}/rcScene/cropped_train_cameras",
+                "out_path": "${path}/colmap_1000/colmap",
+                "create_colmap": "1",
+                "target_width": "${target_width}"
+            }
+        },
+        {
+            "name": "rc_to_colmap_cropped_cameras",
+            "function": "rc_tools.rc_to_colmap",
+            "function_args": {
+                "rc_path": "${path}/rcScene/cropped_train_cameras",
+                "out_path": "${path}/sibr/colmap",
+                "create_colmap": "1"
+            }
+        },
+        {
+            "name": "create_nerf",
+            "function": "colmap2nerf.createNerf",
+            "function_args": {
+                "path": "${path}"
+            }
+        },
+        {
+            "if": "${hires_nerf}",
+            "name": "create_hi_nerf",
+            "function": "colmap2nerf.createNerf",
+            "function_args": {
+                "path": "${path}",
+                "hires": "True"
+            }
+        },
+        {
+            "name": "convert_sibr_mesh",
+            "function": "rc_tools.convert_sibr_mesh",
+            "function_args": {
+                "path": "${path}"
+            }
+        }
+    ]
+}
