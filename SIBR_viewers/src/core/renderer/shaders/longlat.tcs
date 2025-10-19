@@ -1,0 +1,58 @@
+#version 450 core
+
+uniform vec3 pos;																
+
+const float PI = 3.1415926535897932384626433832795;		
+
+layout(vertices = 3) out; 
+
+layout(location = 1) in vec3 vs_colors[];
+layout(location = 2) in vec2 vs_coordsTex[];
+layout(location = 3) in vec3 vs_normals[];
+
+out vec3 colors_tcs [];
+out vec2 coordsTex_tcs [];
+out vec3 normals_tcs [];
+
+void main(void) {
+
+colors_tcs[gl_InvocationID] = vs_colors[gl_InvocationID];
+coordsTex_tcs[gl_InvocationID] = vs_coordsTex[gl_InvocationID];
+normals_tcs[gl_InvocationID] = vs_normals[gl_InvocationID];
+
+if (gl_InvocationID == 0) {																						
+    int i;
+	vec3 toPoint[3];
+	vec3 d[3];
+	float lat[3];
+	float longt[3];
+
+	for(i=0; i<3; i++)
+	{
+	  toPoint[i] = gl_in[i].gl_Position.xyz-pos;
+	  d[i] = normalize(toPoint[i]);                                  
+      lat[i] = d[i].z;
+      longt[i] = atan(d[i].y,d[i].x);
+      if(longt[i]<0)
+    	longt[i] += 2.0f*PI;
+	}
+
+	float inner=0;
+	for(i=0; i<3; i++)
+	{
+		float level= 512*sqrt(
+		pow((longt[(i+1)%3]-longt[(i+2)%3])/PI,2)+
+		pow((lat[(i+1)%3]-lat[(i+2)%3]),2)
+		);
+		gl_TessLevelOuter[i] = level;
+		if(level>inner)
+			inner=level;
+	}
+
+	gl_TessLevelInner[0] = inner/2; 
+
+}
+
+gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position; 
+
+}

@@ -1,0 +1,20 @@
+#version 450 core 			
+																		
+layout(triangles, equal_spacing, cw) in; 	
+
+layout(location = 1) in vec3 colors_tcs[];
+layout(location = 2) in vec2 coordsTex_tcs[];
+layout(location = 3) in vec3 normals_tcs[];
+
+layout(location = 1) out vec3 colors_tes;
+layout(location = 2) out vec2 coordsTex_tes;
+layout(location = 3) out vec3 normals_tes;
+
+void main(void) {
+   colors_tes = colors_tcs[0];
+   coordsTex_tes = coordsTex_tcs[0];
+   normals_tes = normals_tcs[0];
+vec4 inPos = (gl_TessCoord.x*gl_in[0].gl_Position + gl_TessCoord.y*gl_in[1].gl_Position + gl_TessCoord.z*gl_in[2].gl_Position); 
+										
+   gl_Position = inPos;																							
+}

@@ -1,0 +1,36 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page HowToColmap How to create a dataset from Colmap
+
+We provide a python script that runs the entire Colmap pipeline, see here: @ref sibr_projects_dataset_tools_preprocess_tools_fullColmapProcess
+
+@note The previous link might not be available if you did not build the doc with `BUILD_IBR_DATASET_TOOLS` on
+
+However, you can also run your own Colmap reconstruction by yourself, and use `ColmapToSIBR` to create an SIBR project (i.e., images without borders, of the same size) from colmap data. In the install\scripts directory run:
+
+@code
+python colmap2sibr PATH_TO_DATASET
+@endcode
+
+This will create a *sibr_cm* subdirectory containing the modified scene.
+
+\section HowToColmap_example_datasets Example Datasets
+
+Example datasets processed with *fullColmapProcess* and *colmap2Sibr* are here:
+\n
+	https://repo-sam.inria.fr/fungraph/sibr-datasets/
+\n
+
+
+*/

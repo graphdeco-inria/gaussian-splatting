@@ -1,0 +1,186 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@mainpage Getting Started
+
+@section intro_sec Introduction
+The System for Image-Based Rendering or **SIBR**, is a specialized collection of libraries and toolkits for quickly implementing Image-Based Rendering (IBR) algorithms, and includes implementations of several published IBR papers, mainly from Inria and UCL, but also (re-implementations) of projects from other research groups. Most of **SIBR** was developed over the years (since 2011) at Inria Sophia-Antipolis for the various IBR research projects in the group, but the codebase includes a significant part of code from the *fribr* codebase of P. Hedman from UCL. The codebase has a long history; see @ref sibr_history section.
+
+In this first release, we are providing reference source code implementations and datasets for the following \ref sibr_projects_available.
+
+We will be progressively releasing more implementations of past and future projects (please see the @ref sibr_roadmap). For the first few releases, the main intended usage of the codebase is comparisons with previous algorithms. In the medium-term future, we hope that the codebase will be useful to others for the development of their own IBR algorithms.
+
+The codebase contains three main components: the main *core* library, various utility/helper libraries and what we call *Projects* (see @ref sibr_projects_about), that are the implementations of Inria, UCL (and other) research projects.
+The core library has support for multi-view (MV) datasets, processed with Structure-from-Motion (SfM) and Multi-view Stereo (MVS) software. We support data from various SfM/MVS sources, such as *colmap* and the (commercial) *RealityCapture* package (see @ref howto_generate_dataset), and a some interactive viewing utilities for developing and debugging IBR algorithms (e.g., ``top view'' shown below). 
+
+@image HTML ulr_screenshot.png An example view of SIBR width=700px
+
+The utilities include various MV dataset (pre-)processing utilities that are used by various *Projects* and can be of general use, and various utilities for different API interfaces (e.g., tensorflow and pytorch, OptiX) and the core *fribr* framework from UCL that is used in some *Projects*.
+
+Each *Project* provided in **SIBR** has (more or less) similar documentation and code structure: a binary release for easy use, how to checkout the code, configure, build and install the solution, and run the basic renderer; a set if fully-processed datasets are provided for each project. The *Project* has *apps*, typically including a *rendering app* that is usually enough to run the method to compare with a new algorithm on one of our datasets.
+Most projects also have a *preprocessing* step. The code for preprocessing allows processing of your own data with the corresponding algorithm; the datasets provided have been processed with these tools. 
+Please see the section on comparisons (@ref comparisons_sec) below.
+
+The first *Project* is bundled in the *core* library, and has implementations of per-pixel variants of the Unstructured Lumigraph \[Buehler 2001\] (see the @ref ulrPage page). This implementation has been used as a baseline comparison in many of our projects, and is always a useful baseline for any new IBR algorithm.
+
+The licensing of the *core* is free for non-commercial, research and evaluation purposes, by academic or industrial labs, as defined in the LICENSE.md file. For commercial usage in a for-profit product, a paid license is required; please contact George.Drettakis@inria.fr if you are interested.
+
+The rest of this page explains how to download binaries, compile, configure and install the basic system and its documentation.
+
+If you use this code in a publication, please cite the system as follows in your publications:
+
+```
+@misc{sibr2020,
+   author       = "Bonopera, Sebastien and Hedman, Peter and Esnault, Jerome and Prakash, Siddhant and Rodriguez, Simon and Thonat, Theo and Benadel, Mehdi and Chaurasia, Gaurav and Philip, Julien and Drettakis, George",
+   title        = "sibr: A System for Image Based Rendering",
+   year         = "2020",
+   url          = "https://sibr.gitlabpages.inria.fr/"
+}
+```
+
+@section comparison_sec Comparisons
+
+A major goal of this code release is to allow comparisons. Most renderers in the *Projects* are interactive, allowing free-viewpoint navigation in the corresponding scenes. For comparisons, most renderers take a <code>--pathFile</code> argument that is a path of cameras in the scene. These are written to the directory requested, or by default in the <code>pathOutput</code> directory at the root of the dataset. For more details on cameras and paths, see the tutorial page @ref howto_cameras_paths .
+
+@section install_sec Installation
+
+**Note**: The current release is for *Windows 10* only. We are planning a Linux release soon.
+
+@subsection sibr_binaries Binary distribution
+
+The easiest way to use *SIBR* is to download the binary distribution. All steps described below, including all preprocessing for your datasets will work using this code.
+A binary distribution (200Mb) of the core is available here:
+
+```
+wget https://repo-sam.inria.fr/fungraph/sibr-release/sibr-core/install.zip
+```
+
+unzip to create the ``install'' directory. All instructions below on running the code can be performed using this binary distribution.
+
+@subsection sibr_example To run an example
+
+Download a dataset from: https://repo-sam.inria.fr/fungraph/sibr-datasets/
+
+e.g., the *sibr-museum-front* dataset in the *DATASETS_PATH* directory.
+
+```
+wget https://repo-sam.inria.fr/fungraph/sibr-datasets/museum_front27_ulr.zip
+```
+
+Once you have built the system or downloaded the binaries (see above), go to *install/bin* and you can run:
+```
+	sibr_ulrv2_app.exe --path DATASETS_PATH/sibr-museum-front
+```
+
+You will have an interactive viewer and you can navigate freely in the captured scene. 
+Our default interactive viewer has a main view running the algorithm and a top view to visualize the position of the calibrated cameras. By default you are in WASD mode, and can toggle to trackball using the "y" key. Please see the page [Interface](https://sibr.gitlabpages.inria.fr/docs/nightly/howto_sibr_useful_objects.html) for more details on the interface.
+
+
+@subsection sibr_prerequisite Prerequisites
+
+- git
+- Visual Studio 2019 (https://visualstudio.microsoft.com/).
+- Cmake 3.16+,(https://cmake.org/).
+- 7zip should be installed (https://www.7-zip.org/download.html).
+- Python 3.8+ should be installed and configured in the PATH (https://www.python.org/downloads/).
+- PIL (pip install pillow, in an admin command if needed: https://pypi.org/project/Pillow/) might be needed for some preprocess scripts.
+- ImageMagick (https://imagemagick.org/script/download.php).
+- Doxygen 1.8.17+ should be installed and configured in the PATH for generating the documentation (http://www.doxygen.nl/download.html).
+- If needed (Optix, Tensorflow, Pytorch,... integration), CUDA 10.1+ (https://developer.nvidia.com/cuda-downloads) and cuDNN.
+- An internet connection, as external dependencies will be downloaded from our servers during the CMake configuration.
+
+@subsection sibr_checkout Checkout the code
+
+- Clone sibr_core repository (https://gitlab.inria.fr/sibr/sibr_core). We recommend that you checkout master branch, but you can also work with the develop branch (unstable).
+@code
+## through HTTPS
+git clone https://gitlab.inria.fr/sibr/sibr_core.git -b master
+## through SSH
+git clone git@gitlab.inria.fr:sibr/sibr_core.git -b master
+@endcode
+- You can add the projects' source code you would like to compile with SIBR, for this see @ref sibr_projects_add)
+@subsection sibr_configure_cmake Configuring the solution
+
+- Run Cmake, select SIBR root folder as a source directory and \<sibr_root_folder\>/build/ as the build directory.
+- Configure, select the Visual Studio C++ Win64 compiler.
+- Select the projects you want to generate among the BUILD_* variables in the list.
+- Generate.
+
+@subsection sibr_compile Compiling
+
+- Configure the solution & Generate like we did in @ref sibr_configure_cmake.
+- Open the generated Visual Studio solution (sibr_root/build/sibr_projects.sln).
+- Build the BUILD_ALL target, and then the INSTALL target.
+- The compiled executables will be put in install/bin.
+@note If install fails, you will have to copy the required .dll files which are not copied automatically in the install/bin directory.
+      In general make sure these .dll files are in the bin directory : boost_system-vc141-mt-1_64.dll, boost_filesystem-vc141-mt-1_64.dll, glew32.dll, assimp-vc140-mt.dll, embree.dll.
+      Alternatively, you can selectively execute some of the install targets for specific projects.
+
+@subsection sibr_generate_documentation Generating the documentation
+
+- Configure the solution like we did in @ref sibr_configure_cmake and choose BUILD_DOCUMENTATION along with the projects you want in the documentation. Then generate the solution.
+- Open the generated Visual Studio solution (sibr_root/build/sibr_projects.sln).
+- Build the DOCUMENTATION target.
+- The generated documentation will be put in docs and can be accessed through install/docs/index.html.
+
+@subsection sibr_troubleshooting Troubleshoot
+
+- Cmake can't find GLU, GLEW or another library: use an up-to-date CMake, check that you are connected to the Internet.
+- Weird OpenCV error: you probably selected the 32-bits compiler in cmake-gui.
+- 'Cmd.exe failed wither error 009' or similar: make sure Python is installed and in the PATH.
+- BUILD_ALL or INSTALL fail because of a project you don't really need: build and install each project separately by selecting the proper targets.
+- Some projects may depend on other projects. Make sure you have checked all the required projects before generating the solution.
+- Error in CUDA headers under Visual Studio 2019: make sure CUDA >= 10.1 is installed.
+
+@subsection sibr_bugs Bugs and Issues
+
+We will track bugs and issues through the Issues interface on gitlab. Inria gitlab does not allow creation of external accounts, so if you have an issue/bug please email <code>sibr@inria.fr</code> and we will either create a guest account or create the issue on our side.
+
+@subsection sibr_main_authors Authors
+
+The authors of **SIBR** *core* are Gaurav Chaurasia (Ph.D. Inria, 2011-2013), Rodrigo Ortiz-Cayon (Ph.D. Inria 2013-2016), Jerome Esnault (Software Engineer, Inria, DATES), Sebastien Bonopera (Software Engineer, Inria, DATES), Theo Thonat (Ph.D. Inria 2015-2019), Simon Rodriguez (Ph.D. Inria, 2017-2020), Julien Philip (Ph.D. Inria, 2017-2020), Siddhant Prakash (Soft. Engineer & currently Ph.D. Inria). Mehdi Benadel (Soft. Engineer, Inria) is currently in charge of **SIBR**. George Drettakis had the overall supervision of the project throughout. See also @ref sibr_history.
+
+
+Each *Project* has different authors, who are listed in the corresponding project pages. A special mention is due to Peter Hedman (at UCL) who wrote the *fribr* framework used in several projects.
+
+@subsection sibr_funding Funding
+
+The various projects in **SIBR** were funded by Inria, French national and European research funds. These include French Ministry of Education and University of Nice Sophia-Antipolis (now Universite Cote d'Azur) funds (G. Chaurasia, S. Rodriguez), the ANR SEMAPOLIS project (https://project.inria.fr/semapolis/) and the Region Provence Alpes Cote d'Azur (T. Thonat), the EU projects VERVE (https://gv2.scss.tcd.ie/VERVE/) G. Chaurasia; CR-PLAY (http://www.cr-play.eu/) R. Ortiz-Cayon, J. Esnault, S. Bonopera; EMOTIVE (https://emotiveproject.eu/) S. Duchene, J. Philip and the ERC FUNGRAPH project (http://fungraph.inria.fr), J. Philip, S. Rodriguez, S. Prakash, S. Morgenthaler, M. Benadel. The FRIBR code was funded by the Rabin Ezra scholarship fund for P. Hedman at UCL.
+
+@section sibr_history History of SIBR
+
+The oldest code in SIBR was written by G. Chaurasia for his Ph.D. in 2011-2013 at what was then the REVES (LINK) research group at Inria Sophia-Antipolis. The initial ULR implementation, and parts of the code in the Superpixel Warp project [Chaurasia 2013] are from this work. Gaurav re-factored the code to allow it work first with Qt and then with OpenSceneGraph, in a code base called *ibr_collection*, used for the EU project VERVE (https://gv2.scss.tcd.ie/VERVE/). In the followup CR-PLAY (http://www.cr-play.eu/) project, the code was refactored by S. Bonopera, and as part of the ERC FUNGRAPH S. Prakash was in charge of designing the current core/projects structure. M. Benadel has been in charge of cleanup for the release. The overall development of the entire project was managed by G. Drettakis.
+
+@section sibr_roadmap SIBR Release Roadmap
+
+After the first release (see \ref sibr_projects_available ), we plan to release code for the deep learning solution for outdoor relighting [Philip 19] (Jan 21), and potentially for other recent IBR projects from the GRAPHDECO group. 
+We will be releasing a Linux version of the core, and for some of the *Projects* soon. Stay tuned.
+
+@subsection sibr_main_authors Authors
+
+The authors of **SIBR** *core* are Gaurav Chaurasia (Ph.D. Inria, 2011-2013), Rodrigo Ortiz-Cayon (Ph.D. Inria 2013-2016), Jerome Esnault (Software Engineer, Inria, DATES), Sebastien Bonopera (Software Engineer, Inria, DATES), Theo Thonat (Ph.D. Inria 2015-2019), Simon Rodriguez (Ph.D. Inria, 2017-2020), Julien Philip (Ph.D. Inria, 2017-2020), Siddhant Prakash (Soft. Engineer & currently Ph.D. Inria). Mehdi Benadel (Soft. Engineer, Inria) is currently in charge of **SIBR**. George Drettakis had the overall supervision of the project throughout. See also @ref sibr_history.
+
+
+Each *Project* has different authors, who are listed in the corresponding project pages. A special mention is due to Peter Hedman (at UCL) who wrote the *fribr* framework used in several projects.
+
+@subsection sibr_funding Funding
+
+The various projects in **SIBR** were funded by Inria, French national and European research funds. These include French Ministry of Education and University of Nice Sophia-Antipolis (now Universite Cote d'Azur) funds (G. Chaurasia, S. Rodriguez), the ANR SEMAPOLIS project (https://project.inria.fr/semapolis/) and the Region Provence Alpes Cote d'Azur (T. Thonat), the EU projects VERVE (https://gv2.scss.tcd.ie/VERVE/) G. Chaurasia; CR-PLAY (http://www.cr-play.eu/) R. Ortiz-Cayon, J. Esnault, S. Bonopera; EMOTIVE (https://emotiveproject.eu/) S. Duchene, J. Philip and the ERC FUNGRAPH project (http://fungraph.inria.fr), J. Philip, S. Rodriguez, S. Prakash, S. Morgenthaler, M. Benadel. The FRIBR code was funded by the Rabin Ezra scholarship fund for P. Hedman at UCL.
+
+@section sibr_references References
+[Chaurasia 13] G. Chaurasia, S. Duchene, O. Sorkine-Hornung, & G. Drettakis. (2013). Depth synthesis and local warps for plausible image-based navigation. ACM Transactions on Graphics (TOG), 32(3), 30. http://www-sop.inria.fr/reves/Basilic/2013/CDSD13/
+
+[Philip 19] J. Philip, M. Gharbi, T. Zhou, A. Efros, G. Drettakis (2019), Multi-view Relighting Using a Geometry-Aware Network   Multi-view-Relighting.pdf ACM Transactions on Graphics (SIGGRAPH Conference Proceedings), Volume 38, Number 4 - July 2019 http://www-sop.inria.fr/reves/Basilic/2019/PGZED19/
+
+
+ */

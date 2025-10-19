@@ -1,0 +1,4 @@
+<!DOCTYPE FilterScript>
+<FilterScript>
+ <filter name="Convert PerWedge UV into PerVertex UV"/>
+</FilterScript>

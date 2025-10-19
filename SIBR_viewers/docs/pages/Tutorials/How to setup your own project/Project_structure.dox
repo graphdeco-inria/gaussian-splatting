@@ -1,0 +1,53 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page project_structure Project Structure
+
+@ingroup setup_project
+
+@section gen_struct General structure
+
+- Projects should follow the following hierarchy:
+
+@verbatim	
+	apps/
+		CMakeLists.txt																# for listing apps to compile
+		my_app_1/																	# one of your apps, named at your convenience
+			CMakeLists.txt
+			main.cpp
+		my_app_2/
+			CMakeLists.txt
+			main.cpp
+	preprocess/
+		CMakeLists.txt																# for listing preprocesses to compile
+		my_preprocess_1/															# one of your preprocesses, named at your convenience
+			CMakeLists.txt
+			main.cpp
+		my_preprocess_2/
+			CMakeLists.txt
+			main.cpp
+	renderer/
+		CMakeLists.txt																# for compiling your library
+		my_library_code.cpp
+	documentation/																	# you can add optional documentation pages in this folder
+		my_doc.dox
+	CMakeLists.txt																	# project-wide configuration
+@endverbatim
+
+- `renderer/`: contains your library code and configuration
+- `preprocess/`: contains your preprocesses listed by directory, and the configuration CMake file to list them
+- `apps/`: contains your apps listed by directory, and the configuration CMake file to list them
+- `documentation/`: contains additional doxygen documentation
+
+*/
+

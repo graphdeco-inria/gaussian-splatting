@@ -1,0 +1,24 @@
+set(SIBR_PROJECTS_SAMPLES_SUBPAGE_REF   "@SIBR_PROJECTS_SAMPLES_SUBPAGE_REF@")
+set(SIBR_PROJECTS_OURS_SUBPAGE_REF      "@SIBR_PROJECTS_OURS_SUBPAGE_REF@")
+set(SIBR_PROJECTS_TOOLBOX_SUBPAGE_REF   "@SIBR_PROJECTS_TOOLBOX_SUBPAGE_REF@")
+set(SIBR_PROJECTS_OTHERS_SUBPAGE_REF    "@SIBR_PROJECTS_OTHERS_SUBPAGE_REF@")
+set(SIBR_PROJECTS_SAMPLES_REF_REF       "@SIBR_PROJECTS_SAMPLES_REF_REF@")
+set(SIBR_PROJECTS_OURS_REF_REF          "@SIBR_PROJECTS_OURS_REF_REF@")
+set(SIBR_PROJECTS_TOOLBOX_REF_REF       "@SIBR_PROJECTS_TOOLBOX_REF_REF@")
+set(SIBR_PROJECTS_OTHERS_REF_REF        "@SIBR_PROJECTS_OTHERS_REF_REF@")
+set(DOXY_DOC_DEST_DIR				    "@DOXY_DOC_DEST_DIR@")
+set(DOXY_DOC_GENERATED_DOC_DIR		    "@DOXY_DOC_GENERATED_DOC_DIR@")
+set(DOXY_DOC_PAGES_DIR				    "@DOXY_DOC_PAGES_DIR@")
+
+## Cleaning documentation folders
+file(REMOVE_RECURSE "${DOXY_DOC_GENERATED_DOC_DIR}")
+file(REMOVE_RECURSE "${DOXY_DOC_DEST_DIR}")
+
+## Generating documentation pages with variables
+file(GLOB_RECURSE doc_files "${DOXY_DOC_PAGES_DIR}/*.in")
+foreach(filename ${doc_files})
+    message(STATUS "Generating ${filename}...")
+    get_filename_component(output_filename ${filename} NAME_WLE)
+    message(STATUS "Output in ${DOXY_DOC_GENERATED_DOC_DIR}/${output_filename}...")
+    configure_file(${filename} ${DOXY_DOC_GENERATED_DOC_DIR}/${output_filename} @ONLY)
+endforeach()

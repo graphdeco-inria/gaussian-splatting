@@ -1,0 +1,97 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page HowToCapreal How to create a dataset from Reality Capture
+
+\tableofcontents
+
+@section capreal_usage How to use
+
+We use Reality Capture to generate a reconstruction of a mesh from several images gererated with multiple point of view. The program can open a group of images and determinate the position of the initial cameras.
+Please be aware that RealityCapture does not let you export the results without a license (which you might need to pay for).
+Here is a detailed explanation of all the steps:
+
+@subsection capreal_usage_layout Choose your layout
+
+Before anything, you'll have to choose your layout.
+You can modify them with the icons on the top of the screen.
+The interface can be a bit wonky, especially the 3D view. If you want to avoid possible display issues, you can choose `1 + 1 + 1 Layout`.
+
+@image html caprealnew.png Layout
+
+@subsection capreal_usage_input_images Select input images
+
+For reconstruction, you will need to provide a set of images of your scene. You can do so by clicking on `Inputs` or `Folder` buttons in the `Workflow` tab.
+
+@image html caprealaddinputs.png Add input images 
+
+@image html caprealinputsonly.png Now the input images are set 
+
+@subsection capreal_usage_align_images Align images
+
+When the image set is properly provided, you can align them with the `Align Images` option, in the `Alignment` tab.
+
+@image html caprealalignimages.png Align images option
+
+Now, you can see a point cloud in the 3D view.
+
+@image html caprealpointcloud.png The point cloud you get when you align images
+
+@subsection capreal_usage_mesh_reconstruction Mesh reconstruction
+
+Now you'd want to have a mesh from the images. For this, you need to select one of the `Calculate Model` options in the `Reconstruction` tab. We'll go for the `Normal Detail` option.
+
+@image html caprealmeshreconstruction.png The mesh reconstruction options
+
+Now you should be able to see the reconstruction.
+
+You can click on `Colorize` to colorize the mesh (or `Texture` if you want to texturize it : colorization only apprixomate vertices color, while texturing gives you an approximated texture).
+
+The generated mesh is likely to be pretty complex in terms of triangle count.
+You can decreased the number of triangles by doing : `Tools > Simplify Tools`
+You can take 1 or 2  For teh render optionmillion of triangle for the simplification
+
+You now have calibrated cameras and a reconstructed 3D mesh that are ready for use by **SIBR**. The next two sections explain whow to create a set of directories that will be useful for dataset managements, then save the data required from RealityCapture.
+
+@image html caprealcolorizesimplify.png Colorize and Simplify Tools options 
+
+@section capreal_DirStruc Suggested directory structure
+(Note: This directory structure is only suggested for user accessibility. You can store/create the dataset in separate directories as you like, as long as you provide correct input to the scripts to generate SIBR datasets.)
+
+@li dataset\\raw
+\n Contains the original images from the cameras.
+\n
+@li dataset\\rcprojs
+\n Contains the .rcproj files and the data directories (these are big after reconstruction, since they contain the mesh and texture).
+\n
+@li dataset\\sfm_mvs_rc
+\n Contains the exported undistorted images with black borders, the file  bundle.out, pmvs_recon.ply and optionally textured.obj, textured.mtl and textured_u1_v1.png (see what to save below)
+\n
+@li dataset\\sibr_rc
+\n Contains the extracted data to create scene(s) using SIBR, containing bundle file, reconstructed mesh, list of images, scene metadata etc. in proper directory structure.
+\n
+
+@section capreal_WhatToSave What to save from RealityCapture
+
+In the selected directory (*sfm_mvs_rc*) save the following:
+
+@li After alignment and reconstruction, save Registration (choose optionsbundler v0.3 Negative-Z format, jpg image type,  fit=Inner_region), and save to file *bundle.out*
+@li After reconstruction -> Mesh -> save to the file *recon.ply*
+@li After texturing -> Mesh -> save textured.obj (which will save textured.mtl and textured_u1_v1.png containing the texture); 
+@todo Textures verify
+
+@subsection Restore
+
+@todo Does this exist ?
+@li If something goes wrong, use python restore_dataset.py to restore all original files (bundle, ply, obj) as exported from RealityCapture
+*/

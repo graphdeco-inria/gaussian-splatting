@@ -1,0 +1,219 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page sibr_projects_dataset_tools_preprocess_tools_fullColmapProcess fullColmapProcess : running the full Colmap pipeline for SIBR
+
+\section ColmapInstallRequirements Install requirements
+
+- Colmap 3.6: https://demuc.de/colmap/
+
+You can choose the Pre-Release of Release Version for Windows. The .bat file corresponds
+to the application. Download and install it in any folder.
+
+- Dataset tools projects (available in sibr core)
+
+Install the SIBR Core on your computer : https://gitlab.inria.fr/sibr/sibr_core
+
+The page contains all the steps to install it.
+
+Choose the BUILD_IBR_DATASET_TOOLS option in CMAKE, BUILD and INSTALL the dataset_tools project (Apps and Preprocess).
+
+
+\subsection ColmapHToPrepareDataset How to prepare the dataset
+- Create the directory which will contain the future dataset
+- In the dataset directory, create a new directory with the name images
+- In the images directory, place your images that you want to use to create 
+the SIBR dataset
+
+Your dataset architecture should correspond to this:
+
+\verbatim
+ dataset/                              # your dataset directory
+         images/                       # your images directory
+                 im001.jpeg
+                 im002.jpeg
+                 im003.jpeg
+                 im004.jpeg
+                 ...
+\endverbatim
+
+
+\subsection ColmapHToRunPipeline How to run the pipeline 
+
+This section shows the different steps that you need to run to create the dataset.
+The SIBR ULR project contains some applications which allows to run Colmap, generate UVs
+and create a textured mesh. All the steps can be directly done through the 
+fullColmapProcess python script.
+
+You can run the script as an executable in bash-like command, or call it through python on cmd :
+
+\code
+# from cmd
+λ python .\install\scripts\fullColmapProcess.py --help
+# from git bash / cygwin / msys2
+❯ ./install/scripts/fullColmapProcess.py --help
+
+usage: fullColmapProcess.py [-h] --path PATH --colmapPath COLMAPPATH [--sibrBinariesPath SIBRBINARIESPATH] [--quality {default,low,medium,average,high,extreme}] [--with_texture] [--numGPUs NUMGPUS]
+                            [--SiftExtraction.max_image_size SIFTEXTRACTION_IMAGESIZE] [--SiftExtraction.estimate_affine_shape SIFTEXTRACTION_ESTIMATEAFFINESHAPE] [--SiftExtraction.domain_size_pooling SIFTEXTRACTION_DOMAINSIZEPOOLING]
+                            [--SiftExtraction.max_num_features SIFTEXTRACTION_MAXNUMFEATURES] [--ImageReader.single_camera IMAGEREADER_SINGLECAMERA] [--ExhaustiveMatching.block_size EXHAUSTIVEMATCHER_EXHAUSTIVEMATCHINGBLOCKSIZE]
+                            [--Mapper.ba_local_max_num_iterations MAPPER_MAPPERDOTBALOCALMAXNUMITERATIONS] [--Mapper.ba_global_max_num_iterations MAPPER_MAPPERDOTBAGLOBALMAXNUMITERATIONS]
+                            [--Mapper.ba_global_images_ratio MAPPER_MAPPERDOTBAGLOBALIMAGESRATIO] [--Mapper.ba_global_points_ratio MAPPER_MAPPERDOTBAGLOBALPOINTSRATIO]
+                            [--Mapper.ba_global_max_refinements MAPPER_MAPPERDOTBAGLOBALMAXREFINEMENTS] [--Mapper.ba_local_max_refinements MAPPER_MAPPERDOTBALOCALMAXREFINEMENTS]
+                            [--PatchMatchStereo.max_image_size PATCHMATCHSTEREO_PATCHMATCHSTEREODOTMAXIMAGESIZE] [--PatchMatchStereo.window_radius PATCHMATCHSTEREO_PATCHMATCHSTEREODOTWINDOWRADIUS]
+                            [--PatchMatchStereo.window_step PATCHMATCHSTEREO_PATCHMATCHSTEREODOTWINDOWSTEP] [--PatchMatchStereo.num_samples PATCHMATCHSTEREO_PATCHMATCHSTEREODOTNUMSAMPLES]
+                            [--PatchMatchStereo.num_iterations PATCHMATCHSTEREO_PATCHMATCHSTEREODOTNUMITERATIONS] [--PatchMatchStereo.geom_consistency PATCHMATCHSTEREO_PATCHMATCHSTEREODOTGEOMCONSISTENCY]
+                            [--StereoFusion.check_num_images STEREOFUSION_CHECKNUMIMAGES] [--StereoFusion.max_image_size STEREOFUSION_MAXIMAGESIZE]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --path PATH           path to your dataset folder
+  --colmapPath COLMAPPATH
+                        colmap path directory which contains colmap.bat / colmap.bin
+  --sibrBinariesPath SIBRBINARIESPATH
+                        binaries directory of SIBR
+  --quality {default,low,medium,average,high,extreme}
+                        quality of the reconstruction
+  --with_texture        Add texture steps
+  --numGPUs NUMGPUS     number of GPUs allocated to Colmap
+  --SiftExtraction.max_image_size SIFTEXTRACTION_IMAGESIZE
+  --SiftExtraction.estimate_affine_shape SIFTEXTRACTION_ESTIMATEAFFINESHAPE
+  --SiftExtraction.domain_size_pooling SIFTEXTRACTION_DOMAINSIZEPOOLING
+  --SiftExtraction.max_num_features SIFTEXTRACTION_MAXNUMFEATURES
+  --ImageReader.single_camera IMAGEREADER_SINGLECAMERA
+  --ExhaustiveMatching.block_size EXHAUSTIVEMATCHER_EXHAUSTIVEMATCHINGBLOCKSIZE
+  --Mapper.ba_local_max_num_iterations MAPPER_MAPPERDOTBALOCALMAXNUMITERATIONS
+  --Mapper.ba_global_max_num_iterations MAPPER_MAPPERDOTBAGLOBALMAXNUMITERATIONS
+  --Mapper.ba_global_images_ratio MAPPER_MAPPERDOTBAGLOBALIMAGESRATIO
+  --Mapper.ba_global_points_ratio MAPPER_MAPPERDOTBAGLOBALPOINTSRATIO
+  --Mapper.ba_global_max_refinements MAPPER_MAPPERDOTBAGLOBALMAXREFINEMENTS
+  --Mapper.ba_local_max_refinements MAPPER_MAPPERDOTBALOCALMAXREFINEMENTS
+  --PatchMatchStereo.max_image_size PATCHMATCHSTEREO_PATCHMATCHSTEREODOTMAXIMAGESIZE
+  --PatchMatchStereo.window_radius PATCHMATCHSTEREO_PATCHMATCHSTEREODOTWINDOWRADIUS
+  --PatchMatchStereo.window_step PATCHMATCHSTEREO_PATCHMATCHSTEREODOTWINDOWSTEP
+  --PatchMatchStereo.num_samples PATCHMATCHSTEREO_PATCHMATCHSTEREODOTNUMSAMPLES
+  --PatchMatchStereo.num_iterations PATCHMATCHSTEREO_PATCHMATCHSTEREODOTNUMITERATIONS
+  --PatchMatchStereo.geom_consistency PATCHMATCHSTEREO_PATCHMATCHSTEREODOTGEOMCONSISTENCY
+  --StereoFusion.check_num_images STEREOFUSION_CHECKNUMIMAGES
+  --StereoFusion.max_image_size STEREOFUSION_MAXIMAGESIZE
+\endcode
+
+\image HTML colmapfullpipeline.png
+
+- Colmap creates a reconstruction from your images
+- UnwrapMesh program gens UV coordinates on the mesh
+- colmapToSibr creates the architecture and files required by a SIBR scene
+- TextureMesh create a texture and bind it to the reconstruction.
+
+\subsubsection ColmapInputArgs Input arguments
+
+Required arguments:
+
+\code
+--path YOUR_DATA_PATH
+\endcode
+
+The path to your dataset folder. It must contain an images folder with images of your captured scene
+
+Optional arguments:
+
+\code
+--colmapPath COLMAP_DIR
+\endcode
+
+The directory containing the colmap.bat executable (if not provided, it will look for a `COLMAP_PATH` environment variable, or use `C:\Program Files\Colmap`)
+
+\code
+--meshlabPath MESHLAB_DIR
+\endcode
+
+The directory containing the meshlabserver executable (if not provided, it will look for a `MESHLAB_PATH` environment variable, or use `C:\Program Files\VCG\Meshlab`)
+
+\code
+--sibrBinariesPath YOUR_SIBR_DIR\install\bin
+\endcode
+
+That is the directory which contains the binaries of SIBR
+
+Those optional arguments are about the Colmap parametrization. You have several ways to
+set the colmap parameters
+
+- Use a pre-defined configuration. You have 4 configurations : low, medium, high, extreme.
+If you don't use a pre-defined configuration, all the parameters are set to the default
+value ( usually it is a mix between high and extreme ). To apply it, use the 
+\code
+--quality
+\endcode option
+
+- Specify the parameters separately. You can set each parameters by yourself. Here is 
+a tab contains the default values and the values for each pre-defined configuration:
+
+ | parameters                                           | default       | low   | medium        | average       | high          | extreme       |
+ | ---------------------------------------------------- | ------------- | ----- | ------------- | ------------- | ------------- | ------------- |
+ | **colmap feature_extractor**                         |||||||
+ | siftExtraction_ImageSize                             | 3200          | 1000  | 1600          | 3200          | 2400          | 3200          |
+ | siftExtraction_EstimateAffineShape                   | false         | false | false         | false         | true          | true          |
+ | siftExtraction_DomainSizePooling                     | false         | false | false         | false         | false         | true          |
+ | siftExtraction_MaxNumFeatures                        | 16000         | 8192  | 8192          | 8192          | 8192          | 8192          |
+ | imageReader_SingleCamera                             | false         | true  | true          | true          | true          | true          |
+ | **colmap exhaustive_matcher**                        |||||||
+ | exhaustiveMatcher_ExhaustiveMatchingBlockSize        | 50            | 50    | 50            | 50            | 50            | 50            |
+ | **colmap mapper**                                    |||||||
+ | mapper_MapperDotbaLocalMaxNumIterations              | 25            | 12    | 16            | 25            | 30            | 40            |
+ | mapper_MapperDotbaGlobalMaxNumIterations             | 50            | 25    | 33            | 50            | 75            | 100           |
+ | mapper_MapperDotbaGlobalImagesRatio                  | 1.100001      | 1.32  | 1.21          | 1.100001      | 1.100001      | 1.100001      |
+ | mapper_MapperDotbaGlobalPointsRatio                  | 1.100001      | 1.32  | 1.21          | 1.100001      | 1.100001      | 1.100001      |
+ | mapper_MapperDotbaGlobalMaxRefinements               | 5             | 2     | 2             | 5             | 5             | 5             |
+ | mapper_MapperDotbaLocalMaxRefinements                | 2             | 2     | 2             | 2             | 3             | 3             |
+ | **colmap patch_match_stereo**                        |||||||
+ | patchMatchStereo_PatchMatchStereoDotMaxImageSize     | -1            | 1000  | 1600          | -1            | 2400          | -1            |
+ | patchMatchStereo_PatchMatchStereoDotWindowRadius     | 5             | 4     | 4             | 5             | 5             | 5             |
+ | patchMatchStereo_PatchMatchStereoDotWindowStep       | 1             | 2     | 2             | 1             | 1             | 1             |
+ | patchMatchStereo_PatchMatchStereoDotNumSamples       | 15            | 7     | 10            | 15            | 15            | 15            |
+ | patchMatchStereo_PatchMatchStereoDotNumIterations    | 5             | 3     | 5             | 5             | 5             | 5             |
+ | patchMatchStereo_PatchMatchStereoDotGeomConsistency  | 1             | 0     | 0             | 1             | 1             | 1             |
+ | **colmap stereo_fusion**                             |||||||
+ | stereoFusion_CheckNumImages                          | 50            | 25    | 33            | 50            | 50            | 50            |
+ | stereoFusion_MaxImageSize                            | -1            | 1000  | 1600          | -1            | 2400          | -1            |
+
+- Mix a pre-defined configuration and your own parameters. First, the parameters
+of the pre-defined configuration are applied. Then, your parameters are applied over them.
+
+
+
+\subsubsection ColmapInputArgsExamples Input arguments examples
+
+The most basic version looks like that
+
+
+\code
+--path E:\USERNAME\dataset --sibrBinariesPath E:\USERNAME\dev\sibr_basic2\install\bin --colmapPath D:\colmap
+\endcode
+
+\note Do not forget that your dataset path has to contain an image directory with the images inside it.
+
+Now an example using the pre-defined configuration
+
+\code
+--path E:\USERNAME\dataset --sibrBinariesPath E:\YOU\dev\sibr_basic2\install\bin --colmapPath D:\colmap --quality low
+\endcode
+
+Finally, an example with the mix of the two ways
+
+\code
+--path E:\USERNAME\dataset --sibrBinariesPath E:\YOU\dev\sibr_basic2\install\bin --colmapPath D:\colmap --quality medium --SiftExtraction.max_num_features 4096
+\endcode
+
+All the parameters will be set to the medium configuration except the max_num_features that
+will be setted to 4096.
+
+*/

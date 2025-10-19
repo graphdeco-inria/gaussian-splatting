@@ -1,0 +1,150 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page howto_sibr_useful_objects Useful systems in SIBR
+
+@section multiviewmanager Using the windowing system
+
+SIBR provides tools to display multiple rendering algorithms in different subviews that can be resized and hidden on screen. This is handled by the `MultiViewManager`. once instantiated and tied to a system window, the multi view manager can keep track of multiple views, ensuring that their content is updated and that they receive the correct user inputs. Views can be hidden, resized, their content captured as a screenshot.
+
+Two modes can be used, mainly for legacy reasons:
+
+- IBR subviews, that have to implement onRenderIBR() (which was used to support anaglyph rendering previously)
+- basic subviews, that have to implement onRender()
+
+It is possible to associate an interactive user camera to a view, so that the user can move around in the displayed content. Two views can use the same handler, for synchronized motion.
+
+Basic example:
+
+@code
+Window window(PROGRAM_NAME, sibr::Vector2i(50, 50), myArgs);
+MultiViewManager manager(window, false);
+
+// Register a first view, with an interactive user camera
+MyView::Ptr	myView(new MyView());
+InteractiveCameraHandler::Ptr userCam(new InteractiveCameraHandler());
+manager.addIBRSubView("My view", myView);
+manager.addCameraForView("My view", userCam);
+
+// Register another view, which already handles the user motions by itself
+DebugView::Ptr dbgView(new DebugView());
+manager.addSubView("Debug view", dbgView, usedResolution);
+
+while (window.isOpened()) {
+
+	Input::poll();
+	window.makeContextCurrent();
+	if (Input::global().key().isPressed(Key::Escape)) {
+		window.close();
+	}
+
+	manager.onUpdate(Input::global());
+	manager.onRender(window);
+
+	window.swapBuffer();
+}
+@endcode
+
+@image html multiviewmanager.png
+
+@section interactiveHandler Interactive user camera
+
+User interaction in a view are handled by an `InteractiveCameraHandler`, that supports many interaction modes such as a FPS camera or a trackball. 
+It can also snaps to predefined viewpoints or interpolate between them. You can adjust the field of view and frustum planes.    
+You can toggle between modes in the GUI or by pressing Y.
+
+- FPS : move around with WASD, down/up with Q/E, rotate with IJKL and roll with U/O.
+- Trackball : rotate around a central point with the left click in the center of the view, roll with left click towards the view edges. Pan with righ click in the center region, move forward/backward with right click towards the view edges, or by scrolling. Ctrl+left click redefines the center of the trackball, this is very useful to focus on a specific region of the scene and zoom in. 
+- Orbit: rotate around using the numeric keypad.
+
+@subsection recordPaths Recording and replaying camera paths
+
+The handler can also records and playback paths. Once the `Record` button is pressed, all user camera motions are recorded. When pressing `Save path`, they will be saved to a file on disk. Types such as `.lookat`, `.path` and `.bundle` are supported, which is useful for comparison with other frameworks. A `.path` can be reloaded using the `Load path` button, and will start playing automatically.
+
+@subsection recordVideos Generating videos
+
+It is possible to record videos and dump images following a path in a view. In the camera handler GUI, you can check if you want to record videos or frames. If checked, the next start a path starts playing, each frame will be recorded and saved on disk.
+
+- for video recording, check the corresponding box, start playing the path. At the end, in the view manager, select "Capture > Export video" and select the output destination (supported export format: h264 with `.mp4` extension).
+- for frames recording, hen checking the box you will have to select an output directory. once the path starts to play, frames are going to be saved in the directory.
+
+@section debugview Visualizing debug geometry
+
+It can be useful to visualize information such as the scene geometry, location of the cameras, rays, voxel-like structures in a view with an interactive camera. SIBR provides the `MultiMeshManager` for this prupose. It can be used to display multiple meshes, vertices, lines,... At runtime, a list of all elements is displayed and many attributes can be toggled. The same attributes can be edited from the code using chaining. Everything can be updated on the fly based on the objects names. 
+For instance:
+
+@code
+debugView.addMeshAsLines("BBox", bbox).setColor({1.0f, 0.0f, 1.0f}).setDepthTest(false).setColormode(USER_DEFINED);
+// Later in the code
+debugView.addMeshAsLines("BBox", anotherBbox); // will replace the previous mesh
+// Later again
+debugView.getMeshData("BBox").setAlpha(0.5f); // dim the box
+@endcode
+
+Because the MultiMeshManager conforms to the ViewBase interface, it can be added to the view manager as any other view. It comes with its own interactive camera.
+
+@note The `SceneDebugView` that can be used to visualize an IBR dataset including the geometry, cameras and images, is built on top of `MultiMeshManager`, with extra code generating geometry for the frusta and the image quads.
+
+@image html multimeshmanager.png
+
+@section commandlineargs Command line arguments
+
+To simplify the definition and parsing of arguments, SIBR provide tools to easily define and populate arguments. The system is based on `Arg<T>` and `RequiredArg<T>`, that can be used to define arguments anywhere. It is recommended to group them in a structure, especially as some existing structures can be reused to define command arguments (windowing options, dataset path, etc., see for instance `WindowAppArgs` or `BasicDatasetArgs`). 
+
+Before anything, you have to make sure the raw input arguments have been parsed by calling `CommandLineArgs::parseMainArgs(argc, argv);` in your main. Any argument instantiated afterwards will then be able to fetch its user-provided value (if it exists). Default values and help messages can be provided when declaring arguments. Required arguments will raise an error when used if the user did not provide a value.
+
+Arguments will convert to their contained type when using them, it is also possible to access their value using `get()`. Arguments values can also be set directly in the code.
+
+@code
+struct MyArgs : virtual WindowAppArgs, BasicDatasetArgs {
+	RequiredArg<int> iterations = {"itcount", 5, "Number of smoothing iterations"};
+	Arg<std::string> logPath = {"log", "", "Path to log file"};
+	Arg<bool> showResult = {"show", "Display results in a popup window"};
+}
+
+int main(int argc, char** argv){
+	CommandLineArgs::parseMainArgs(argc, argv);
+	MyArgs args;
+	const std::string logFile = args.logPath.get() + "_test.log";
+	Thing(args.iterations, logFile);
+	if(args.showResult){
+		//...
+	}
+}
+@endcode
+
+
+@section uniformsystem The uniform system
+
+When using OpenGL shaders, values are often passed from the CPU using uniforms. In the past, SIBR required the developer to maintain both a GLParameter object and the corresponding variable on the CPU to store the value and expose it. It is now recommended to use GLUniform<T>, that wraps a CPU value while allowing you to update the GPU uniform easily. The GLUniform will automatically converts to its contained type in most cases ; if a reference to the CPU value is needed, you can use get().
+
+@code
+// In the header, as members of a renderer for instance
+GLShader _shader;
+GLuniform<float> _val = 0.5;
+
+// At construction
+_shader.init("My Shader", "vertex shader content", "fragment shader content");
+_val.init(_shader, "alpha"); // link the uniform to the shader, specify the name in the shader code
+
+// At some point in the code
+_val += 0.3f; // Mofidy the CPU value
+
+// In the render loop
+_shader.begin();
+_val.send(); // Send to the GPU
+...
+@endcode
+
+
+ */

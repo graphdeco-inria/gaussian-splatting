@@ -1,0 +1,95 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+ /*!
+@page document_project Documenting projects
+
+@ingroup setup_project
+
+@section gendoc Writing
+Each class created in one of the core SIBR modules (system, assets,...) should be properly documented.
+Please try to document as many methods as possible (especially public ones). Don't forget to <b>add each class to its module</b>.
+You will find below an example of a commented class.
+
+@verbatim
+ /* Represents a general view.
+    @ingroup sibr_view
+ */
+ class SIBR_MY_LIBRARY_EXPORT MyView {
+ 	public:
+
+ 		/* Loads everything.
+ 			@param flags the options to use.
+ 			@return a boolean denoting the success of the operation.
+ 		*/
+ 		bool load(const int flags);
+
+ 		MyView();
+ 		~MyView();
+
+ 	private:
+
+ 		/* Performs complex operations.
+ 			@param val the value to use.
+ 		*/
+ 		void performComplexOps(const float val);
+
+ 		int _flags;	///< configuration flags
+ 		sibr::Vector2i _size; ///< The size of the view.
+ }
+@endverbatim
+
+
+If you need to create a new module and want it to appear in the Modules doxygen listing, you will need to create a `sibr_mymodule.dox` file in your module directory, with the following content:
+
+@verbatim
+/*!
+	@defgroup sibr_mymodule
+
+	@brief This is my module.
+
+	This is a longer description of my module. It's mine.
+*/
+@endverbatim
+
+You can also write general .dox pages to give more details on a process or a project.\n
+Please add them to your project `documentation/` folder.\n
+Here is an example of a dox file content:\n
+
+@verbatim
+/*!
+@page yourPageReference Your Page Name
+
+This is a Page.\n
+
+You can add ref to pages like this : @ref anotherPage\n
+Or add a link to a subpage like this : @subpage yetAnotherPage\n
+*/
+@endverbatim
+
+You can automatically link them as subpages in <a href="projects.html">docs/pages/Projects.dox</a> by providing a `<my_project>_doc.cmake` file in your project `documentation/` folder.\n
+Here you can see an example:\n
+
+@verbatim
+/*!
+set(PROJECT_PAGE "yourPageReference")
+set(PROJECT_LINK "https://the.link.to.your.source.code.for.instance")
+set(PROJECT_DESCRIPTION "A short description")
+set(PROJECT_TYPE "OTHER") # this could be either SAMPLES, TOOLBOX, OURS or OTHERS. If not affiliated to SIBR, you might want to use OTHERS or TOOLBOX
+*/
+@endverbatim
+
+@section compileDoc Generating
+
+To generate the documentation, enable the BUILD_DOCUMENTATION flag in cmake and build the DOCUMENTATION target in Visual Studio. The generated output html pages will be accessible from <a href="../index.html">intall/docs/index.html</a>.
+
+*/

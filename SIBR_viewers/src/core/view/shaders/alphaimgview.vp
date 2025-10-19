@@ -1,0 +1,31 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+#version 420
+
+layout(location = 0) in vec2 in_vertex;
+layout(location = 1) in vec2 in_texcoord;
+
+out vec2 tex_coord;
+
+uniform vec4 imagefit;
+
+vec2		fitTexcoord( vec2 tc ) {
+	tc.x = tc.x*imagefit[0] + imagefit[2+0];
+	tc.y = tc.y*imagefit[1] + imagefit[2+1];
+	return tc;
+}
+
+void main(void) {
+	gl_Position = vec4(in_vertex, 0.0, 1.0);
+	tex_coord = fitTexcoord(in_texcoord);
+}

@@ -1,0 +1,77 @@
+/*!
+@page projects Projects
+
+@section sibr_projects_about What are projects ?
+
+Research algorithms and toolboxes have been implemented for SIBR as plugins named "Projects".\n
+Unstructured Lumigraph Rendering (ULR) application is provided by default with SIBR to help users get started.\n
+Some projects called toolboxes might also be used by other projects to bring additional functionalities (for instance the SIBR/Optix integration).\n
+
+@subsection sibr_projects_available Available Projects 
+
+The list of projects that have been added to this generated version of SIBR's documentation is given below.\n
+For projects corresponding to publications, the link to the paper is provided.\n
+Most of other projects are helper libraries that can be used to augment SIBR with new functionalities.
+
+- @subpage sibr_projects_samples
+@SIBR_PROJECTS_SAMPLES_REF_REF@
+- @subpage sibr_projects_ours
+@SIBR_PROJECTS_OURS_REF_REF@
+- @subpage sibr_projects_others
+@SIBR_PROJECTS_OTHERS_REF_REF@
+- @subpage sibr_projects_toolbox
+@SIBR_PROJECTS_TOOLBOX_REF_REF@
+
+@subsection sibr_projects_documentation Access projects documentation
+
+Each project documentation is compilable through SIBR.\n
+To access the projects documentation, first :\n
+- Add the project to SIBR like explained in @ref sibr_projects_add
+- Compile the documentation 
+
+@subsection sibr_projects_add Adding projects to SIBR
+
+Existing projects can be added as subdirectories in the src/projects directory.\n
+For this, you need to access to the project's source code (most of them are in https://gitlab.inria.fr/sibr/projects) to clone it, build it with SIBR and use it.\n
+If you want to create your own project, see @ref howto_setup_project .\n
+You can follow the given steps to add a project once access is given.\n
+- You will need to checkout SIBR Core source code (see @ref sibr_checkout).
+- Go to src/projects
+- Clone/Copy the project source code in the correct project folder (it should be the same as the project repository, or check the README for more information).
+- You can then resume with @ref sibr_generate_documentation or @ref sibr_compile
+
+@subsection sibr_project_structure Project structure
+
+See @ref project_structure
+
+@subsection sibr_your_project Creating your own project
+
+See @ref howto_setup_project
+
+*/
+
+/*!
+@page sibr_projects_samples Sample algorithms & toolboxes
+
+@SIBR_PROJECTS_SAMPLES_SUBPAGE_REF@
+*/
+
+/*!
+@page sibr_projects_ours Our algorithms
+
+@SIBR_PROJECTS_OURS_SUBPAGE_REF@
+*/
+
+/*!
+@page sibr_projects_others Other algorithms
+
+@SIBR_PROJECTS_OTHERS_SUBPAGE_REF@
+*/
+
+/*!
+@page sibr_projects_toolbox Integrated toolboxes
+
+@SIBR_PROJECTS_TOOLBOX_SUBPAGE_REF@
+*/
+
+

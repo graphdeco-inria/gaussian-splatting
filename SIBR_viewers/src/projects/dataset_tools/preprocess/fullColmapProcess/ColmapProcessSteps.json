@@ -1,0 +1,182 @@
+{
+    "steps" : [
+        {
+            "name": "build_dataset_structure",
+            "function": "utils.datasets.buildDatasetStructure",
+            "function_args": {
+                "path" : "${path}",
+                "types" : ["colmap", "capreal"]
+            }
+        },
+        {
+            "name": "colmap_feature_extractor",
+            "app": "colmap",
+            "command_args": [
+                "feature_extractor",
+                "--database_path", "${path}/colmap/dataset.db",
+		        "--image_path", "${path}/images/",
+                "--ImageReader.camera_model", "OPENCV",
+                "--SiftExtraction.max_image_size", "${siftExtraction_ImageSize}",
+                "--SiftExtraction.estimate_affine_shape", "${siftExtraction_EstimateAffineShape}",
+                "--SiftExtraction.domain_size_pooling", "${siftExtraction_DomainSizePooling}",
+                "--SiftExtraction.max_num_features", "${siftExtraction_MaxNumFeatures}",
+                "--ImageReader.single_camera", "${imageReader_SingleCamera}",
+                "--SiftExtraction.gpu_index", "${gpusIndices}"
+            ]
+        },
+        {
+            "name": "colmap_exhaustive_matcher",
+            "app": "colmap",
+            "command_args": [
+                "exhaustive_matcher",
+                "--database_path", "${path}/colmap/dataset.db",
+                "--SiftMatching.guided_matching", "1",
+                "--ExhaustiveMatching.block_size", "${exhaustiveMatcher_ExhaustiveMatchingBlockSize}",
+                "--SiftMatching.gpu_index", "${gpusIndices}"
+            ]
+        },
+        {
+            "name": "colmap_mapper",
+            "app": "colmap",
+            "command_args": [
+                "mapper",
+                "--database_path", "${path}/colmap/dataset.db",
+		        "--image_path", "${path}/images/",
+                "--output_path", "${path}/colmap/sparse/",
+                "--Mapper.ba_local_max_num_iterations", "${mapper_MapperDotbaLocalMaxNumIterations}",
+                "--Mapper.ba_global_max_num_iterations", "${mapper_MapperDotbaGlobalMaxNumIterations}",
+                "--Mapper.ba_global_images_ratio", "${mapper_MapperDotbaGlobalImagesRatio}",
+                "--Mapper.ba_global_points_ratio", "${mapper_MapperDotbaGlobalPointsRatio}",
+                "--Mapper.ba_global_max_refinements", "${mapper_MapperDotbaGlobalMaxRefinements}",
+                "--Mapper.ba_local_max_refinements", "${mapper_MapperDotbaLocalMaxRefinements}"
+            ]
+        },
+        {
+            "name": "colmap_image_undistorter_colmap",
+            "app": "colmap",
+            "command_args": [
+                "image_undistorter",
+                "--image_path", "${path}/images/",
+                "--input_path", "${path}/colmap/sparse/0",
+                "--output_path", "${path}/colmap/stereo/",
+                "--output_type", "COLMAP"
+            ]
+        },
+        {
+            "name": "colmap_image_undistorter_capreal",
+            "app": "colmap",
+            "command_args": [
+                "image_undistorter",
+                "--image_path", "${path}/images/",
+                "--input_path", "${path}/colmap/sparse/0/",
+                "--output_path", "${path}/capreal/undistorted/",
+                "--output_type", "CMP-MVS"
+            ]
+        },
+        {
+            "name": "colmap_patch_match_stereo",
+            "app": "colmap",
+            "command_args": [
+                "patch_match_stereo",
+                "--workspace_path", "${path}/colmap/stereo",
+                "--workspace_format", "COLMAP",
+                "--PatchMatchStereo.max_image_size", "${patchMatchStereo_PatchMatchStereoDotMaxImageSize}",
+                "--PatchMatchStereo.window_radius", "${patchMatchStereo_PatchMatchStereoDotWindowRadius}",
+                "--PatchMatchStereo.window_step", "${patchMatchStereo_PatchMatchStereoDotWindowStep}",
+                "--PatchMatchStereo.num_samples", "${patchMatchStereo_PatchMatchStereoDotNumSamples}",
+                "--PatchMatchStereo.num_iterations", "${patchMatchStereo_PatchMatchStereoDotNumIterations}",
+                "--PatchMatchStereo.geom_consistency", "${patchMatchStereo_PatchMatchStereoDotGeomConsistency}",
+                "--PatchMatchStereo.gpu_index", "${gpusIndices}"
+            ]
+        },
+        {
+            "name": "colmap_stereo_fusion",
+            "app": "colmap",
+            "command_args": [
+                "stereo_fusion",
+                "--workspace_path", "${path}/colmap/stereo/",
+                "--workspace_format", "COLMAP",
+                "--input_type", "geometric",
+                "--output_path", "${path}/colmap/stereo/fused.ply",
+                "--StereoFusion.max_image_size", "${stereoFusion_MaxImageSize}",
+                "--StereoFusion.check_num_images", "${stereoFusion_CheckNumImages}"
+            ]
+        },
+        {
+            "name": "colmap_delaunay_mesher",
+            "app": "colmap",
+            "command_args": [
+                "delaunay_mesher",
+                "--input_path", "${path}/colmap/stereo/",
+                "--output_path", "${path}/colmap/stereo/meshed-delaunay.ply",
+                "--input_type", "dense"
+            ]
+        },
+        {
+            "name": "colmap_model_converter",
+            "app": "colmap",
+            "command_args": [
+                "model_converter",
+                "--input_path", "${path}/colmap/stereo/sparse/",
+                "--output_path", "${path}/colmap/stereo/sparse/",
+                "--output_type", "TXT"
+            ]
+        },
+        {
+            "name": "fix_mesh_eol",
+            "function": "utils.convert.fixMeshEol",
+            "function_args": {
+                "meshPath" : "${path}/colmap/stereo/meshed-delaunay.ply",
+                "newMeshPath" : "${path}/colmap/stereo/unix-meshed-delaunay.ply"
+            }
+        },
+        {
+            "if": "${with_texture}",
+            "name": "simplify_mesh",
+            "function": "simplify_mesh.simplifyMesh",
+            "function_args": {
+                "inputMesh" : "${path}/colmap/stereo/unix-meshed-delaunay.ply",
+                "outputMesh" : "${path}/colmap/stereo/unix-meshed-delaunay-simplified.ply",
+                "meshlabPath" : "${meshlabPath}",
+		"meshsize" : "${meshsize}"
+            }
+        },
+        {
+            "if": "${with_texture}",
+            "name": "unwrap_mesh",
+            "app": "unwrapMesh",
+            "command_args": [
+                "--path", "${path}/colmap/stereo/unix-meshed-delaunay-simplified.ply",
+                "--output", "${path}/capreal/mesh.ply",
+                "--texture-name", "texture.png"
+            ]
+        },
+        {
+            "if": "${with_texture}",
+            "name": "texture_mesh",
+            "app": "textureMesh",
+            "command_args": [
+                "--path", "${path}",
+                "--output", "${path}/capreal/texture.png",
+                "--size", "8192",
+                "--flood"
+            ]
+        },
+        {
+            "name": "move_eol_dirty_mesh",
+            "function": "shutil.copy",
+            "function_args": {
+                "src" : "${path}/colmap/stereo/meshed-delaunay.ply",
+                "dst" : "${path}/colmap/stereo/meshed-delaunay-eolpb.ply"
+            }
+        },
+        {
+            "name": "use_eol_fixed_mesh",
+            "function": "shutil.copy",
+            "function_args": {
+                "src" : "${path}/colmap/stereo/unix-meshed-delaunay.ply",
+                "dst" : "${path}/colmap/stereo/meshed-delaunay.ply"
+            }
+        }
+    ]
+}

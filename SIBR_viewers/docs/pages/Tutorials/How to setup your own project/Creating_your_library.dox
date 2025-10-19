@@ -1,0 +1,55 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+/*!
+@page create_library Creating your library
+
+@ingroup setup_project
+
+@section ge_setup_library General setup
+
+The content of your library would basically be up to what you will need in this specific project.\n
+However, we do implement core patterns that could be useful to create your view and handle the rendering of your scene.
+
+@section library_views Views
+
+basic example of a View:
+
+see:
+- https://gitlab.inria.fr/mbenadel/sibr_simple/-/blob/master/renderer/SimpleView.hpp
+- https://gitlab.inria.fr/mbenadel/sibr_simple/-/blob/master/renderer/SimpleView.cpp
+
+@section library_renderers Renderers
+
+basic example of a Renderer:
+
+see:
+- https://gitlab.inria.fr/mbenadel/sibr_simple/-/blob/master/renderer/SimpleRenderer.hpp
+- https://gitlab.inria.fr/mbenadel/sibr_simple/-/blob/master/renderer/SimpleRenderer.cpp
+
+@section library_shaders Shaders
+
+Shaders copy to binary folder is handled by the library CMake.\n
+You can put your shaders files in `renderer/shaders` with the following extensions:
+
+- `.vert`
+- `.frag`
+- `.geom`
+- `.vp`
+- `.fp`
+- `.gp`
+
+If unchanged, those shaders should be copied to `install/bin/shaders_rsc`.\n
+To extend this behavior, please update `renderer/CMakeLists.txt`.
+
+ */
+

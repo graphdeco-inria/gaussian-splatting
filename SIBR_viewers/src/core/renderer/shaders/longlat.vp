@@ -1,0 +1,29 @@
+/*
+ * Copyright (C) 2020, Inria
+ * GRAPHDECO research group, https://team.inria.fr/graphdeco
+ * All rights reserved.
+ *
+ * This software is free for non-commercial, research and evaluation use 
+ * under the terms of the LICENSE.md file.
+ *
+ * For inquiries contact sibr@inria.fr and/or George.Drettakis@inria.fr
+ */
+
+
+#version 450																																	
+layout(location = 0) in vec3 inPos;
+layout(location = 1) in vec3 inColors;
+layout(location = 2) in vec2 inCoordsTex;
+layout(location = 3) in vec3 inNormals; 
+
+layout(location = 1) out vec3 vs_colors;
+layout(location = 2) out vec2 vs_coordsTex;
+layout(location = 3) out vec3 vs_normals;
+
+void main()
+{																		
+	vs_colors= inColors;
+	vs_coordsTex = inCoordsTex;
+	vs_normals = inNormals;
+	gl_Position = vec4(inPos,1.0f);
+}																		
