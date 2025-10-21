@@ -48,6 +48,8 @@ class GaussianModelScaleMatrix:
         else:
             raise TypeError(f"Can only multiply by scalar values, not {type(other)}")
 
+
+
 class GaussianModelParamGroupMask:
     """
     Per parameter mask
@@ -118,6 +120,18 @@ class GaussianModelState:
                    torch.zeros_like(gaussians._rotation),
                    torch.zeros_like(gaussians._opacity),
                    torch.zeros_like(gaussians._exposure),
+                   param_mask=param_mask,
+                   splat_mask=splat_mask)
+
+    @classmethod
+    def ones_like_gaussians(cls, gaussians, param_mask=None, splat_mask=None):
+        return cls(torch.ones_like(gaussians._xyz),
+                   torch.ones_like(gaussians._features_dc),
+                   torch.ones_like(gaussians._features_rest),
+                   torch.ones_like(gaussians._scaling),
+                   torch.ones_like(gaussians._rotation),
+                   torch.ones_like(gaussians._opacity),
+                   torch.ones_like(gaussians._exposure),
                    param_mask=param_mask,
                    splat_mask=splat_mask)
 
@@ -281,11 +295,10 @@ class GaussianModelState:
                 self.rotation_grad.numel() + self.opacity_grad.numel() +
                 self.exposure_grad.numel())
 
-    def load_1d_tensor(self, T):
+    def load_1d_tensor(self, T, with_features_rest=True, with_exposure=True):
         """
         Creates a GaussianModelState from a flattened tensor
         """
-        assert T.shape[0] == self.length, "Input tensor must match the length of the model state"
         N1 = self.xyz_grad.numel()
         N2 = self.features_dc_grad.numel()
         N3 = self.features_rest_grad.numel()
@@ -294,36 +307,74 @@ class GaussianModelState:
         N6 = self.opacity_grad.numel()
         N7 = self.exposure_grad.numel()
 
+        check_len = self.length
+        if not with_features_rest:
+            check_len -= N3
+        if not with_exposure:
+            check_len -= N7
+        
+        assert T.shape[0] == check_len, f"Input tensor must match the length of the model state ({check_len}), got {T.shape[0]}"
+
         offset = 0
         xyz_grad = T[offset:offset + N1].view(self.xyz_grad.shape)
         offset += N1
         features_dc_grad = T[offset:offset + N2].view(self.features_dc_grad.shape)
         offset += N2
-        features_rest_grad = T[offset:offset + N3].view(self.features_rest_grad.shape)
-        offset += N3
+        if with_features_rest:
+            features_rest_grad = T[offset:offset + N3].view(self.features_rest_grad.shape)
+            offset += N3
+        else:
+            features_rest_grad = torch.zeros_like(self.features_rest_grad)
         scaling_grad = T[offset:offset + N4].view(self.scaling_grad.shape)
         offset += N4
         rotation_grad = T[offset:offset + N5].view(self.rotation_grad.shape)
         offset += N5
         opacity_grad = T[offset:offset + N6].view(self.opacity_grad.shape)
         offset += N6
-        exposure_grad = T[offset:offset + N7].view(self.exposure_grad.shape)
+        if with_exposure:
+            exposure_grad = T[offset:offset + N7].view(self.exposure_grad.shape)
+        else:
+            exposure_grad = torch.zeros_like(self.exposure_grad)
 
         self.__init__(xyz_grad, features_dc_grad, features_rest_grad,
                       scaling_grad, rotation_grad,
                       opacity_grad, exposure_grad)
 
-    def as_1d_tensor(self):
+    def as_1d_tensor(self, with_features_rest=True, with_exposure=True):
         """
         Returns the model state as a flattened vector
         """
-        return torch.cat((self.xyz_grad.flatten(),
-                          self.features_dc_grad.flatten(),
-                          self.features_rest_grad.flatten(),
-                          self.scaling_grad.flatten(),
-                          self.rotation_grad.flatten(),
-                          self.opacity_grad.flatten(),
-                          self.exposure_grad.flatten()), dim=0)
+        l = []
+        l.append(self.xyz_grad.flatten())
+        l.append(self.features_dc_grad.flatten())
+        if with_features_rest:
+            l.append(self.features_rest_grad.flatten())
+        l.append(self.scaling_grad.flatten())
+        l.append(self.rotation_grad.flatten())
+        l.append(self.opacity_grad.flatten())
+        if with_exposure:
+            l.append(self.exposure_grad.flatten())      
+
+        return torch.cat(l, dim=0)
+
+    def get_param_group_offsets(self, with_features_rest=True, with_exposure=True):
+        offsets = [0]
+        N1 = self.xyz_grad.numel()
+        N2 = self.features_dc_grad.numel()
+        N3 = self.features_rest_grad.numel() if with_features_rest else 0
+        N4 = self.scaling_grad.numel()
+        N5 = self.rotation_grad.numel()
+        N6 = self.opacity_grad.numel()
+        N7 = self.exposure_grad.numel() if with_exposure else 0
+        offsets.append(N1)
+        offsets.append(N2 + offsets[-1])
+        offsets.append(N3 + offsets[-1])
+        offsets.append(N4 + offsets[-1])
+        offsets.append(N5 + offsets[-1])
+        offsets.append(N6 + offsets[-1])
+        offsets.append(N7 + offsets[-1])
+        return offsets
+
 
     def index_to_desc(self, index):
         N1 = self.xyz_grad.numel()

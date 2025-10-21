@@ -84,6 +84,20 @@ class LinearSolverFunctions:
 
         return loss_scalar, Ll1_scalar, Ll1depth_scalar
 
+    def evaluate_loss_image(self, viewpoint_cams, scale):
+        """
+        Evaluate the loss functions on the current Gaussian model returning a loss for each pixel.
+        scale: A scaling factor to apply to the loss to get an unbiased estimate of the full loss.
+        This should be set to the inverse probability of sampling the cameras in viewpoint_cams, generally scale = total_num_cameras / num_sampled_cameras
+        """
+        B = len(viewpoint_cams)
+
+        with torch.no_grad():
+            loss = self.loss_func(gaussians=self.gaussians, viewpoint_cams=viewpoint_cams)
+            loss = loss * scale
+
+        return loss
+
     @property
     def get_batch_stats(self):
         """
@@ -91,12 +105,12 @@ class LinearSolverFunctions:
         """
         return self.batch_stats
 
-    def jvp(self, v, viewpoint_cams):
+    def jvp(self, v, viewpoint_cams, use_rescale=False):
         """
         Damping and scaling are not done in JVP
         """
 
-        if self.rescale is not None:
+        if self.rescale is not None and use_rescale:
             v = v * self.rescale
 
         assert isinstance(v, GaussianModelState), "v must be an instance of GaussianModelState"
@@ -118,7 +132,7 @@ class LinearSolverFunctions:
 
             return loss_tangents
 
-    def vjp(self, vs, viewpoint_cams, scale):
+    def vjp(self, vs, viewpoint_cams, scale, use_rescale=False):
         """
         Damping and scaling are not done in VJP
         """
@@ -156,7 +170,7 @@ class LinearSolverFunctions:
         assert not torch.isnan(self.gaussians._opacity.grad).any(), "NaN detected in gaussians._opacity.grad"
 
         res = GaussianModelState.from_gaussians_grad(self.gaussians, param_mask=self.param_mask, splat_mask=self.splat_mask)
-        if self.rescale is not None:
+        if self.rescale is not None and use_rescale:
             res = res * self.rescale
         return res
 
