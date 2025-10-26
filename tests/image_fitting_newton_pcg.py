@@ -140,14 +140,14 @@ def build_camera(image_path):
 
 def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, all_columns, sum_column):
     scale_const = 1e3
-    xyz_scale = 1e-2
-    features_dc_scale = 1e-2
-    featuress_rest_scale = 1e-4
-    scaling_scale = 1e-2
-    rotation_scale = 1e-3
-    opacity_scale = 1e-2
-    exposure_scale = 1.0
-    damp = 1e-5
+    xyz_scale = 1e-2 * scale_const
+    features_dc_scale = 1e-2 * scale_const
+    featuress_rest_scale = 1e-4 * scale_const
+    scaling_scale = 1e-2 * scale_const
+    rotation_scale = 1e-3 * scale_const
+    opacity_scale = 1e-2 * scale_const
+    exposure_scale = 1.0 * scale_const
+    damp = 1e-5 * scale_const
     # xyz_scale = 0.0025
     # features_dc_scale = 0.0025
     # featuress_rest_scale = 0.000025
