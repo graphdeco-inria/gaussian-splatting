@@ -139,19 +139,12 @@ def build_camera(image_path):
     return camera
 
 def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, all_columns, sum_column):
-    # rescale = GaussianModelScaleMatrix(xyz_scale=1e-5, 
-    #                                   features_dc_scale=0.0025, 
-    #                                   features_rest_scale=0.0001, 
-    #                                   scaling_scale=0.005, 
-    #                                   rotation_scale=1e-5, 
-    #                                   opacity_scale=1e-3, 
-    #                                   exposure_scale=1.0)
-    rescale = GaussianModelScaleMatrix(xyz_scale=1e-5, 
-                                      features_dc_scale=1.0, 
+    rescale = GaussianModelScaleMatrix(xyz_scale=0.0001, 
+                                      features_dc_scale=0.0025, 
                                       features_rest_scale=0.0001, 
-                                      scaling_scale=1.0, 
-                                      rotation_scale=1e-5, 
-                                      opacity_scale=1e-3, 
+                                      scaling_scale=0.005, 
+                                      rotation_scale=0.001, 
+                                      opacity_scale=0.025, 
                                       exposure_scale=1.0)
     
     cameras = [build_camera(image_path)]
@@ -238,185 +231,85 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         v_vec = v.as_1d_tensor()
         m, n = v_vec.shape[0], u_vec.shape[0]
 
-        J = torch.load(f"saved_output/sgd_picasso1/J_iter{iteration:05d}.pt")
-        J_ref = torch.load(f"saved_output/sgd_picasso1/J_ref_iter{iteration:05d}.pt")
-
-        damp = 1e-5
-
-        offsets = u.get_param_group_offsets(with_features_rest=False, with_exposure=False)
-        print("Offsets:", offsets)
-
-        ones_vec = GaussianModelState.ones_like_gaussians(gaussians)
-        S_vec = (rescale * ones_vec).as_1d_tensor(with_features_rest=False, with_exposure=False)
-        S_mat = torch.diag(S_vec)
-        J_ref = J_ref @ S_mat
-
-        JTJ_ref = J_ref.T @ J_ref + torch.eye(J_ref.shape[1], device=J_ref.device) * damp
-
-        s_gn_ref = -torch.linalg.solve(JTJ_ref + torch.eye(JTJ_ref.shape[0], device=JTJ_ref.device) * 1e-15, ref_g.as_1d_tensor(with_features_rest=False, with_exposure=False))
-
-        s_gn_ref = s_gn_ref @ S_mat
-
         # max_indices = {347: 17145, 555: 11708, 687: 6209, 1160: 5782, 1197: 9095, 1197: 9095, 1365: 18183}
         # max_indices = {0: -1, 1: -1, 403: -1, 324: -1, 617: -1}
         # max_indices = {617: -1}
         # max_indices = {1379: -1}
-        # max_indices = {969: -1}
+        max_indices = {56: -1}
 
         cols_list = range(u_vec.shape[0]) if all_columns else list(max_indices.keys())
 
-        # for i in cols_list:
-        #     print("JVP column:", i, "/", u_vec.shape[0])
-        #     u_vec *= 0.0
-        #     u_vec[i] = 1.0
-        #     u.load_1d_tensor(u_vec, with_features_rest=False, with_exposure=False)
-        #     Ji = cur_state_gn.jvp(u, viewpoint_cams).as_1d_tensor()
-        #     loss_vec0 = loss_func(gaussians=gaussians, viewpoint_cams=viewpoint_cams).as_1d_tensor()
+        s_adam = -ref_g / (ref_g.abs() + 1e-15) * rescale
+        s_adam_vec = s_adam.as_1d_tensor(with_features_rest=False, with_exposure=False)
 
-        #     deltas = {}
-        #     predicted_deltas = {}
+        for i in cols_list:
+            print("JVP column:", i, "/", u_vec.shape[0])
+            u_vec *= 0.0
+            u_vec[i] = 1.0
+            u.load_1d_tensor(u_vec, with_features_rest=False, with_exposure=False)
+            Ji = cur_state_gn.jvp(u, viewpoint_cams).as_1d_tensor()
+            loss_vec0 = loss_func(gaussians=gaussians, viewpoint_cams=viewpoint_cams).as_1d_tensor()
 
-        #     with torch.no_grad():
-        #         if all_columns:
-        #             step_range = range(-10, 10, 1)
-        #             step_size = 1e-2
-        #         else:
-        #             step_range = range(-1000, 1000, 1)
-        #             step_size = 1e-4
+            deltas = {}
+            predicted_deltas = {}
 
-        #         for step in step_range:
-        #             alpha = step * step_size
-        #             gaussians_copy = deepcopy(gaussians)
-        #             gaussians_copy.update_step(alpha * u)
-        #             loss_vec = loss_func(gaussians=gaussians_copy, viewpoint_cams=viewpoint_cams).as_1d_tensor()
+            with torch.no_grad():
+                if all_columns:
+                    step_range = range(-10, 10, 1)
+                    step_size = 1e-2
+                else:
+                    # step_range = range(-1000, 1000, 1)
+                    # step_size = 1e-4
+                    step_range = range(-10, 10, 1)
+                    step_size = 1e-2
 
-        #             delta = loss_vec - loss_vec0
-        #             predicted_delta = alpha * Ji
+                for step in step_range:
+                    alpha = step * step_size
+                    gaussians_copy = deepcopy(gaussians)
+                    gaussians_copy.update_step(alpha * u)
+                    loss_vec = loss_func(gaussians=gaussians_copy, viewpoint_cams=viewpoint_cams).as_1d_tensor()
+                    print(f"alpha = {alpha:4f}, loss = {loss_vec.norm() ** 2:4e}")
 
-        #             error_vec = delta - predicted_delta
+                    delta = loss_vec - loss_vec0
+                    predicted_delta = alpha * Ji
 
-        #             deltas[alpha] = delta
-        #             predicted_deltas[alpha] = predicted_delta
+                    error_vec = delta - predicted_delta
 
-        #             max_idx = error_vec.abs().argmax().item()
+                    deltas[alpha] = delta
+                    predicted_deltas[alpha] = predicted_delta
 
-        #         if not sum_column:
-        #             max_idx = max_indices.get(i, max_idx)
+                    max_idx = error_vec.abs().argmax().item()
 
-        #             alphas = list(deltas.keys())
-        #             max_delta = [deltas[alpha][max_idx].item() for alpha in alphas]
-        #             max_predicted_delta = [predicted_deltas[alpha][max_idx].item() for alpha in alphas]
-        #         else:
-        #             alphas = list(deltas.keys())
-        #             max_delta = [deltas[alpha].sum().item() for alpha in alphas]
-        #             max_predicted_delta = [predicted_deltas[alpha].sum().item() for alpha in alphas]
+                if not sum_column:
+                    max_idx = max_indices.get(i, max_idx)
 
-        #         if g_vec[i] != 0.0:
-        #             plt.figure()
-        #             plt.plot(alphas, max_delta, label="Actual delta", alpha=0.5)
-        #             plt.plot(alphas, max_predicted_delta, label="Predicted delta", alpha=0.5)
-        #             plt.xlabel("Alpha")
-        #             plt.ylabel("Delta")
-        #             plt.title(f"JVP Column {i} sum check")
-        #             plt.ylim(-0.1, 0.1)
+                    alphas = list(deltas.keys())
+                    max_delta = [deltas[alpha][max_idx].item() for alpha in alphas]
+                    max_predicted_delta = [predicted_deltas[alpha][max_idx].item() for alpha in alphas]
+                else:
+                    alphas = list(deltas.keys())
+                    max_delta = [deltas[alpha].sum().item() for alpha in alphas]
+                    max_predicted_delta = [predicted_deltas[alpha].sum().item() for alpha in alphas]
 
-        #             plt.axvline(x=s_gn_ref[i].item(), color='r', linestyle='--', label='GN step')
+                if g_vec[i] != 0.0:
+                    plt.figure()
+                    plt.plot(alphas, max_delta, label="Actual delta", alpha=0.5)
+                    plt.plot(alphas, max_predicted_delta, label="Predicted delta", alpha=0.5)
+                    plt.xlabel("Alpha")
+                    plt.ylabel("Delta")
+                    plt.title(f"JVP Column {i} sum check")
+                    plt.ylim(-0.1, 0.1)
 
-        #             plt.legend()
+                    plt.axvline(x=s_adam_vec[i].item(), color='r', linestyle='--', label='Adam step')
 
-        #             dirname = f"figures/gn_column_sum_damp-{damp}_rescale/"
-        #             os.makedirs(f"{dirname}", exist_ok=True)
+                    plt.legend()
 
-        #             plt.savefig(f"{dirname}/gn_column_sum_col{i:04d}.png")
-        #         plt.close('all')
+                    plt.savefig(f"figures/jvp_column_sum/jvp_column_sum_col{i:04d}.png")
+                plt.close('all')
 
                     # safe_interact(local=locals(), banner="Saved JVP column check figure")
 
-        v = GaussianModelState.zero_like_gaussians(gaussians)
-        v.load_1d_tensor(s_gn_ref, with_features_rest=False, with_exposure=False)
-        v_stepsize = math.sqrt(v.dot(v))
-        v = v / v_stepsize
-        v_adam = -ref_g / (ref_g.abs() + 1e-15)
-        v_stepsize_adam = math.sqrt(v_adam.dot(v_adam))
-        v_adam = v_adam / v_stepsize_adam
-
-        loss_func = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
-        cur_state = LinearSolverFunctions(loss_func, gaussians, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
-        loss_scalar, g, Hv = cur_state.Hv_all(v, viewpoint_cams, scale=1, use_rescale=False)
-
-        JtJv = cur_state_gn.Hv(v, viewpoint_cams, scale=1, use_rescale=False)
-        vJtJv = v.dot(JtJv)
-
-        alpha = 0.0
-        cur_alpha = 0.0
-
-        losses_first_order = []
-        losses_gn = []
-        losses_second_order = []
-        losses_alpha = []
-        losses_adam = []
-        alphas = []
-
-        loss_0 = loss_scalar
-
-        ref_gv = ref_g.dot(v)
-        gv = g.dot(v)
-        vHv = v.dot(Hv)
-
-        import code; code.interact(local=locals(), banner="after loss compute")
-
-        with torch.no_grad():
-            for i in range(-50, 300, 1):
-                # step_size = 0.01
-                step_size = 1e-2
-                alpha = i * step_size
-                gaussians_copy = deepcopy(gaussians)
-                gaussians_copy.update_step(alpha * v)
-
-                loss_alpha = 0.0
-                for vc in viewpoint_cams:
-                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
-
-                losses_alpha.append(loss_alpha.item())
-                alphas.append(alpha)
-
-                losses_first_order.append(loss_0 + alpha * ref_gv)
-                losses_gn.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vJtJv)
-                losses_second_order.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vHv)
-
-                gaussians_copy = deepcopy(gaussians)
-                gaussians_copy.update_step(alpha * v_adam)
-
-                loss_adam = 0.0
-                for vc in viewpoint_cams:
-                    loss_adam += scalar_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)[0]
-                losses_adam.append(loss_adam.item())
-
-                print("alpha:", alpha, "loss_alpha:", loss_alpha.item(), "loss_adam:", loss_adam.item(), "gn approx:", losses_gn[-1], "2nd order approx:", losses_second_order[-1])
-
-
-        plt.plot(alphas, losses_alpha, label="Actual loss", alpha=0.5)
-        plt.plot(alphas, losses_first_order, label="First order approx", alpha=0.5)
-        plt.plot(alphas, losses_gn, label="Gauss-Newton approx", alpha=0.5)
-        plt.plot(alphas, losses_second_order, label="Second order approx", alpha=0.5)
-        plt.plot(alphas, losses_adam, label="Adam step", alpha=0.5)
-
-        # Plot vertical line at x = 0 and x = v_stepsize
-        plt.axvline(x=0, color='k', linestyle='--', label='No update')
-        # plt.axvline(x=v_stepsize, color='r', linestyle='--', label='Taken step')
-        # plt.axvline(x=v_stepsize_adam, color='g', linestyle='--', label='Adam step')
-
-        plt.xlabel("Step size")
-        plt.ylabel("Loss")
-
-        plt.legend()
-
-        print("before savefig")
-        plt.savefig("loss_vs_alpha.png")
-        print("after savefig")
-
-        safe_interact(local=locals(), banner="after loss vs step size")
-
+        exit()
 
 
 

@@ -33,8 +33,15 @@ from PIL import Image
 from functools import partial
 from solver.gaussian_model_state import GaussianModelState, GaussianModelScaleMatrix, GaussianModelParamGroupMask, GaussianModelSplatMask
 from solver.training_loss import scalar_training_loss
+from solver.batch_training_loss import batch_training_loss
+from solver.training_loss_hessian import scalar_training_loss_hessian
+from solver.reference_training_loss import reference_training_loss
+from solver.gaussian_model_state import GaussianModelState
+from solver.loss_image_state import MultiBatchLossImageState
 from solver.solver_functions import LinearSolverFunctions
-from solver.conjugate_gradient import cgls_damped
+from solver.conjugate_gradient import cg_damped, cgls_damped
+from solver.preconditioner import AdaHessianPreconditioner
+from solver.solver_utils import CamProvider
 
 from copy import deepcopy
 
@@ -131,7 +138,30 @@ def build_camera(image_path):
                     data_device="cuda",)
     return camera
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points):
+def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, all_columns, sum_column):
+    # xyz_scale = 1e-3
+    # features_dc_scale = 1e-2
+    # featuress_rest_scale = 1e-4
+    # scaling_scale = 1e-2
+    # rotation_scale = 1e-3
+    # opacity_scale = 1e-2
+    # exposure_scale = 1.0
+    xyz_scale = 1e-2
+    features_dc_scale = 1e-3
+    featuress_rest_scale = 1e-10
+    scaling_scale = 1e-3
+    rotation_scale = 1e-4
+    opacity_scale = 1e-2
+    exposure_scale = 1.0
+    rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale, 
+                                      features_dc_scale=features_dc_scale, 
+                                      features_rest_scale=featuress_rest_scale, 
+                                      scaling_scale=scaling_scale, 
+                                      rotation_scale=rotation_scale, 
+                                      opacity_scale=opacity_scale, 
+                                      exposure_scale=1.0)
+    damp = 1e-4
+
     
     cameras = [build_camera(image_path)]
 
@@ -140,7 +170,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     train_test_exp = False
     white_background = False
     cameras_extent = 7.5
-    model_path = "saved_output/sgd_picasso1"
+    model_path = ""
     ####### Some fixed parameters #########
 
     first_iter = 0
@@ -188,12 +218,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         gaussians.update_learning_rate(iteration)
 
-        # Every 1000 its we increase the levels of SH up to a maximum degree
-        if iteration % 1000 == 0:
-            gaussians.oneupSHdegree()
-
-        # Pick the only Camera
-        viewpoint_cam = cameras[0]
+        viewpoint_cams = cameras
 
         # Render
         if (iteration - 1) == debug_from:
@@ -201,104 +226,155 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
+        gaussians.zero_grad()
+        for vc in viewpoint_cams:
+            ref_loss_scalar_i = reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
+            ref_loss_scalar_i.backward()
+        ref_g = GaussianModelState.from_gaussians_grad(gaussians)
+
+        # Test vector loss prediction using J
+
+        render_pkg = render(viewpoint_cams[0], gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
-        if viewpoint_cam.alpha_mask is not None:
-            alpha_mask = viewpoint_cam.alpha_mask.cuda()
-            image *= alpha_mask
+        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
+        loss_func_hessian = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
+        cur_state_gn = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=None, rescale=rescale, damp=damp, loss_func_hessian=loss_func_hessian)
 
-        # Loss
-        gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
-        if FUSED_SSIM_AVAILABLE:
-            ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
-        else:
-            ssim_value = ssim(image, gt_image)
+        g_vec = ref_g.as_1d_tensor(with_features_rest=False, with_exposure=False)
+        u = GaussianModelState.zero_like_gaussians(gaussians)
+        u_vec = u.as_1d_tensor(with_features_rest=False, with_exposure=False)
+        v = cur_state_gn.jvp(u, viewpoint_cams)
+        v_vec = v.as_1d_tensor()
+        m, n = v_vec.shape[0], u_vec.shape[0]
 
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+        rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
+        preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
 
-        # Depth regularization
-        Ll1depth_pure = 0.0
-        if depth_l1_weight(iteration) > 0 and viewpoint_cam.depth_reliable:
-            invDepth = render_pkg["depth"]
-            mono_invdepth = viewpoint_cam.invdepthmap.cuda()
-            depth_mask = viewpoint_cam.depth_mask.cuda()
+        SHSx = partial(cur_state_gn.JTJv, viewpoint_cams=viewpoint_cams, scale=1, use_rescale=True, use_damping=True)
 
-            Ll1depth_pure = torch.abs((invDepth  - mono_invdepth) * depth_mask).mean()
-            Ll1depth = depth_l1_weight(iteration) * Ll1depth_pure 
-            loss += Ll1depth
-            Ll1depth = Ll1depth.item()
-        else:
-            Ll1depth = 0
+        warmup_sample_size = min(5, len(viewpoint_cams))
+        warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
+        preconditioner.reset()
+        preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=100)
 
-        loss.backward()
+        start_loss, Sg = cur_state_gn.g(viewpoint_cams, 1, use_rescale=True, return_loss=True)
+        start_loss, g = cur_state_gn.g(viewpoint_cams, 1, use_rescale=False, return_loss=True)
 
-        iter_end.record()
-        torch.cuda.synchronize()
+        x0 = cur_state_gn.get_initial_solution()
+
+        y = cg_damped(Ax=SHSx,
+                      dot=cur_state_gn.dot,
+                      saxpy=cur_state_gn.saxpy,
+                      b=-Sg,
+                      x0=x0,
+                      M=preconditioner,
+                      max_iter=10,
+                      # max_iter=1,
+                      restart_iter=3)
+
+        s_gn = rescale * y
+        s_adam = -g / (g.abs() + 1e-15) * rescale
+
+        v = s_gn
+        v_stepsize = math.sqrt(v.dot(v))
+        v = v / (v_stepsize + 1e-15)
+        v_adam = -ref_g / (ref_g.abs() + 1e-15)
+        v_stepsize_adam = math.sqrt(v_adam.dot(v_adam))
+        v_adam = v_adam / (v_stepsize_adam + 1e-15)
+
+        loss_scalar, g, Hv = cur_state_gn.Hv(v, viewpoint_cams, scale=1, use_rescale=False, return_grad_and_loss=True)
+
+        JtJv = cur_state_gn.JTJv(v, viewpoint_cams, scale=1, use_rescale=False)
+        vJtJv = v.dot(JtJv)
+
+        alpha = 0.0
+        cur_alpha = 0.0
+        best_alpha = 0.0
+        best_loss = loss_scalar
+
+        losses_first_order = []
+        losses_gn = []
+        losses_second_order = []
+        losses_alpha = []
+        losses_adam = []
+        alphas = []
+
+        loss_0 = loss_scalar
+
+        ref_gv = ref_g.dot(v)
+        gv = g.dot(v)
+        vHv = v.dot(Hv)
+
+        # import code; code.interact(local=locals(), banner="after loss compute")
 
         with torch.no_grad():
-            # Progress bar
-            ema_loss_for_log = 0.4 * loss + 0.6 * ema_loss_for_log
-            ema_Ll1depth_for_log = 0.4 * Ll1depth + 0.6 * ema_Ll1depth_for_log
+            for i in range(-50, 150, 1):
+                # step_size = 0.01
+                step_size = 1e-2
+                alpha = i * step_size
+                gaussians_copy = deepcopy(gaussians)
+                gaussians_copy.update_step(alpha * v)
 
-            if iteration % 10 == 0:
-                progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
-                progress_bar.update(10)
-            if iteration == opt.iterations:
-                progress_bar.close()
+                loss_alpha = 0.0
+                for vc in viewpoint_cams:
+                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
 
-            if iteration % 1000 == 0:
-                # Save image
-                img = (torch.clamp(image, min=0, max=1.0).cpu().numpy() * 255).astype(np.uint8)
-                Image.fromarray(img.transpose(1, 2, 0)).save(os.path.join(model_path, "output_{:05d}.png".format(iteration)))
-                Image.fromarray((torch.clamp(image, min=0, max=1.0).cpu().numpy() * 255).astype(np.uint8).transpose(1, 2, 0)).save("image_fitting.png")
-                import code; code.interact(local=locals(), banner="Debug prompt after rendering")
+                losses_alpha.append(loss_alpha.item())
+                alphas.append(alpha)
 
-            # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
+                if loss_alpha.item() < best_loss:
+                    best_loss = loss_alpha.item()
+                    best_alpha = alpha
 
-            # Densification
-            if iteration < opt.densify_until_iter:
-                # Keep track of max radii in image-space for pruning
-                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-                # Disabling positional gradient based densification
-                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
+                losses_first_order.append(loss_0 + alpha * ref_gv)
+                losses_gn.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vJtJv)
+                losses_second_order.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vHv)
 
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                gaussians_copy = deepcopy(gaussians)
+                gaussians_copy.update_step(alpha * v_adam)
 
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, cameras_extent, size_threshold, radii)
-                
-                if iteration % opt.opacity_reset_interval == 0 or (white_background and iteration == opt.densify_from_iter):
-                    gaussians.reset_opacity()
+                loss_adam = 0.0
+                for vc in viewpoint_cams:
+                    loss_adam += scalar_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)[0]
+                losses_adam.append(loss_adam.item())
 
-            # gaussians_old = deepcopy(gaussians)
-
-            # safe_interact(local=locals(), banner="Debug prompt before optimizer step")
+                print("alpha:", alpha, "loss_alpha:", loss_alpha.item(), "loss_adam:", loss_adam.item(), "gn approx:", losses_gn[-1], "2nd order approx:", losses_second_order[-1])
 
 
-            # Optimizer step
-            if iteration < opt.iterations:
-                gaussians.exposure_optimizer.step()
-                gaussians.exposure_optimizer.zero_grad(set_to_none = True)
-                if use_sparse_adam:
-                    visible = radii > 0
-                    gaussians.optimizer.step(visible, radii.shape[0])
-                    gaussians.optimizer.zero_grad(set_to_none = True)
-                else:
-                    gaussians.optimizer.step()
-                    gaussians.optimizer.zero_grad(set_to_none = True)
+        plt.figure(figsize=(10, 6))
+        plt.plot(alphas, losses_alpha, label="Actual loss", alpha=0.5)
+        plt.plot(alphas, losses_first_order, label="First order approx", alpha=0.5)
+        plt.plot(alphas, losses_gn, label="Gauss-Newton approx", alpha=0.5)
+        plt.plot(alphas, losses_second_order, label="Second order approx", alpha=0.5)
+        plt.plot(alphas, losses_adam, label="Adam step", alpha=0.5)
 
-            # s = GaussianModelState.from_gaussians(gaussians) - GaussianModelState.from_gaussians(gaussians_old)
+        # Plot vertical line at x = 0 and x = v_stepsize
+        plt.axvline(x=0, color='k', linestyle='--', label='No update')
+        # plt.axvline(x=v_stepsize, color='r', linestyle='--', label='Taken step')
+        # plt.axvline(x=v_stepsize_adam, color='g', linestyle='--', label='Adam step')
 
-            # safe_interact(local=locals(), banner="Debug prompt after training step")
-            # plot_loss_vs_step_size(iteration, l1_loss, cameras, gaussians, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
+        plt.xlabel("Step size")
+        plt.ylabel("Loss")
 
-            if (iteration in checkpoint_iterations):
-                print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                print("Model path: {}".format(model_path + "/chkpnt" + str(iteration) + ".pth"))
-                torch.save((gaussians.capture(), iteration), model_path + "/chkpnt" + str(iteration) + ".pth")
+        plt.legend()
+
+        print("before savefig")
+        plt.savefig("loss_vs_alpha.png")
+        print("after savefig")
+
+        training_report(None, iteration, None, None, l1_loss, None, [iteration], cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
+
+        gaussians.update_step(best_alpha * v)
+        # print("Updating with alpha = original step size")
+        # gaussians.update_step(s_gn)
+
+        training_report(None, iteration, None, None, l1_loss, None, [iteration], cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
+
+        # safe_interact(local=locals(), banner="after loss vs step size")
+
+
+
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
@@ -450,6 +526,8 @@ if __name__ == "__main__":
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--num_points", type=int, default=2_000)
     parser.add_argument("--image_path", type=str, default="")
+    parser.add_argument("--all_columns", action="store_true", default=False)
+    parser.add_argument("--sum_column", action="store_true", default=False)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
@@ -462,8 +540,7 @@ if __name__ == "__main__":
     if not args.disable_viewer:
         network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args),
-             op.extract(args), 
+    training(op.extract(args), 
              pp.extract(args), 
              args.test_iterations, 
              args.save_iterations, 
@@ -471,7 +548,9 @@ if __name__ == "__main__":
              args.start_checkpoint, 
              args.debug_from, 
              args.image_path, 
-             args.num_points)
+             args.num_points,
+             args.all_columns,
+             args.sum_column)
 
     # All done
     print("\nTraining complete.")

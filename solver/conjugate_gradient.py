@@ -50,6 +50,14 @@ def conjugate_gradient(
     return x
 
 def step_to_boundary(x, p, radius, dot):
+    x_vec = x.as_1d_tensor()
+    p_vec = p.as_1d_tensor()
+    diff_vec = radius * p_vec / (p_vec + 1e-15) - x_vec
+    tau_vec = diff_vec.abs() / (p_vec.abs() + 1e-15)
+    tau = tau_vec[tau_vec > 0].min().item()
+
+    return tau
+
     radius_sq = radius * radius
     p_dot_p = dot(p, p)
     x_dot_x = dot(x, x)
@@ -110,7 +118,7 @@ def cg_steihaug(
                 break
             alpha = gamma / delta
             x_next = saxpy(alpha, p, x)             # x = x + alpha * p
-            if dot(x_next, x_next) >= tr_radius * tr_radius:
+            if x_next.as_1d_tensor().abs().max() >= tr_radius:
                 tau = step_to_boundary(x, p, radius=tr_radius, dot=dot)
                 x = saxpy(tau, p, x)
                 break_flag = True
@@ -142,6 +150,7 @@ def cg_steihaug(
     r = saxpy(-1.0, Ax(x), b)         # r = b - A x
     res = dot(r, r)
     print(f"Final residual norm: {res:.2e}")
+    # safe_interact(local=locals(), banner="Debugging CG steihaug...")
 
     return x
 
@@ -182,8 +191,8 @@ def cg_damped(
             q = Ax(p)                               # q = A p
             delta = dot(p, q)                       # delta = <q, p>
             if delta < 1e-15:
-                print("Early termination: delta is too small.")
-                import code; code.interact(local=locals(), banner="Debugging CG...")
+                print(f"Early termination: delta is too small: {delta:.2e}")
+                # safe_interact(local=locals(), banner="Debugging CG...")
                 break_flag = True
                 break
             alpha = gamma / delta
