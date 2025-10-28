@@ -139,20 +139,24 @@ def build_camera(image_path):
     return camera
 
 def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, all_columns, sum_column):
-    # xyz_scale = 1e-3
-    # features_dc_scale = 1e-2
-    # featuress_rest_scale = 1e-4
-    # scaling_scale = 1e-2
-    # rotation_scale = 1e-3
-    # opacity_scale = 1e-2
+    scale_const = 1e3
+    xyz_scale = 1e-2 * scale_const
+    features_dc_scale = 1e-2 * scale_const
+    featuress_rest_scale = 1e-4 * scale_const
+    scaling_scale = 1e-2 * scale_const
+    rotation_scale = 1e-3 * scale_const
+    opacity_scale = 1e-2 * scale_const
+    exposure_scale = 1.0 * scale_const
+    damp = 1e-5 * scale_const
+    # xyz_scale = 0.0025
+    # features_dc_scale = 0.0025
+    # featuress_rest_scale = 0.000025
+    # scaling_scale = 0.0025
+    # rotation_scale = 0.00025
+    # opacity_scale = 0.0025
     # exposure_scale = 1.0
-    xyz_scale = 1e-2
-    features_dc_scale = 1e-3
-    featuress_rest_scale = 1e-10
-    scaling_scale = 1e-3
-    rotation_scale = 1e-4
-    opacity_scale = 1e-2
-    exposure_scale = 1.0
+    # damp = 2.5e-6
+
     rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale, 
                                       features_dc_scale=features_dc_scale, 
                                       features_rest_scale=featuress_rest_scale, 
@@ -160,7 +164,6 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                                       rotation_scale=rotation_scale, 
                                       opacity_scale=opacity_scale, 
                                       exposure_scale=1.0)
-    damp = 1e-4
 
     
     cameras = [build_camera(image_path)]

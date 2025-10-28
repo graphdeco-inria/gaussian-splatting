@@ -36,7 +36,8 @@ def compute_batch_loss_block(images, alpha_masks, gt_images, per_image_alphas, p
 def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, train_test_exp,
                         depth_l1_weight, batch_stats=None,
                         SPARSE_ADAM_AVAILABLE=False, FUSED_SSIM_AVAILABLE=False, 
-                        disable_ssim=False,
+                        disable_ssim=False, 
+                        pixel_mask=None
                         ):
 
     B = len(viewpoint_cams)
@@ -60,6 +61,10 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
     for i, vc in enumerate(viewpoint_cams):
         H, W = vc.image_height, vc.image_width
         gt_images[i, :, :H, :W] = vc.original_image.cuda()
+
+        # Apply pixel sampling. Set unselected pixels to gt_image to avoid affecting loss
+        if pixel_mask is not None:
+            images[i,:,pixel_mask] = gt_images[i,:,pixel_mask]
 
     alpha_masks = None
     if any([vc.alpha_mask is not None for vc in viewpoint_cams]):

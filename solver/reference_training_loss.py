@@ -9,6 +9,7 @@ from utils.loss_utils import l1_loss, ssim
 def reference_training_loss(iteration, opt, viewpoint_cam, gaussians, pipe, bg, train_test_exp,
                          depth_l1_weight, batch_stats=None,
                          SPARSE_ADAM_AVAILABLE=False, FUSED_SSIM_AVAILABLE=False, 
+                         pixel_mask=None
                          ):
 
     render_pkg = reference_render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
@@ -25,6 +26,11 @@ def reference_training_loss(iteration, opt, viewpoint_cam, gaussians, pipe, bg, 
 
     # Loss
     gt_image = viewpoint_cam.original_image.cuda()
+
+    # Apply pixel sampling. Set unselected pixels to gt_image to avoid affecting loss
+    if pixel_mask is not None:
+        image[:,pixel_mask] = gt_image[:,pixel_mask]
+
     Ll1 = l1_loss(image, gt_image)
     if FUSED_SSIM_AVAILABLE:
         ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))

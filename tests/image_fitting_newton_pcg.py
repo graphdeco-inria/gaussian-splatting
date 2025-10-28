@@ -139,23 +139,25 @@ def build_camera(image_path):
     return camera
 
 def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, all_columns, sum_column):
+    # scale_const = 1e3
+    # xyz_scale = 1e-3 * scale_const
+    # features_dc_scale = 1e-3 * scale_const
+    # featuress_rest_scale = 1e-5 * scale_const
+    # scaling_scale = 1e-3 * scale_const
+    # rotation_scale = 1e-3 * scale_const
+    # opacity_scale = 1e-3 * scale_const
+    # exposure_scale = 1.0 * scale_const
+    # damp = 1e-6 * scale_const
     scale_const = 1e3
-    xyz_scale = 1e-2 * scale_const
-    features_dc_scale = 1e-2 * scale_const
-    featuress_rest_scale = 1e-4 * scale_const
-    scaling_scale = 1e-2 * scale_const
+    xyz_scale = 1e-3 * scale_const
+    features_dc_scale = 1e-3 * scale_const
+    featuress_rest_scale = 1e-5 * scale_const
+    scaling_scale = 1e-3 * scale_const
     rotation_scale = 1e-3 * scale_const
-    opacity_scale = 1e-2 * scale_const
+    opacity_scale = 1e-3 * scale_const
     exposure_scale = 1.0 * scale_const
-    damp = 1e-5 * scale_const
-    # xyz_scale = 0.0025
-    # features_dc_scale = 0.0025
-    # featuress_rest_scale = 0.000025
-    # scaling_scale = 0.0025
-    # rotation_scale = 0.00025
-    # opacity_scale = 0.0025
-    # exposure_scale = 1.0
-    # damp = 2.5e-6
+    damp = 1e-6 * scale_const
+    pixel_sample_rate = 0.2
 
     rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale, 
                                       features_dc_scale=features_dc_scale, 
@@ -237,16 +239,20 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
         # Test vector loss prediction using J
 
+        # Generate pixel mask, which is a boolean mask of shape (H*W,) with True for masking out pixels
+        H, W = viewpoint_cams[0].image_height, viewpoint_cams[0].image_width
+        pixel_mask = torch.rand((H, W), device="cuda") > pixel_sample_rate
+
         render_pkg = render(viewpoint_cams[0], gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
-        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
-        loss_func_hessian = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
+        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False, pixel_mask=pixel_mask)
+        loss_func_hessian = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=pixel_mask)
         cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=None, rescale=rescale, damp=damp, loss_func_hessian=loss_func_hessian)
 
-        g_vec = ref_g.as_1d_tensor(with_features_rest=False, with_exposure=False)
+        ref_g_vec = ref_g.as_1d_tensor(with_features_rest=False, with_exposure=False)
         u = GaussianModelState.zero_like_gaussians(gaussians)
-        n = g_vec.shape[0]
+        n = ref_g_vec.shape[0]
 
         rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
         preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
@@ -299,7 +305,6 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         losses_adam = []
         alphas = []
 
-        loss_0 = loss_scalar
 
         ref_gv = ref_g.dot(v)
         gv = g.dot(v)
@@ -308,18 +313,24 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         # import code; code.interact(local=locals(), banner="after loss compute")
 
         with torch.no_grad():
+            loss_0 = 0.0
+            for vc in viewpoint_cams:
+                loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
+
             for i in range(-20, 100, 1):
                 # step_size = 0.01
-                step_size = 1e-3
+                step_size = 5e-3
                 alpha = i * step_size
                 gaussians_copy = deepcopy(gaussians)
                 gaussians_copy.update_step(alpha * v)
 
                 loss_alpha = 0.0
+                loss_alpha_plot = 0.0
                 for vc in viewpoint_cams:
-                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
+                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=pixel_mask)
+                    loss_alpha_plot += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
 
-                losses_alpha.append(loss_alpha.item())
+                losses_alpha.append(loss_alpha_plot.item())
                 alphas.append(alpha)
 
                 if loss_alpha.item() < best_loss:
