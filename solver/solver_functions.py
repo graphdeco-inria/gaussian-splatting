@@ -65,8 +65,10 @@ class LinearSolverFunctions:
             for start_idx in range(0, B, batch_size):
                 end_idx = min(start_idx + batch_size, B)
                 viewpoint_cams_batch = [viewpoint_cams[i] for i in range(start_idx, end_idx)]
+                # time_start = time.time()
                 loss = self.loss_func(gaussians=self.gaussians, viewpoint_cams=viewpoint_cams_batch, batch_stats=batch_stats)
-                loss = loss * scale
+                # time_end = time.time()
+                # print(f"Loss evaluation for batch {start_idx} to {end_idx} took {time_end - time_start:.4f} seconds")
 
                 loss_scalar += loss.loss_scalar
                 Ll1_scalar += loss.Ll1_scalar
@@ -80,8 +82,10 @@ class LinearSolverFunctions:
                             self.batch_stats[key].append(value)
 
                 del loss
-                gc.collect()
-                torch.cuda.empty_cache()
+
+        loss_scalar *= scale
+        Ll1_scalar *= scale
+        Ll1depth_scalar *= scale
 
         return loss_scalar, Ll1_scalar, Ll1depth_scalar
 
@@ -123,15 +127,19 @@ class LinearSolverFunctions:
             with torch.no_grad(), fwAD.dual_level(), self.gaussians.make_dual(v):
                 end_idx = min(start_idx + batch_size, B)
                 viewpoint_cams_batch = [viewpoint_cams[i] for i in range(start_idx, end_idx)]
+                # time_start = time.time()
                 loss_dual = self.loss_func(gaussians=self.gaussians, viewpoint_cams=viewpoint_cams_batch)
+                # time_end = time.time()
+                # print(f"JVP loss evaluation for batch {start_idx} to {end_idx} took {time_end - time_start:.4f} seconds")
+
                 loss_primal, loss_tangent = loss_dual.unpack_dual()
                 loss_tangents.append(loss_tangent)
 
                 del loss_primal, loss_dual
 
-            loss_tangents = MultiBatchLossImageState(loss_tangents)
+        loss_tangents = MultiBatchLossImageState(loss_tangents)
 
-            return loss_tangents
+        return loss_tangents
 
     def vjp(self, vs, viewpoint_cams, scale, use_rescale=False):
         """

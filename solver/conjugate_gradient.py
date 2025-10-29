@@ -182,7 +182,7 @@ def cg_damped(
         z = M(r) if M is not None else r  # z = M r
         p = z
 
-        print(f"[Iter {iter_total}] res: {res:.2e}")
+        print(f"[Iter {iter_total}] res: {res:.2e}") if verbose else None
         
         # import code; code.interact(local=locals(), banner="Debugging CG...")
 
@@ -208,7 +208,7 @@ def cg_damped(
 
             # if verbose:
             x_norm = math.sqrt(dot(x, x))
-            print(f"[Iter {iter_total+1}] res: {res:.2e}, |x|: {x_norm:.2e}")
+            print(f"[Iter {iter_total+1}] res: {res:.2e}, |x|: {x_norm:.2e}") if verbose else None
             # import code; code.interact(local=locals(), banner="Debugging CG...")
 
             iter_total += 1

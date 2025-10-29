@@ -148,7 +148,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     # opacity_scale = 1e-3 * scale_const
     # exposure_scale = 1.0 * scale_const
     # damp = 1e-6 * scale_const
-    scale_const = 1e3
+    scale_const = 1e0
     xyz_scale = 1e-3 * scale_const
     features_dc_scale = 1e-3 * scale_const
     featuress_rest_scale = 1e-5 * scale_const
@@ -156,8 +156,6 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     rotation_scale = 1e-3 * scale_const
     opacity_scale = 1e-3 * scale_const
     exposure_scale = 1.0 * scale_const
-    damp = 1e-6 * scale_const
-    pixel_sample_rate = 0.2
 
     rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale, 
                                       features_dc_scale=features_dc_scale, 
@@ -176,7 +174,20 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     white_background = False
     cameras_extent = 7.5
     model_path = ""
-    ####### Some fixed parameters #########
+    ####### Some tunable parameters #########
+    linesearch_alpha = 1.0
+    linesearch_alpha_max = 1.0
+    linesearch_alpha_min = 1e-4
+    linesearch_alpha_decrease = 0.8
+    linesearch_alpha_increase = 1.2
+    linesearch_alpha_c = 0.01
+
+    pixel_sample_rate_init = 1.0
+    pixel_sample_rate = pixel_sample_rate_init
+    pixel_sample_rate_decrease = 0.9
+    pixel_sample_rate_min = 0.6
+    damp = 1e-7 * (scale_const ** 2)        ## NOTE: damp needs to be relative to scale^2
+    ####### Some tunable parameters #########
 
     first_iter = 0
     sh_degree = 0
@@ -262,7 +273,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         warmup_sample_size = min(5, len(viewpoint_cams))
         warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
         preconditioner.reset()
-        preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=100)
+        preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=10)
 
         start_loss, Sg = cur_state.g(viewpoint_cams, 1, use_rescale=True, return_loss=True)
 
@@ -277,7 +288,8 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                       # M=None,
                       max_iter=10,
                       # max_iter=1,
-                      restart_iter=3)
+                      restart_iter=3,
+                      verbose=True)
 
         s_newton = rescale * y
 
@@ -310,13 +322,53 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         gv = g.dot(v)
         vHv = v.dot(Hv)
 
+        gs_newton = g.dot(s_newton)
+
         # import code; code.interact(local=locals(), banner="after loss compute")
 
         with torch.no_grad():
             loss_0 = 0.0
+            loss_0_plot = 0.0
             for vc in viewpoint_cams:
-                loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
+                loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=pixel_mask).item()
+                loss_0_plot += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
 
+            print("Starting linesearch from loss_0:", loss_0)
+
+            alpha = linesearch_alpha
+            while True:
+                gaussians_copy = deepcopy(gaussians)
+                gaussians_copy.update_step(alpha * s_newton)
+
+                loss_alpha = 0.0
+                loss_alpha_plot = 0.0
+                for vc in viewpoint_cams:
+                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=pixel_mask)
+                    loss_alpha_plot += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
+
+                # print("Linesearch alpha:", alpha, "loss_alpha:", loss_alpha.item())
+
+                losses_alpha.append(loss_alpha_plot.item())
+                alphas.append(alpha)
+
+                # Check Armijo condition
+                if loss_alpha.item() <= loss_0 + linesearch_alpha_c * alpha * gs_newton:
+                    pixel_sample_rate = pixel_sample_rate_init
+                    break
+
+                alpha *= linesearch_alpha_decrease
+
+                if alpha < linesearch_alpha_min:
+                    # print("Linesearch alpha below minimum. Forcing step at alpha =", alpha)
+                    alpha = 0.0
+                    pixel_sample_rate *= pixel_sample_rate_decrease
+                    pixel_sample_rate = max(pixel_sample_rate, pixel_sample_rate_min)
+                    break
+
+            print("Linesearch found alpha:", alpha, "loss_alpha:", loss_alpha.item())
+
+
+            """
             for i in range(-20, 100, 1):
                 # step_size = 0.01
                 step_size = 5e-3
@@ -350,8 +402,10 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                 losses_adam.append(loss_adam.item())
 
                 print("alpha:", alpha, "loss_alpha:", loss_alpha.item(), "loss_adam:", loss_adam.item(), "gn approx:", losses_gn[-1], "2nd order approx:", losses_second_order[-1])
+            """
 
 
+        """
         plt.figure(figsize=(10, 6))
         plt.plot(alphas, losses_alpha, label="Actual loss", alpha=0.5)
         plt.plot(alphas, losses_first_order, label="First order approx", alpha=0.5)
@@ -373,16 +427,23 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         plt.savefig("loss_vs_alpha.png")
         plt.close()
         print("after savefig")
+        """
 
         training_report(None, iteration, None, None, l1_loss, None, [iteration], cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
 
         print("Update with s_newton")
-        # gaussians.update_step(s_newton)
-        gaussians.update_step(best_alpha * v)
+        gaussians.update_step(alpha * s_newton)
+        # gaussians.update_step(best_alpha * v)
 
-        print("best alpha:", best_alpha, "best loss:", best_loss)
-        print("max param step size = ", (best_alpha * v).as_1d_tensor(with_exposure=False, with_features_rest=False).abs().max().item())
-        print("max param step idx = ", (best_alpha * v).as_1d_tensor(with_exposure=False, with_features_rest=False).abs().argmax().item())
+        # DEBUG
+        loss_alpha_plot = 0.0
+        for vc in viewpoint_cams:
+            loss_alpha_plot += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
+        print("Post-update loss (no pixel mask):", loss_alpha_plot.item())
+
+        # print("best alpha:", best_alpha, "best loss:", best_loss)
+        # print("max param step size = ", (best_alpha * v).as_1d_tensor(with_exposure=False, with_features_rest=False).abs().max().item())
+        # print("max param step idx = ", (best_alpha * v).as_1d_tensor(with_exposure=False, with_features_rest=False).abs().argmax().item())
 
         training_report(None, iteration, None, None, l1_loss, None, [iteration], cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
 

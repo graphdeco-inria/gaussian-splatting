@@ -26,6 +26,7 @@ import time
 from solver.batch_training_loss import batch_training_loss
 from solver.reference_training_loss import reference_training_loss
 from solver.training_loss import training_loss
+from solver.training_loss_hessian import scalar_training_loss_hessian
 from solver.gaussian_model_state import GaussianModelState
 from solver.loss_image_state import MultiBatchLossImageState
 from solver.solver_functions import LinearSolverFunctions
@@ -69,52 +70,62 @@ def training(dataset, opt, pipe, checkpoint, num_images):
         viewpoint_cams.append(viewpoint_cam)
 
     loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
+    loss_func_hessian = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight)
 
-    cur_state = LinearSolverFunctions(loss_func, gaussians, param_mask=None, damp=None, splat_mask=None)
+    cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=1, param_mask=None, damp=None, splat_mask=None, loss_func_hessian=loss_func_hessian)
 
     u = GaussianModelState.zero_like_gaussians(gaussians)
 
     NUM_ITERATIONS = 5
 
     # Warm up
-    for _ in range(NUM_ITERATIONS):
-        cur_state.evaluate_loss(viewpoint_cams, batch_size=num_images, with_batch_stats=False, with_grad=False)
+    for _ in range(5):
+        cur_state.evaluate_loss(viewpoint_cams, scale=1)
 
-    jvp_start = time.time()
-    for i in range(NUM_ITERATIONS):
-        print(f"Matvec iteration {i+1}/{NUM_ITERATIONS}")
-        Ju = cur_state.jvp(u, viewpoint_cams, batch_size=num_images)
-    jvp_end = time.time()
-
-    loss = cur_state.evaluate_loss(viewpoint_cams, batch_size=num_images, with_batch_stats=False, with_grad=True)
-    v = loss.zero_like()
-
-    vjp_start = time.time()
-    for i in range(NUM_ITERATIONS):
-        print(f"VecMat iteration {i+1}/{NUM_ITERATIONS}")
-        JTv = cur_state.vjp(v, viewpoint_cams, batch_size=num_images)
-    vjp_end = time.time()
-
-    Hv_start = time.time()
-    for i in range(NUM_ITERATIONS):
-        print(f"Hv iteration {i+1}/{NUM_ITERATIONS}")
-        cur_state.Hv(u, v, viewpoint_cams, batch_size=num_images)
-    Hv_end = time.time()
-
+    # Forward timing
     forward_start = time.time()
     for i in range(NUM_ITERATIONS):
         print(f"Forward iteration {i+1}/{NUM_ITERATIONS}")
-        cur_state.evaluate_loss(viewpoint_cams, batch_size=num_images, with_batch_stats=False, with_grad=False)
+        loss = cur_state.evaluate_loss(viewpoint_cams, scale=1)
     forward_end = time.time()
 
-    print(f"Matvec time: {(jvp_end - jvp_start) * 1000 / NUM_ITERATIONS:.6f} milliseconds per iteration")
-    print(f"VecMat time: {(vjp_end - vjp_start) * 1000 / NUM_ITERATIONS:.6f} milliseconds per iteration")
-    print(f"Hv time: {(Hv_end - Hv_start) * 1000 / NUM_ITERATIONS:.6f} milliseconds per iteration")
-    print(f"Forward time: {(forward_end - forward_start) * 1000 / NUM_ITERATIONS:.6f} milliseconds per iteration")
+    # Warm up
+    for _ in range(5):
+        Ju = cur_state.jvp(u, viewpoint_cams)
 
-    print("rand_indices:", rand_indices)
+    # JVP timing
+    jvp_start = time.time()
+    for i in range(NUM_ITERATIONS):
+        print(f"JVP iteration {i+1}/{NUM_ITERATIONS}")
+        Ju = cur_state.jvp(u, viewpoint_cams)
+    jvp_end = time.time()
 
+    # Warm up
+    for _ in range(5):
+        start_loss, g = cur_state.g(viewpoint_cams, 1, return_loss=True)
 
+    # Primal timing
+    primal_start = time.time()
+    for i in range(NUM_ITERATIONS):
+        print(f"Primal iteration {i+1}/{NUM_ITERATIONS}")
+        start_loss, g = cur_state.g(viewpoint_cams, 1, return_loss=True)
+    primal_end = time.time()
+
+    # Warm up
+    for _ in range(5):
+        loss_scalar, g, Hu = cur_state.Hv(u, viewpoint_cams, scale=1, return_grad_and_loss=True)
+
+    # Dual timing
+    dual_start = time.time()
+    for i in range(NUM_ITERATIONS):
+        print(f"Dual iteration {i+1}/{NUM_ITERATIONS}")
+        loss_scalar, g, Hu = cur_state.Hv(u, viewpoint_cams, scale=1, return_grad_and_loss=True)
+    dual_end = time.time()
+
+    print(f"Forward time ms: {(forward_end - forward_start) * 1000 / NUM_ITERATIONS:.2f} ms")
+    print(f"JVP time ms: {(jvp_end - jvp_start) * 1000 / NUM_ITERATIONS:.2f} ms")
+    print(f"Primal time ms: {(primal_end - primal_start) * 1000 / NUM_ITERATIONS:.2f} ms")
+    print(f"Dual time ms: {(dual_end - dual_start) * 1000 / NUM_ITERATIONS:.2f} ms")
 
 
 if __name__ == "__main__":
