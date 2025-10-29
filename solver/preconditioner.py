@@ -10,7 +10,7 @@ class Preconditioner:
         return vector  # No actual preconditioning applied
 
 class AdaHessianPreconditioner:
-    def __init__(self, z_gen_func, beta1=0.9, beta2=0.999, eps=1e-8, hessian_power=1.0):
+    def __init__(self, z_gen_func, beta1=0.9, beta2=0.999, eps=1e-16, hessian_power=1.0):
         self.iteration = 0
         self.z_gen_func = z_gen_func
         self.beta1 = beta1
@@ -46,5 +46,21 @@ class AdaHessianPreconditioner:
 
     def __call__(self, v):
         D_corrected = self.D_sq / (1 - self.beta2 ** self.iteration)
-        # return v / (D_corrected.sqrt() + self.eps)
-        return v / (D_corrected)
+        # import code; code.interact(local=locals(), banner="in preconditioner call")
+        return v / (D_corrected.sqrt() + self.eps)
+        # return v / (D_corrected + self.eps)
+
+class ConstantPreconditioner:
+    def __init__(self, constant, eps=1e-16):
+        self.constant = constant
+        self.eps = eps
+
+    def reset(self):
+        pass
+
+    def update(self, Hz_func, cam_provider, scale, num_iter):
+        pass
+
+    def __call__(self, v):
+        import code; code.interact(local=locals(), banner="in constant preconditioner call")
+        return v / (self.constant + self.eps)

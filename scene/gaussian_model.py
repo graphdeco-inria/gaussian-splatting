@@ -24,6 +24,7 @@ from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
 from solver.gaussian_model_state import GaussianModelState
 from contextlib import contextmanager
+from copy import deepcopy
 
 try:
     from diff_gaussian_rasterization import SparseGaussianAdam
@@ -137,6 +138,79 @@ class GaussianModel:
         self._rotation.data += s.rotation_grad
         self._opacity.data += s.opacity_grad
         self._exposure.data += s.exposure_grad
+
+    @property
+    def device(self):
+        return self._xyz.device
+    
+    @property
+    def dtype(self):
+        return self._xyz.dtype
+
+    def clone(self):
+        return deepcopy(self)
+
+    def get_param_lengths(self):
+            N1 = self._xyz.numel()
+            N2 = self._features_dc.numel()
+            N3 = self._features_rest.numel()
+            N4 = self._scaling.numel()
+            N5 = self._rotation.numel()
+            N6 = self._opacity.numel()
+            N7 = self._exposure.numel()
+            return N1, N2, N3, N4, N5, N6, N7
+
+    def numel(self):
+        N1, N2, N3, N4, N5, N6, N7 = self.get_param_lengths()
+        return N1 + N2 + N3 + N4 + N5 + N6 + N7
+
+    def __add__(self, other):
+        if isinstance(other, torch.Tensor):
+            N1, N2, N3, N4, N5, N6, N7 = self.get_param_lengths()
+            assert other.dim() == 1 and other.numel() == N1 + N2 + N3 + N4 + N5 + N6 + N7, "other must be a 1D tensor of the correct size"
+
+            result = self.clone()
+            offset = 0
+            result._xyz.data += other[offset:offset+N1].view_as(result._xyz)
+            offset += N1
+            result._features_dc.data += other[offset:offset+N2].view_as(result._features_dc)
+            offset += N2
+            result._features_rest.data += other[offset:offset+N3].view_as(result._features_rest)
+            offset += N3
+            result._scaling.data += other[offset:offset+N4].view_as(result._scaling)
+            offset += N4
+            result._rotation.data += other[offset:offset+N5].view_as(result._rotation)
+            offset += N5
+            result._opacity.data += other[offset:offset+N6].view_as(result._opacity)
+            offset += N6
+            result._exposure.data += other[offset:offset+N7].view_as(result._exposure)
+            return result
+        else:
+            raise NotImplementedError(f"Addition is not implemented for type {type(other)}")
+
+    def __sub__(self, other):
+        if isinstance(other, torch.Tensor):
+            N1, N2, N3, N4, N5, N6, N7 = self.get_param_lengths()
+            assert other.dim() == 1 and other.numel() == N1 + N2 + N3 + N4 + N5 + N6 + N7, "other must be a 1D tensor of the correct size"
+
+            result = self.clone()
+            offset = 0
+            result._xyz.data -= other[offset:offset+N1].view_as(result._xyz)
+            offset += N1
+            result._features_dc.data -= other[offset:offset+N2].view_as(result._features_dc)
+            offset += N2
+            result._features_rest.data -= other[offset:offset+N3].view_as(result._features_rest)
+            offset += N3
+            result._scaling.data -= other[offset:offset+N4].view_as(result._scaling)
+            offset += N4
+            result._rotation.data -= other[offset:offset+N5].view_as(result._rotation)
+            offset += N5
+            result._opacity.data -= other[offset:offset+N6].view_as(result._opacity)
+            offset += N6
+            result._exposure.data -= other[offset:offset+N7].view_as(result._exposure)
+            return result
+        else:
+            raise NotImplementedError(f"Negation is not implemented for type {type(other)}")
 
     def create_zero_tangent(self):
         print("Creating a zero tangent Gaussian model")

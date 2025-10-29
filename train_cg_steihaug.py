@@ -35,7 +35,7 @@ from solver.training_loss import scalar_training_loss
 from solver.batch_training_loss import batch_training_loss
 from solver.training_loss_hessian import scalar_training_loss_hessian
 from solver.solver_functions import LinearSolverFunctions
-from solver.conjugate_gradient import cg_damped, cgls_damped
+from solver.conjugate_gradient import cg_damped, cg_steihaug
 from solver.preconditioner import AdaHessianPreconditioner
 from solver.solver_utils import CamProvider
 from utils.ply_utils import write_gaussians_to_ply
@@ -116,15 +116,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                       rotation_scale=0.001, 
                                       opacity_scale=0.025, 
                                       exposure_scale=1.0)
+    damp = 1e-6
 
     loss_func = partial(batch_training_loss, iteration=jvp_start, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
-    solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=5, rescale=rescale)
+    solver_functions = LinearSolverFunctions(loss_func, gaussians, batch_size=1, rescale=rescale, damp=damp)
     rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
     preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-8, hessian_power=1.0)
     pcg_max_iter = 30
 
     loss_func_hessian = partial(scalar_training_loss_hessian, iteration=jvp_start, opt=opt, pipe=pipe, bg=background, train_test_exp=dataset.train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
-    solver_functions_hessian = LinearSolverFunctions(loss_func_hessian, gaussians, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
+    solver_functions_hessian = LinearSolverFunctions(loss_func_hessian, gaussians, param_mask=None, damp=damp, splat_mask=None, rescale=rescale)
 
     for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
@@ -142,11 +143,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             except Exception as e:
                 network_gui.conn = None
 
-        use_first_order = iteration < jvp_start # or iteration % 5 != 1
+        # use_first_order = iteration < jvp_start # or iteration % 5 != 1
+        use_first_order = iteration < jvp_start or iteration % 3 != 1
 
         iter_start.record()
         if use_first_order:
-            print(f"\n[ITER {iteration}] First order optimization")
+            # print(f"\n[ITER {iteration}] First order optimization")
 
             gaussians.update_learning_rate(iteration)
 
@@ -222,9 +224,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration % 10 == 0:
                 gaussians.oneupSHdegree()
 
-            val_indices = np.random.choice(viewpoint_indices, int(len(viewpoint_indices) * 0.1), replace=False)
+            val_indices = np.arange(0, len(viewpoint_stack), 10)
+            # val_indices = np.random.choice(viewpoint_indices, int(len(viewpoint_indices) * 0.1), replace=False)
             val_cameras = [viewpoint_stack[i] for i in val_indices]
-            train_indices = [i for i in range(len(viewpoint_stack)) if i not in val_indices]
+            # train_indices = [i for i in range(len(viewpoint_stack)) if i not in val_indices]
+            train_indices = [i for i in range(len(viewpoint_stack))]
             train_cameras = [viewpoint_stack[i] for i in train_indices]
 
             print(f"\n[ITER {iteration}] Second order optimization, training cameras = {train_indices}, val cameras = {val_indices}")
@@ -242,14 +246,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration - 1) == debug_from:
                 pipe.debug = True
 
-            SHSx = partial(solver_functions.Hv, viewpoint_cams=batch_viewpoint_cams, scale=1, use_rescale=True)
+            SHSx = partial(solver_functions.Hv, viewpoint_cams=batch_viewpoint_cams, scale=1, use_rescale=True, use_damping=True)
 
             warmup_sample_size = min(5, len(batch_viewpoint_cams))
             warmup_cam_provider = CamProvider(batch_viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
             preconditioner.reset()
-            preconditioner.update(SHSx, warmup_cam_provider, len(batch_viewpoint_cams) / warmup_sample_size, num_iter=50)
-
-            # safe_interact(local=locals(), banner="Before PCG step")
+            preconditioner.update(SHSx, warmup_cam_provider, len(batch_viewpoint_cams) / warmup_sample_size, num_iter=20)
 
             Sg, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, 1, use_rescale=True)
             g, start_loss = solver_functions.gradient_and_loss_est(batch_viewpoint_cams, 1, use_rescale=False)
@@ -258,18 +260,23 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # x0_adam = -g / (g.abs() + 1e-15)
 
 
-            y = cg_damped(Ax=SHSx,
-                          dot=solver_functions.dot,
-                          saxpy=solver_functions.saxpy,
-                          b=-Sg,
-                          x0=x0,
-                          M=preconditioner,
-                          max_iter=20,
-                          restart_iter=3)
+            y = cg_steihaug(Ax=SHSx,
+                            dot=solver_functions.dot,
+                            saxpy=solver_functions.saxpy,
+                            b=-Sg,
+                            x0=x0,
+                            M=preconditioner,
+                            tr_radius=5e4,
+                            # max_iter=10,
+                            max_iter=1,
+                            restart_iter=3)
 
 
             s = rescale * y
             s_adam = -g / (g.abs() + 1e-15) * rescale
+
+            # DEBUG
+            s = s_adam
 
             v = s
             v_stepsize = math.sqrt(v.dot(v))
@@ -293,7 +300,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             losses_adam = []
 
             with torch.no_grad():
-                for i in range(-20, 60, 1):
+                for i in range(-10, 40, 1):
                     step_size = 3
                     alpha = i * step_size
                     gaussians_copy = deepcopy(gaussians)
@@ -306,8 +313,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     losses_alpha.append(loss_alpha.item())
                     alphas.append(alpha)
 
-                    losses_first_order.append((loss_0 + alpha * gv).item())
-                    losses_gn.append((loss_0 + alpha * gv + 0.5 * (alpha ** 2) * vJtJv).item())
+                    losses_first_order.append((loss_0 + alpha * gv))
+                    losses_gn.append((loss_0 + alpha * gv + 0.5 * (alpha ** 2) * vJtJv))
 
                     gaussians_copy = deepcopy(gaussians)
                     gaussians_copy.update_step(alpha * v_adam)
@@ -321,7 +328,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                         best_loss = loss_alpha
                         best_alpha = alpha
 
-                    print(f"loss = {loss_alpha.item():.6f}, adam = {loss_adam.item():.6f}, alpha = {alpha:.6f}")
+                    print(f"alpha = {alpha:.6f}, loss = {loss_alpha.item():.6f}, adam = {loss_adam.item():.6f}, GN approx = {losses_gn[-1]:.6f}")
 
             gaussians.update_step(v * best_alpha)
 
@@ -392,7 +399,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # Optimizer step
             if use_first_order:
                 if iteration < opt.iterations:
-                    print("[ITER {}] First order optimizer step".format(iteration))
+                    # print("[ITER {}] First order optimizer step".format(iteration))
                     gaussians.exposure_optimizer.step()
                     gaussians.exposure_optimizer.zero_grad(set_to_none = True)
                     if use_sparse_adam:

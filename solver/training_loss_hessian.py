@@ -3,16 +3,17 @@ import torch
 from torch.utils.checkpoint import checkpoint
 import time
 
-from gaussian_renderer.reference_render import reference_render
-from utils.loss_utils import l1_loss, ssim 
+from solver.loss_image_state import LossImageState
+from gaussian_renderer.render_hessian import render_hessian
+from utils.loss_utils import l1_loss, l1_loss_per_pixel, ssim, ssim_per_pixel
 
-def reference_training_loss(iteration, opt, viewpoint_cam, gaussians, pipe, bg, train_test_exp,
+def scalar_training_loss_hessian(iteration, opt, viewpoint_cam, gaussians, pipe, bg, train_test_exp,
                          depth_l1_weight, batch_stats=None,
                          SPARSE_ADAM_AVAILABLE=False, FUSED_SSIM_AVAILABLE=False, 
                          pixel_mask=None
                          ):
 
-    render_pkg = reference_render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
+    render_pkg = render_hessian(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
 
     image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
@@ -53,4 +54,4 @@ def reference_training_loss(iteration, opt, viewpoint_cam, gaussians, pipe, bg, 
     else:
         Ll1depth = 0
 
-    return loss
+    return loss, Ll1, Ll1depth

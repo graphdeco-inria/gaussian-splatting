@@ -155,6 +155,15 @@ class BatchLossImageState:
     def __rmul__(self, other):
         return self.__mul__(other)
 
+    def __truediv__(self, other):
+        if isinstance(other, (int, float)):
+            return BatchLossImageState(
+                self.loss_image / other,
+                self.sizes_list,
+                self.has_depth)
+        else:
+            raise TypeError("Can only divide by scalar values")
+
     def dot(self, other, damp):
         if isinstance(damp, (int, float)):
             s = torch.sum(self.loss_image * other.loss_image)
@@ -225,6 +234,9 @@ class MultiBatchLossImageState:
 
     def __rmul__(self, other):
         return self.__mul__(other)
+
+    def __truediv__(self, other):
+        return MultiBatchLossImageState([loss / other for loss in self.batch_losses])
 
     def dot(self, other, damp):
         return sum(loss.dot(other_loss, damp) for loss, other_loss in zip(self.batch_losses, other.batch_losses))

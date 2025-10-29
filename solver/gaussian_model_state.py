@@ -1,5 +1,6 @@
 import torch
 import torch.autograd.forward_ad as fwAD
+from utils.general_utils import safe_interact
 
 class GaussianModelScaleMatrix:
     """
@@ -14,6 +15,64 @@ class GaussianModelScaleMatrix:
         self.rotation_scale = rotation_scale
         self.opacity_scale = opacity_scale
         self.exposure_scale = exposure_scale
+
+    def as_1d_tensor(self, with_features_rest=True, with_exposure=True):
+        l = []
+        l.append(self.xyz_scale.flatten())
+        l.append(self.features_dc_scale.flatten())
+        if with_features_rest:
+            l.append(self.features_rest_scale.flatten())
+        l.append(self.scaling_scale.flatten())
+        l.append(self.rotation_scale.flatten())
+        l.append(self.opacity_scale.flatten())
+        if with_exposure:
+            l.append(self.exposure_scale.flatten())      
+
+        return torch.cat(l, dim=0)
+
+    def load_1d_tensor(self, T, with_features_rest=True, with_exposure=True):
+        N1 = self.xyz_scale.numel()
+        N2 = self.features_dc_scale.numel()
+        if with_features_rest:
+            N3 = self.features_rest_scale.numel()
+        else:
+            N3 = 0
+        N4 = self.scaling_scale.numel()
+        N5 = self.rotation_scale.numel()
+        N6 = self.opacity_scale.numel()
+        if with_exposure:
+            N7 = self.exposure_scale.numel()
+        else:
+            N7 = 0
+
+        # check_len = self.length
+        # if not with_features_rest:
+        #     check_len -= N3
+        # if not with_exposure:
+        #     check_len -= N7
+        # 
+        # assert T.shape[0] == check_len, f"Input tensor must match the length of the scale matrix ({check_len}), got {T.shape[0]}"
+
+        offset = 0
+        self.xyz_scale = T[offset:offset + N1].view(self.xyz_scale.shape)
+        offset += N1
+        self.features_dc_scale = T[offset:offset + N2].view(self.features_dc_scale.shape)
+        offset += N2
+        if with_features_rest:
+            self.features_rest_scale = T[offset:offset + N3].view(self.features_rest_scale.shape)
+            offset += N3
+        else:
+            self.features_rest_scale = 0.0
+        self.scaling_scale = T[offset:offset + N4].view(self.scaling_scale.shape)
+        offset += N4
+        self.rotation_scale = T[offset:offset + N5].view(self.rotation_scale.shape)
+        offset += N5
+        self.opacity_scale = T[offset:offset + N6].view(self.opacity_scale.shape)
+        offset += N6
+        if with_exposure:
+            self.exposure_scale = T[offset:offset + N7].view(self.exposure_scale.shape)
+        else:
+            self.exposure_scale = 0.0
 
     def __neg__(self):
         return GaussianModelScaleMatrix(-self.xyz_scale,
@@ -47,6 +106,8 @@ class GaussianModelScaleMatrix:
             return other * self
         else:
             raise TypeError(f"Can only multiply by scalar values, not {type(other)}")
+
+
 
 class GaussianModelParamGroupMask:
     """
@@ -122,6 +183,18 @@ class GaussianModelState:
                    splat_mask=splat_mask)
 
     @classmethod
+    def ones_like_gaussians(cls, gaussians, param_mask=None, splat_mask=None):
+        return cls(torch.ones_like(gaussians._xyz),
+                   torch.ones_like(gaussians._features_dc),
+                   torch.ones_like(gaussians._features_rest),
+                   torch.ones_like(gaussians._scaling),
+                   torch.ones_like(gaussians._rotation),
+                   torch.ones_like(gaussians._opacity),
+                   torch.ones_like(gaussians._exposure),
+                   param_mask=param_mask,
+                   splat_mask=splat_mask)
+
+    @classmethod
     def rademacher_like_gaussians(cls, gaussians, param_mask=None, splat_mask=None):
         def rademacher_like(T):
             return (2 * torch.randint(0, 2, T.shape, device=T.device, dtype=torch.int8) - 1).to(T.dtype)
@@ -132,6 +205,20 @@ class GaussianModelState:
                    rademacher_like(gaussians._rotation),
                    rademacher_like(gaussians._opacity),
                    rademacher_like(gaussians._exposure),
+                   param_mask=param_mask,
+                   splat_mask=splat_mask)
+
+    @classmethod
+    def randn_like_gaussians(cls, gaussians, param_mask=None, splat_mask=None):
+        def randn_like(T):
+            return torch.randn(T.shape, device=T.device, dtype=T.dtype)
+        return cls(randn_like(gaussians._xyz),
+                   randn_like(gaussians._features_dc),
+                   randn_like(gaussians._features_rest),
+                   randn_like(gaussians._scaling),
+                   randn_like(gaussians._rotation),
+                   randn_like(gaussians._opacity),
+                   randn_like(gaussians._exposure),
                    param_mask=param_mask,
                    splat_mask=splat_mask)
 
@@ -165,6 +252,56 @@ class GaussianModelState:
                    exposure_grad,
                    param_mask=param_mask,
                    splat_mask=splat_mask)
+
+    @classmethod
+    def from_tangent_grad(cls, gaussians_model_state, param_mask=None, splat_mask=None):
+        xyz_grad = gaussians_model_state.xyz_grad.grad if gaussians_model_state.xyz_grad.grad is not None else torch.zeros_like(gaussians_model_state.xyz_grad)
+        features_dc_grad = gaussians_model_state.features_dc_grad.grad if gaussians_model_state.features_dc_grad.grad is not None else torch.zeros_like(gaussians_model_state.features_dc_grad)
+        features_rest_grad = gaussians_model_state.features_rest_grad.grad if gaussians_model_state.features_rest_grad.grad is not None else torch.zeros_like(gaussians_model_state.features_rest_grad)
+        scaling_grad = gaussians_model_state.scaling_grad.grad if gaussians_model_state.scaling_grad.grad is not None else torch.zeros_like(gaussians_model_state.scaling_grad)
+        rotation_grad = gaussians_model_state.rotation_grad.grad if gaussians_model_state.rotation_grad.grad is not None else torch.zeros_like(gaussians_model_state.rotation_grad)
+        opacity_grad = gaussians_model_state.opacity_grad.grad if gaussians_model_state.opacity_grad.grad is not None else torch.zeros_like(gaussians_model_state.opacity_grad)
+        exposure_grad = gaussians_model_state.exposure_grad.grad if gaussians_model_state.exposure_grad.grad is not None else torch.zeros_like(gaussians_model_state.exposure_grad)
+        return cls(xyz_grad,
+                   features_dc_grad,
+                   features_rest_grad,
+                   scaling_grad,
+                   rotation_grad,
+                   opacity_grad,
+                   exposure_grad,
+                   param_mask=param_mask,
+                   splat_mask=splat_mask)
+
+    def detach(self):
+        self.xyz_grad = self.xyz_grad.detach()
+        self.features_dc_grad = self.features_dc_grad.detach()
+        self.features_rest_grad = self.features_rest_grad.detach()
+        self.scaling_grad = self.scaling_grad.detach()
+        self.rotation_grad = self.rotation_grad.detach()
+        self.opacity_grad = self.opacity_grad.detach()
+        self.exposure_grad = self.exposure_grad.detach()
+        return self
+
+    def clone(self):
+        return GaussianModelState(
+            self.xyz_grad.clone(),
+            self.features_dc_grad.clone(),
+            self.features_rest_grad.clone(),
+            self.scaling_grad.clone(),
+            self.rotation_grad.clone(),
+            self.opacity_grad.clone(),
+            self.exposure_grad.clone()
+        )
+
+    def requires_grad_(self, requires_grad=True):
+        self.xyz_grad.requires_grad_(requires_grad)
+        self.features_dc_grad.requires_grad_(requires_grad)
+        self.features_rest_grad.requires_grad_(requires_grad)
+        self.scaling_grad.requires_grad_(requires_grad)
+        self.rotation_grad.requires_grad_(requires_grad)
+        self.opacity_grad.requires_grad_(requires_grad)
+        self.exposure_grad.requires_grad_(requires_grad)
+        return self
 
     def apply_mask(self, param_mask=None, splat_mask=None):
         return GaussianModelState(
@@ -206,22 +343,44 @@ class GaussianModelState:
         self.opacity_grad = self.opacity_grad.mean(dim=-1, keepdim=True).expand_as(self.opacity_grad)
         self.exposure_grad = self.exposure_grad.mean(dim=-1, keepdim=True).expand_as(self.exposure_grad)
 
+    def numel(self, with_features_rest=True, with_exposure=True):
+        """
+        Returns the number of elements in the generalized vector
+        """
+        N1 = self.xyz_grad.numel()
+        N2 = self.features_dc_grad.numel()
+        if with_features_rest:
+            N3 = self.features_rest_grad.numel()
+        else:
+            N3 = 0
+        N4 = self.scaling_grad.numel()
+        N5 = self.rotation_grad.numel()
+        N6 = self.opacity_grad.numel()
+        if with_exposure:
+            N7 = self.exposure_grad.numel()
+        else:
+            N7 = 0
+        return N1 + N2 + N3 + N4 + N5 + N6 + N7
 
     @property
-    def length(self):
+    def length(self, with_features_rest=True, with_exposure=True):
         """
         Returns the length of the generalized vector
         """
-        return (self.xyz_grad.numel() + self.features_dc_grad.numel() +
-                self.features_rest_grad.numel() + self.scaling_grad.numel() +
-                self.rotation_grad.numel() + self.opacity_grad.numel() +
-                self.exposure_grad.numel())
+        return self.numel(with_features_rest=with_features_rest, with_exposure=with_exposure)
 
-    def load_1d_tensor(self, T):
+    @property
+    def device(self):
+        return self.xyz_grad.device
+    
+    @property
+    def dtype(self):
+        return self.xyz_grad.dtype
+
+    def load_1d_tensor(self, T, with_features_rest=True, with_exposure=True):
         """
         Creates a GaussianModelState from a flattened tensor
         """
-        assert T.shape[0] == self.length, "Input tensor must match the length of the model state"
         N1 = self.xyz_grad.numel()
         N2 = self.features_dc_grad.numel()
         N3 = self.features_rest_grad.numel()
@@ -230,36 +389,74 @@ class GaussianModelState:
         N6 = self.opacity_grad.numel()
         N7 = self.exposure_grad.numel()
 
+        check_len = self.length
+        if not with_features_rest:
+            check_len -= N3
+        if not with_exposure:
+            check_len -= N7
+        
+        assert T.shape[0] == check_len, f"Input tensor must match the length of the model state ({check_len}), got {T.shape[0]}"
+
         offset = 0
         xyz_grad = T[offset:offset + N1].view(self.xyz_grad.shape)
         offset += N1
         features_dc_grad = T[offset:offset + N2].view(self.features_dc_grad.shape)
         offset += N2
-        features_rest_grad = T[offset:offset + N3].view(self.features_rest_grad.shape)
-        offset += N3
+        if with_features_rest:
+            features_rest_grad = T[offset:offset + N3].view(self.features_rest_grad.shape)
+            offset += N3
+        else:
+            features_rest_grad = torch.zeros_like(self.features_rest_grad)
         scaling_grad = T[offset:offset + N4].view(self.scaling_grad.shape)
         offset += N4
         rotation_grad = T[offset:offset + N5].view(self.rotation_grad.shape)
         offset += N5
         opacity_grad = T[offset:offset + N6].view(self.opacity_grad.shape)
         offset += N6
-        exposure_grad = T[offset:offset + N7].view(self.exposure_grad.shape)
+        if with_exposure:
+            exposure_grad = T[offset:offset + N7].view(self.exposure_grad.shape)
+        else:
+            exposure_grad = torch.zeros_like(self.exposure_grad)
 
         self.__init__(xyz_grad, features_dc_grad, features_rest_grad,
                       scaling_grad, rotation_grad,
                       opacity_grad, exposure_grad)
 
-    def as_1d_tensor(self):
+    def as_1d_tensor(self, with_features_rest=True, with_exposure=True):
         """
         Returns the model state as a flattened vector
         """
-        return torch.cat((self.xyz_grad.flatten(),
-                          self.features_dc_grad.flatten(),
-                          self.features_rest_grad.flatten(),
-                          self.scaling_grad.flatten(),
-                          self.rotation_grad.flatten(),
-                          self.opacity_grad.flatten(),
-                          self.exposure_grad.flatten()), dim=0)
+        l = []
+        l.append(self.xyz_grad.flatten())
+        l.append(self.features_dc_grad.flatten())
+        if with_features_rest:
+            l.append(self.features_rest_grad.flatten())
+        l.append(self.scaling_grad.flatten())
+        l.append(self.rotation_grad.flatten())
+        l.append(self.opacity_grad.flatten())
+        if with_exposure:
+            l.append(self.exposure_grad.flatten())      
+
+        return torch.cat(l, dim=0)
+
+    def get_param_group_offsets(self, with_features_rest=True, with_exposure=True):
+        offsets = [0]
+        N1 = self.xyz_grad.numel()
+        N2 = self.features_dc_grad.numel()
+        N3 = self.features_rest_grad.numel() if with_features_rest else 0
+        N4 = self.scaling_grad.numel()
+        N5 = self.rotation_grad.numel()
+        N6 = self.opacity_grad.numel()
+        N7 = self.exposure_grad.numel() if with_exposure else 0
+        offsets.append(N1)
+        offsets.append(N2 + offsets[-1])
+        offsets.append(N3 + offsets[-1])
+        offsets.append(N4 + offsets[-1])
+        offsets.append(N5 + offsets[-1])
+        offsets.append(N6 + offsets[-1])
+        offsets.append(N7 + offsets[-1])
+        return offsets
+
 
     def index_to_desc(self, index):
         N1 = self.xyz_grad.numel()
@@ -321,6 +518,12 @@ class GaussianModelState:
                 self.opacity_grad + other.opacity_grad,
                 self.exposure_grad + other.exposure_grad
             )
+        elif isinstance(other, torch.Tensor):
+            assert other.numel() == self.length, "Tensor length must match GaussianModelState length"
+            assert other.dim() == 1, "Tensor must be 1-dimensional"
+            other_state = GaussianModelState.zero_like_gaussians(self)
+            other_state.load_1d_tensor(other)
+            return self + other_state
         else:
             raise TypeError(f"Can only add scalar values or GaussianModelState, not {type(other)}")
 
@@ -345,6 +548,12 @@ class GaussianModelState:
                 self.opacity_grad - other.opacity_grad,
                 self.exposure_grad - other.exposure_grad
             )
+        elif isinstance(other, torch.Tensor):
+            assert other.numel() == self.length, "Tensor length must match GaussianModelState length"
+            assert other.dim() == 1, "Tensor must be 1-dimensional"
+            other_state = GaussianModelState.zero_like_gaussians(self)
+            other_state.load_1d_tensor(other)
+            return self - other_state
         else:
             raise TypeError(f"Can only subtract scalar values or GaussianModelState, not {type(other)}")
 
