@@ -224,13 +224,12 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False)
         loss_func_scalar = partial(scalar_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
         loss_func_hessian = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
-        cur_state_gn = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
-        cur_state_hessian = LinearSolverFunctions(loss_func_hessian, gaussians, batch_size=5, param_mask=None, damp=None, splat_mask=None, rescale=rescale)
+        cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, damp=None, splat_mask=None, rescale=rescale, loss_func_hessian=loss_func_hessian)
 
         g_vec = ref_g.as_1d_tensor(with_features_rest=False, with_exposure=False)
         u = GaussianModelState.zero_like_gaussians(gaussians)
         u_vec = u.as_1d_tensor(with_features_rest=False, with_exposure=False)
-        v = cur_state_gn.jvp(u, viewpoint_cams)
+        v = cur_state.jvp(u, viewpoint_cams)
         v_vec = v.as_1d_tensor()
         m, n = v_vec.shape[0], u_vec.shape[0]
 
@@ -238,7 +237,8 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         # max_indices = {0: -1, 1: -1, 403: -1, 324: -1, 617: -1}
         # max_indices = {617: -1}
         # max_indices = {1379: -1}
-        max_indices = {56: -1}
+        # max_indices = {56: -1}
+        max_indices = {213: -1, 214: -1, 229: -1, 230: -1}
 
         cols_list = range(u_vec.shape[0]) if all_columns else list(max_indices.keys())
 
@@ -255,7 +255,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
             u_vec *= 0.0
             u_vec[i] = 1.0
             u.load_1d_tensor(u_vec, with_features_rest=False, with_exposure=False)
-            loss_scalar0, g, Hi = cur_state_hessian.Hv_all(u, viewpoint_cams, scale=1)
+            loss_scalar0, g, Hi = cur_state.Hv(u, viewpoint_cams, scale=1, return_grad_and_loss=True)
 
             H[:, i] = Hi.as_1d_tensor(with_features_rest=False, with_exposure=False)
 
@@ -269,8 +269,8 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                     step_range = range(-10, 10, 1)
                     step_size = 1e-2
                 else:
-                    step_range = range(-1000, 1000, 1)
-                    step_size = 1e-4
+                    step_range = range(-100, 100, 1)
+                    step_size = 1e-2
                     # step_range = range(-10, 10, 1)
                     # step_size = 1e-2
 
@@ -293,16 +293,16 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                     # print(f"alpha = {alpha:2f}, delta = {delta:4e}")
 
                 if g_vec[i] != 0.0:
-                    plt.figure()
-                    plt.plot(alphas, deltas, label="Actual delta", alpha=0.5)
-                    plt.plot(alphas, predicted_deltas1, label="1st order approx", alpha=0.5)
-                    plt.plot(alphas, predicted_deltas2, label="2st order approx", alpha=0.5)
+                    plt.figure(figsize=(12, 8))
+                    plt.plot(alphas, deltas, label="Actual delta", alpha=0.9, linewidth=2.5)
+                    plt.plot(alphas, predicted_deltas1, label="1st order approx", alpha=0.9, linewidth=2.5)
+                    plt.plot(alphas, predicted_deltas2, label="2st order approx", alpha=0.9, linewidth=2.5)
                     plt.xlabel("Alpha")
                     plt.ylabel("Delta")
-                    plt.title(f"HVP Column {i} Approximation")
+                    plt.title(f"HVP Column {i}")
                     plt.ylim(-1e-3, 1e-3)
 
-                    plt.axvline(x=s_adam_vec[i].item(), color='r', linestyle='--', label='Adam step')
+                    # plt.axvline(x=s_adam_vec[i].item(), color='r', linestyle='--', label='Adam step')
 
                     plt.legend()
 

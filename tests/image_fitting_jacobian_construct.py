@@ -237,7 +237,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         # max_indices = {0: -1, 1: -1, 403: -1, 324: -1, 617: -1}
         # max_indices = {617: -1}
         # max_indices = {1379: -1}
-        max_indices = {7: -1}
+        max_indices = {213: -1, 214: -1, 229: -1, 230: -1}
 
         cols_list = range(u_vec.shape[0]) if all_columns else list(max_indices.keys())
 
@@ -274,7 +274,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                         step_size = 1e-2
                     else:
                         step_range = range(-100, 100, 1)
-                        step_size = 1e-3
+                        step_size = 1e-2
 
                     for step in step_range:
                         alpha = step * step_size
@@ -295,20 +295,20 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                         # print(" alpha:", alpha, " delta:", delta.item(), " predicted_delta1:", predicted_delta1.item())
 
 
-                    plt.figure()
-                    plt.plot(alphas, deltas, label="Actual delta", alpha=0.5)
-                    plt.plot(alphas, predicted_deltas1, label="First order approx", alpha=0.5)
-                    plt.plot(alphas, predicted_deltas2, label="Second order approx", alpha=0.5)
+                    plt.figure(figsize=(12, 8))
+                    plt.plot(alphas, deltas, label="Actual delta", alpha=0.9, linewidth=2.5)
+                    plt.plot(alphas, predicted_deltas1, label="First order approx", alpha=0.9, linewidth=2.5)
+                    plt.plot(alphas, predicted_deltas2, label="Second order approx", alpha=0.9, linewidth=2.5)
                     plt.xlabel("Alpha")
                     plt.ylabel("Delta")
-                    plt.title(f"JVP Column {i} sum check")
+                    plt.title(f"JVP Column {i}")
                     plt.ylim(-1e-3, 1e-3)
 
-                    plt.axvline(x=s_adam_vec[i].item(), color='r', linestyle='--', label='Adam step')
+                    # plt.axvline(x=s_adam_vec[i].item(), color='r', linestyle='--', label='Adam step')
 
                     plt.legend()
 
-                    plt.savefig(f"{dirname}/jvp_column_sum_col{i:04d}.png")
+                    plt.savefig(f"{dirname}/jvp_column_sum_col{i:04d}.png", bbox_inches='tight')
                     plt.close('all')
 
                     # safe_interact(local=locals(), banner="Saved JVP column check figure")

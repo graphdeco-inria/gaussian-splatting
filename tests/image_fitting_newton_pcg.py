@@ -150,11 +150,11 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     # damp = 1e-6 * scale_const
     scale_const = 1e0
     xyz_scale = 1e-3 * scale_const
-    features_dc_scale = 1e-3 * scale_const
-    featuress_rest_scale = 1e-5 * scale_const
-    scaling_scale = 1e-3 * scale_const
+    features_dc_scale = 2.5e-3 * scale_const
+    featuress_rest_scale = 1e-4 * scale_const
+    scaling_scale = 5e-3 * scale_const
     rotation_scale = 1e-3 * scale_const
-    opacity_scale = 1e-3 * scale_const
+    opacity_scale = 2.5e-2 * scale_const
     exposure_scale = 1.0 * scale_const
 
     rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale, 
@@ -186,7 +186,9 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     pixel_sample_rate = pixel_sample_rate_init
     pixel_sample_rate_decrease = 0.9
     pixel_sample_rate_min = 0.6
-    damp = 1e-7 * (scale_const ** 2)        ## NOTE: damp needs to be relative to scale^2
+
+    damp_init = 1e-7 * (scale_const ** 2)        ## NOTE: damp needs to be relative to scale^2
+    damp = damp_init
     ####### Some tunable parameters #########
 
     first_iter = 0
@@ -434,6 +436,13 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         print("Update with s_newton")
         gaussians.update_step(alpha * s_newton)
         # gaussians.update_step(best_alpha * v)
+
+        # Update Damping Factor
+        if v_stepsize < 1e-8:
+            damp *= 2
+        else:
+            damp *= 0.8
+            damp = max(damp, damp_init)
 
         # DEBUG
         loss_alpha_plot = 0.0

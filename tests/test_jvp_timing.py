@@ -82,45 +82,61 @@ def training(dataset, opt, pipe, checkpoint, num_images):
     for _ in range(5):
         cur_state.evaluate_loss(viewpoint_cams, scale=1)
 
+    torch.cuda.reset_peak_memory_stats()
+
     # Forward timing
     forward_start = time.time()
     for i in range(NUM_ITERATIONS):
-        print(f"Forward iteration {i+1}/{NUM_ITERATIONS}")
+        print(f"Forward iteration {i+1}/{NUM_ITERATIONS}\r", end="")
         loss = cur_state.evaluate_loss(viewpoint_cams, scale=1)
     forward_end = time.time()
+
+    print(f"Forward Peak memory usage (MB): {torch.cuda.max_memory_allocated() / (1024 * 1024):.2f} MB")
 
     # Warm up
     for _ in range(5):
         Ju = cur_state.jvp(u, viewpoint_cams)
+
+    torch.cuda.reset_peak_memory_stats()
 
     # JVP timing
     jvp_start = time.time()
     for i in range(NUM_ITERATIONS):
-        print(f"JVP iteration {i+1}/{NUM_ITERATIONS}")
+        print(f"JVP iteration {i+1}/{NUM_ITERATIONS}\r", end="")
         Ju = cur_state.jvp(u, viewpoint_cams)
     jvp_end = time.time()
+
+    print(f"JVP Peak memory usage (MB): {torch.cuda.max_memory_allocated() / (1024 * 1024):.2f} MB")
 
     # Warm up
     for _ in range(5):
         start_loss, g = cur_state.g(viewpoint_cams, 1, return_loss=True)
+
+    torch.cuda.reset_peak_memory_stats()
 
     # Primal timing
     primal_start = time.time()
     for i in range(NUM_ITERATIONS):
-        print(f"Primal iteration {i+1}/{NUM_ITERATIONS}")
+        print(f"Primal iteration {i+1}/{NUM_ITERATIONS}\r", end="")
         start_loss, g = cur_state.g(viewpoint_cams, 1, return_loss=True)
     primal_end = time.time()
+
+    print(f"Primal Peak memory usage (MB): {torch.cuda.max_memory_allocated() / (1024 * 1024):.2f} MB")
 
     # Warm up
     for _ in range(5):
         loss_scalar, g, Hu = cur_state.Hv(u, viewpoint_cams, scale=1, return_grad_and_loss=True)
 
+    torch.cuda.reset_peak_memory_stats()
+
     # Dual timing
     dual_start = time.time()
     for i in range(NUM_ITERATIONS):
-        print(f"Dual iteration {i+1}/{NUM_ITERATIONS}")
+        print(f"Dual iteration {i+1}/{NUM_ITERATIONS}\r", end="")
         loss_scalar, g, Hu = cur_state.Hv(u, viewpoint_cams, scale=1, return_grad_and_loss=True)
     dual_end = time.time()
+
+    print(f"Dual Peak memory usage (MB): {torch.cuda.max_memory_allocated() / (1024 * 1024):.2f} MB")
 
     print(f"Forward time ms: {(forward_end - forward_start) * 1000 / NUM_ITERATIONS:.2f} ms")
     print(f"JVP time ms: {(jvp_end - jvp_start) * 1000 / NUM_ITERATIONS:.2f} ms")
