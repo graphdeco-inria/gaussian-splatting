@@ -133,8 +133,11 @@ def build_camera(image_path):
                     data_device="cuda",)
     return camera
 
-def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, all_columns, sum_column):
-    tb_writer = prepare_output_and_logger(args)
+def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, all_columns, sum_column, use_wandb):
+    if use_wandb:
+        tb_writer = prepare_output_and_logger(args)
+    else:
+        tb_writer = None
 
     # scale_const = 1e3
     # xyz_scale = 1e-3 * scale_const
@@ -192,9 +195,9 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
     # NOTE: damp needs to be relative to scale^2
     damp_init = 1e-6 * (scale_const ** 2)      
-    damp_min = 1e-7 * (scale_const ** 2)       
-    damp_max = 1e-3 * (scale_const ** 2)       
-    damp = damp_min
+    damp_min = 1e-9 * (scale_const ** 2)       
+    damp_max = 1e-1 * (scale_const ** 2)       
+    damp = damp_init
 
     pcg_tol = 1e-15
     ####### Some tunable parameters #########
@@ -267,8 +270,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False, pixel_mask=pixel_mask)
-        loss_func_hessian = partial(scalar_training_loss_hessian, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=pixel_mask)
-        cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=None, rescale=rescale, damp=damp, loss_func_hessian=loss_func_hessian)
+        cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=None, rescale=rescale, damp=damp)
 
         ref_g_vec = ref_g.as_1d_tensor(with_features_rest=False, with_exposure=False)
         u = GaussianModelState.zero_like_gaussians(gaussians)
@@ -277,7 +279,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
         preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
 
-        SHSx = partial(cur_state.Hv, viewpoint_cams=viewpoint_cams, scale=1, use_rescale=True, use_damping=True)
+        SHSx = partial(cur_state.JTJv, viewpoint_cams=viewpoint_cams, scale=1, use_rescale=True, use_damping=True)
 
         warmup_sample_size = min(5, len(viewpoint_cams))
         warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
@@ -312,7 +314,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         v_stepsize_adam = math.sqrt(v_adam.dot(v_adam))
         v_adam = v_adam / (v_stepsize_adam + 1e-15)
 
-        loss_scalar, g, Hv = cur_state.Hv(v, viewpoint_cams, scale=1, use_rescale=False, return_grad_and_loss=True)
+        loss_scalar, g = cur_state.g(viewpoint_cams, scale=1, use_rescale=False, return_loss=True)
 
         JtJv = cur_state.JTJv(v, viewpoint_cams, scale=1, use_rescale=False)
         vJtJv = v.dot(JtJv)
@@ -332,7 +334,6 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
         ref_gv = ref_g.dot(v)
         gv = g.dot(v)
-        vHv = v.dot(Hv)
 
         gs_newton = g.dot(s_newton)
 
@@ -612,6 +613,7 @@ if __name__ == "__main__":
     parser.add_argument("--image_path", type=str, default="")
     parser.add_argument("--all_columns", action="store_true", default=False)
     parser.add_argument("--sum_column", action="store_true", default=False)
+    parser.add_argument('--use_wandb', action='store_true', default=False)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
@@ -634,7 +636,8 @@ if __name__ == "__main__":
              args.image_path, 
              args.num_points,
              args.all_columns,
-             args.sum_column)
+             args.sum_column,
+             args.use_wandb)
 
     # All done
     print("\nTraining complete.")

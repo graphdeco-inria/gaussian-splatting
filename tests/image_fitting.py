@@ -35,10 +35,12 @@ from solver.gaussian_model_state import GaussianModelState, GaussianModelScaleMa
 from solver.training_loss import scalar_training_loss
 from solver.solver_functions import LinearSolverFunctions
 from solver.conjugate_gradient import cgls_damped
+from image_fitting_utils import prepare_output_and_logger, get_image_name
 
 from copy import deepcopy
 
 from matplotlib import pyplot as plt
+
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -132,6 +134,7 @@ def build_camera(image_path):
     return camera
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points):
+    tb_writer = prepare_output_and_logger(args)
     
     cameras = [build_camera(image_path)]
 
@@ -140,12 +143,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     train_test_exp = False
     white_background = False
     cameras_extent = 7.5
-    model_path = "saved_output/sgd_picasso1"
+    image_name = get_image_name(image_path)
+    model_path = f"saved_output/sgd_{image_name}"
     ####### Some fixed parameters #########
+
+    os.makedirs(model_path, exist_ok=True)
 
     first_iter = 0
     sh_degree = 0
-    tb_writer = None
     gaussians = init_uniform_gaussians(num_points, sh_degree, opt)
 
     if checkpoint:
@@ -300,28 +305,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("Model path: {}".format(model_path + "/chkpnt" + str(iteration) + ".pth"))
                 torch.save((gaussians.capture(), iteration), model_path + "/chkpnt" + str(iteration) + ".pth")
 
-def prepare_output_and_logger(args):    
-    if not args.model_path:
-        if os.getenv('OAR_JOB_ID'):
-            unique_str=os.getenv('OAR_JOB_ID')
-        else:
-            unique_str = str(uuid.uuid4())
-        args.model_path = os.path.join("./output/", unique_str[0:10])
-        
-    # Set up output folder
-    print("Output folder: {}".format(args.model_path))
-    os.makedirs(args.model_path, exist_ok = True)
-    with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
-        cfg_log_f.write(str(Namespace(**vars(args))))
-
-    # Create Tensorboard writer
-    tb_writer = None
-    if TENSORBOARD_FOUND:
-        tb_writer = SummaryWriter(args.model_path)
-    else:
-        print("Tensorboard not available: not logging progress")
-    return tb_writer
-
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, cameras, gaussians, renderFunc, renderArgs, train_test_exp):
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
@@ -363,7 +346,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
 
         if tb_writer:
-            tb_writer.add_histogram("scene/opacity_histogram", gaussians.get_opacity, iteration)
+            # tb_writer.add_histogram("scene/opacity_histogram", gaussians.get_opacity, iteration)
             tb_writer.add_scalar('total_points', gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 

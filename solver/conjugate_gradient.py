@@ -190,7 +190,7 @@ def cg_damped(
             gamma = dot(r, z)                       # gamma = <r, z>
             q = Ax(p)                               # q = A p
             delta = dot(p, q)                       # delta = <q, p>
-            if delta < 1e-15:
+            if delta < tol:
                 print(f"Early termination: delta is too small: {delta:.2e}")
                 # safe_interact(local=locals(), banner="Debugging CG...")
                 break_flag = True
@@ -208,7 +208,7 @@ def cg_damped(
 
             # if verbose:
             x_norm = math.sqrt(dot(x, x))
-            print(f"[Iter {iter_total+1}] res: {res:.2e}, |x|: {x_norm:.2e}") if verbose else None
+            print(f"[Iter {iter_total+1}] res: {res:.2e}, |x|: {x_norm:.2e}, delta: {delta:.2e}, gamma: {gamma:.2e}") if verbose else None
             # import code; code.interact(local=locals(), banner="Debugging CG...")
 
             iter_total += 1
