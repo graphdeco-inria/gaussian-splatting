@@ -19,8 +19,8 @@ from utils.system_utils import mkdir_p
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
-from utils.graphics_utils import BasicPointCloud
-from utils.general_utils import strip_symmetric, build_scaling_rotation
+from utils.graphics_utils import BasicPointCloud, geom_transform_points
+from utils.general_utils import strip_symmetric, build_scaling_rotation, quat_from_matrix, build_rotation
 
 try:
     from diff_gaussian_rasterization import SparseGaussianAdam
@@ -318,14 +318,18 @@ class GaussianModel:
         for group in self.optimizer.param_groups:
             if group["name"] == name:
                 stored_state = self.optimizer.state.get(group['params'][0], None)
-                stored_state["exp_avg"] = torch.zeros_like(tensor)
-                stored_state["exp_avg_sq"] = torch.zeros_like(tensor)
+                if stored_state is not None:
+                    stored_state["exp_avg"] = torch.zeros_like(tensor)
+                    stored_state["exp_avg_sq"] = torch.zeros_like(tensor)
 
-                del self.optimizer.state[group['params'][0]]
-                group["params"][0] = nn.Parameter(tensor.requires_grad_(True))
-                self.optimizer.state[group['params'][0]] = stored_state
+                    del self.optimizer.state[group['params'][0]]
+                    group["params"][0] = nn.Parameter(tensor.requires_grad_(True))
+                    self.optimizer.state[group['params'][0]] = stored_state
 
-                optimizable_tensors[group["name"]] = group["params"][0]
+                    optimizable_tensors[group["name"]] = group["params"][0]
+                else:
+                    group["params"][0] = nn.Parameter(tensor.requires_grad_(True))
+                    optimizable_tensors[group["name"]] = group["params"][0]
         return optimizable_tensors
 
     def _prune_optimizer(self, mask):
@@ -471,3 +475,46 @@ class GaussianModel:
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
+
+
+
+
+##################### 추가함수 #####################
+    @torch.no_grad()
+    def reflect(self, mirror_transform, reflect_mask):
+        from utils.graphics_utils import geom_transform_points
+        from utils.general_utils import build_rotation
+
+        if reflect_mask.sum() == 0:
+            return None
+
+        object_rotation_q = self.get_rotation[reflect_mask]
+        object_xyz = self.get_xyz[reflect_mask]
+
+        # 센터 반사
+        reflected_xyz = geom_transform_points(object_xyz, mirror_transform.T)
+
+        # 회전 반사
+        H_3x3 = mirror_transform[:3, :3]
+        R = build_rotation(object_rotation_q)
+        R_reflected = H_3x3 @ R
+        # 재직교화(SVD) + det(+1) 강제
+        U, S, Vt = torch.linalg.svd(R_reflected)      # (N,3,3)
+        R_reflected = U @ Vt
+        det = torch.det(R_reflected)
+        neg = det < 0
+        if neg.any():
+            Vt[neg, -1, :] *= -1.0
+            R_reflected = U @ Vt
+
+        reflected_rotation_q = quat_from_matrix(R_reflected)
+
+        # 반사시킨 속성 반환
+        return {
+            "xyz": reflected_xyz,
+            "rotation": torch.nn.functional.normalize(reflected_rotation_q, p=2, dim=1),
+            "scaling": self._scaling[reflect_mask],
+            "opacity": self._opacity[reflect_mask],
+            "features_dc": self._features_dc[reflect_mask],
+            "features_rest": self._features_rest[reflect_mask]
+        }

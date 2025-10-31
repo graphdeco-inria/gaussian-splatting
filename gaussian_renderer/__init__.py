@@ -126,3 +126,71 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         }
     
     return out
+
+
+
+
+##################### 추가함수 #####################
+def render_reflected_gaussians(viewpoint_camera, pc: GaussianModel, pipe, bg_color: torch.Tensor, mirror_transform: torch.Tensor, gaussians_to_reflect_mask: torch.Tensor, scaling_modifier=1.0):
+    reflected_attrs = pc.reflect(mirror_transform, gaussians_to_reflect_mask)
+    
+    if reflected_attrs is None or reflected_attrs["xyz"].shape[0] == 0:
+        image_height = int(viewpoint_camera.image_height)
+        image_width = int(viewpoint_camera.image_width)
+        return {"render": torch.full((3, image_height, image_width), bg_color[0].item(), device="cuda"), "radii": torch.zeros(0, device="cuda")}
+
+    tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
+    tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
+    
+    # 카메라 시선벡터 반사
+    orig_campos = viewpoint_camera.camera_center
+    campos_hom = torch.cat([orig_campos, torch.ones(1, device="cuda")], dim=0)
+    reflected_campos_hom = campos_hom @ mirror_transform.T
+    reflected_campos = reflected_campos_hom[:3]
+
+    raster_settings = GaussianRasterizationSettings(
+        image_height=int(viewpoint_camera.image_height),
+        image_width=int(viewpoint_camera.image_width),
+        tanfovx=tanfovx,
+        tanfovy=tanfovy,
+        bg=bg_color,
+        scale_modifier=scaling_modifier,
+        viewmatrix=viewpoint_camera.world_view_transform,
+        projmatrix=viewpoint_camera.full_proj_transform,
+        sh_degree=pc.active_sh_degree,
+        campos=reflected_campos,
+        prefiltered=False,
+        debug=pipe.debug,
+        antialiasing=pipe.antialiasing
+    )
+
+    rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+ 
+    means3D = reflected_attrs["xyz"]
+    rotations = torch.nn.functional.normalize(reflected_attrs["rotation"])
+    scales = torch.exp(reflected_attrs["scaling"])
+    opacity = torch.sigmoid(reflected_attrs["opacity"])
+    shs = torch.cat((reflected_attrs["features_dc"], reflected_attrs["features_rest"]), dim=1)
+    
+    screenspace_points = torch.zeros_like(means3D, dtype=means3D.dtype, requires_grad=True, device="cuda") + 0
+    try:
+        screenspace_points.retain_grad()
+    except:
+        pass
+
+    # Rasterize
+    rendered_image, radii, _ = rasterizer(
+        means3D = means3D,
+        means2D = screenspace_points,
+        shs = shs,
+        colors_precomp = None,
+        opacities = opacity,
+        scales = scales,
+        rotations = rotations,
+        cov3D_precomp = None
+    )
+    
+    return {
+        "render": rendered_image.clamp(0, 1),
+        "radii": radii
+    }

@@ -131,3 +131,26 @@ def safe_state(silent):
     np.random.seed(0)
     torch.manual_seed(0)
     torch.cuda.set_device(torch.device("cuda:0"))
+
+def focal2fov(focal, pixels):
+    return 2*math.atan(pixels/(2*focal))
+
+
+
+
+
+##################### 추가함수 #####################
+
+def quat_normalize(q):
+    return q / (q.norm(dim=-1, keepdim=True) + 1e-12)
+
+def quat_from_matrix(R):  # R: (...,3,3) -> (...,4) (w,x,y,z)
+    t = R[...,0,0] + R[...,1,1] + R[...,2,2]
+    w = torch.sqrt(torch.clamp(1.0 + t, min=0)) / 2.0
+    x = torch.sqrt(torch.clamp(1.0 + R[...,0,0] - R[...,1,1] - R[...,2,2], min=0)) / 2.0
+    y = torch.sqrt(torch.clamp(1.0 - R[...,0,0] + R[...,1,1] - R[...,2,2], min=0)) / 2.0
+    z = torch.sqrt(torch.clamp(1.0 - R[...,0,0] - R[...,1,1] + R[...,2,2], min=0)) / 2.0
+    x = x.copysign(R[...,2,1] - R[...,1,2])
+    y = y.copysign(R[...,0,2] - R[...,2,0])
+    z = z.copysign(R[...,1,0] - R[...,0,1])
+    return quat_normalize(torch.stack([w,x,y,z], dim=-1))
