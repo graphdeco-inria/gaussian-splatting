@@ -175,6 +175,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
 
     print("before train")
     training_report(None, first_iter + 1, 0, 0, l1_loss, 0, testing_iterations, cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
+    safe_interact(local=locals(), banner="Debug prompt before training")
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -265,6 +266,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
             if iteration == opt.iterations:
                 progress_bar.close()
 
+            if iteration % 1000 == 0:
+                # Save image
+                img = (torch.clamp(image, min=0, max=1.0).cpu().numpy() * 255).astype(np.uint8)
+                Image.fromarray(img.transpose(1, 2, 0)).save(os.path.join(model_path, "output_{:05d}.png".format(iteration)))
+                Image.fromarray((torch.clamp(image, min=0, max=1.0).cpu().numpy() * 255).astype(np.uint8).transpose(1, 2, 0)).save("image_fitting.png")
+                import code; code.interact(local=locals(), banner="Debug prompt after rendering")
+
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
 
@@ -309,7 +317,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 print("Model path: {}".format(model_path + "/chkpnt" + str(iteration) + ".pth"))
                 torch.save((gaussians.capture(), iteration), model_path + "/chkpnt" + str(iteration) + ".pth")
-                import code; code.interact(local=locals(), banner="Debug prompt after saving")
             # safe_interact(local=locals(), banner="After iteration prompt")
 
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, cameras, gaussians, renderFunc, renderArgs, train_test_exp):

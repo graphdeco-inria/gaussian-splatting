@@ -231,13 +231,21 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         v_vec = v.as_1d_tensor()
         m, n = v_vec.shape[0], u_vec.shape[0]
 
-        safe_interact(local=locals(), banner="Starting JVP column checks")
-
         # max_indices = {347: 17145, 555: 11708, 687: 6209, 1160: 5782, 1197: 9095, 1197: 9095, 1365: 18183}
         # max_indices = {0: -1, 1: -1, 403: -1, 324: -1, 617: -1}
         # max_indices = {617: -1}
         # max_indices = {1379: -1}
-        max_indices = {213: -1, 214: -1, 229: -1, 230: -1}
+
+        num_gaussians = gaussians.get_xyz.shape[0]
+        max_indices = {}
+        for i in range(50):
+            offsets = [0, 3, 6, 9, 13, 14]
+            for j in range(len(offsets) - 1):
+                l = offsets[j + 1] - offsets[j]
+                for k in range(l):
+                    max_indices[num_gaussians * offsets[j] + i * l + k] = -1
+
+        max_indices = {2300: -1}
 
         cols_list = range(u_vec.shape[0]) if all_columns else list(max_indices.keys())
 
@@ -249,10 +257,11 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         os.system(f"rm -rf {dirname}")
         os.makedirs(dirname, exist_ok=True)
 
-        J = torch.load(f"saved_output/sgd_picasso1/J_iter{iteration:05d}.pt")
-
         for i in cols_list:
-            print("JVP column:", i, "/", u_vec.shape[0])
+            # If gradient is floating zero, skip because there will be no update in that parameter
+            if g_vec[i] == 0.0:
+                continue
+
             u_vec *= 0.0
             u_vec[i] = 1.0
             u.load_1d_tensor(u_vec, with_features_rest=False, with_exposure=False)
@@ -267,34 +276,42 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
             predicted_deltas1 = []
             predicted_deltas2 = []
 
-            if g_vec[i] != 0.0:
-                with torch.no_grad():
-                    if all_columns:
-                        step_range = range(-100, 100, 1)
-                        step_size = 1e-2
-                    else:
-                        step_range = range(-100, 100, 1)
-                        step_size = 1e-2
+            with torch.no_grad():
+                if all_columns:
+                    step_range = range(-40, 40, 1)
+                    step_size = 1e-4
+                else:
+                    step_range = range(-1000, 1000, 1)
+                    step_size = 1e-8
 
-                    for step in step_range:
-                        alpha = step * step_size
-                        gaussians_copy = deepcopy(gaussians)
-                        gaussians_copy.update_step(alpha * u)
-                        loss_vec = loss_func(gaussians=gaussians_copy, viewpoint_cams=viewpoint_cams).as_1d_tensor()
-                        loss_scalar = loss_vec.norm() ** 2
+                plot_flag = False
 
-                        delta = loss_scalar - loss_scalar0
-                        predicted_delta1 = 2 * alpha * (loss_vec0 @ Ji).sum()
-                        predicted_delta2 = 2 * alpha * (loss_vec0 @ Ji).sum() + alpha * alpha * (uJTJu)
+                for step in step_range:
+                    alpha = step * step_size
+                    gaussians_copy = deepcopy(gaussians)
+                    gaussians_copy.update_step(alpha * u)
+                    loss_vec = loss_func(gaussians=gaussians_copy, viewpoint_cams=viewpoint_cams).as_1d_tensor()
+                    loss_scalar = loss_vec.norm() ** 2
 
-                        alphas.append(alpha)
-                        deltas.append(delta.item())
-                        predicted_deltas1.append(predicted_delta1.item())
-                        predicted_deltas2.append(predicted_delta2.item())
+                    # print("  alpha:", alpha, " loss_scalar:", loss_scalar.item())
 
-                        # print(" alpha:", alpha, " delta:", delta.item(), " predicted_delta1:", predicted_delta1.item())
+                    delta = loss_scalar - loss_scalar0
+                    predicted_delta1 = 2 * alpha * (loss_vec0 @ Ji).sum()
+                    predicted_delta2 = 2 * alpha * (loss_vec0 @ Ji).sum() + alpha * alpha * (uJTJu)
+
+                    if delta.abs() > 5e-5:
+                        plot_flag = True
+
+                    alphas.append(alpha)
+                    deltas.append(delta.item())
+                    predicted_deltas1.append(predicted_delta1.item())
+                    predicted_deltas2.append(predicted_delta2.item())
+
+                    # print(" alpha:", alpha, " delta:", delta.item(), " predicted_delta1:", predicted_delta1.item())
 
 
+                if plot_flag:
+                    print("JVP column:", i, "/", u_vec.shape[0], "gradient:", g_vec[i].item())
                     plt.figure(figsize=(12, 8))
                     plt.plot(alphas, deltas, label="Actual delta", alpha=0.9, linewidth=2.5)
                     plt.plot(alphas, predicted_deltas1, label="First order approx", alpha=0.9, linewidth=2.5)
@@ -311,7 +328,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                     plt.savefig(f"{dirname}/jvp_column_sum_col{i:04d}.png", bbox_inches='tight')
                     plt.close('all')
 
-                    # safe_interact(local=locals(), banner="Saved JVP column check figure")
+                # safe_interact(local=locals(), banner="Saved JVP column check figure")
 
         exit()
 

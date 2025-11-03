@@ -36,13 +36,12 @@ from solver.training_loss import scalar_training_loss
 from solver.batch_training_loss import batch_training_loss
 from solver.training_loss_hessian import scalar_training_loss_hessian
 from solver.reference_training_loss import reference_training_loss
-from solver.gaussian_model_state import GaussianModelState
 from solver.loss_image_state import MultiBatchLossImageState
 from solver.solver_functions import LinearSolverFunctions
 from solver.conjugate_gradient import cg_damped, cgls_damped
 from solver.preconditioner import AdaHessianPreconditioner
 from solver.solver_utils import CamProvider
-from image_fitting_utils import prepare_output_and_logger
+from image_fitting_utils import prepare_output_and_logger, training_report
 
 from copy import deepcopy
 
@@ -164,6 +163,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                                       rotation_scale=rotation_scale, 
                                       opacity_scale=opacity_scale, 
                                       exposure_scale=1.0)
+    splat_mask = None
 
     
     cameras = [build_camera(image_path)]
@@ -181,6 +181,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     linesearch_alpha_decrease = 0.8
     linesearch_alpha_increase = 1.2
     linesearch_alpha_c = 0.01
+    linesearch_force_minstep = False
 
     damp_alpha_max = 0.2
     damp_alpha_min = 1e-2
@@ -191,13 +192,15 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     pixel_sample_rate_min = 0.6
     pixel_sample_rate = pixel_sample_rate_max
     pixel_sample_rate_increase = 1.2
-    pixel_sample_rate_decrease = 0.8
+    pixel_sample_rate_decrease = 0.9
 
     # NOTE: damp needs to be relative to scale^2
     damp_init = 1e-6 * (scale_const ** 2)      
-    damp_min = 1e-9 * (scale_const ** 2)       
-    damp_max = 1e-1 * (scale_const ** 2)       
+    damp_min = 1e-8 * (scale_const ** 2)       
+    damp_max = 1e-4 * (scale_const ** 2)       
     damp = damp_init
+
+    splat_sample_rate = 1.0
 
     pcg_tol = 1e-15
     ####### Some tunable parameters #########
@@ -255,22 +258,35 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
         gaussians.zero_grad()
+        ref_loss = 0.0
         for vc in viewpoint_cams:
             ref_loss_scalar_i = reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)
             ref_loss_scalar_i.backward()
+            ref_loss += ref_loss_scalar_i.item()
         ref_g = GaussianModelState.from_gaussians_grad(gaussians)
+
+        if iteration > 1200:
+            if iteration % 20 == 0:
+                num_gaussians = gaussians.get_xyz.shape[0]
+                splat_mask_out = torch.rand(num_gaussians, device="cuda") > splat_sample_rate if splat_sample_rate < 1.0 else None
+                splat_mask = GaussianModelSplatMask(mask_out_filter=splat_mask_out) if splat_mask_out is not None else None
+        else:
+            splat_mask = None
 
         # Test vector loss prediction using J
 
         # Generate pixel mask, which is a boolean mask of shape (H*W,) with True for masking out pixels
-        H, W = viewpoint_cams[0].image_height, viewpoint_cams[0].image_width
-        pixel_mask = torch.rand((H, W), device="cuda") > pixel_sample_rate
+        if pixel_sample_rate >= 1.0:
+            pixel_mask = None
+        else:
+            H, W = viewpoint_cams[0].image_height, viewpoint_cams[0].image_width
+            pixel_mask = torch.rand((H, W), device="cuda") > pixel_sample_rate
 
         render_pkg = render(viewpoint_cams[0], gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False, pixel_mask=pixel_mask)
-        cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=None, rescale=rescale, damp=damp)
+        cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=splat_mask, rescale=rescale, damp=damp)
 
         ref_g_vec = ref_g.as_1d_tensor(with_features_rest=False, with_exposure=False)
         u = GaussianModelState.zero_like_gaussians(gaussians)
@@ -287,6 +303,11 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=10)
 
         start_loss, Sg = cur_state.g(viewpoint_cams, 1, use_rescale=True, return_loss=True)
+
+        Sg_norm = Sg.dot(Sg)
+        if Sg_norm == 0.0:
+            safe_interact(local=locals(), banner="1 Zero gradient detected, stopping training.")
+
 
         x0 = cur_state.get_initial_solution()
 
@@ -315,6 +336,10 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         v_adam = v_adam / (v_stepsize_adam + 1e-15)
 
         loss_scalar, g = cur_state.g(viewpoint_cams, scale=1, use_rescale=False, return_loss=True)
+
+        g_norm = g.dot(g)
+        if g_norm == 0.0:
+            safe_interact(local=locals(), banner="Zero gradient detected, stopping training.")
 
         JtJv = cur_state.JTJv(v, viewpoint_cams, scale=1, use_rescale=False)
         vJtJv = v.dot(JtJv)
@@ -371,8 +396,10 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                 alpha *= linesearch_alpha_decrease
 
                 if alpha < linesearch_alpha_min:
-                    print("Linesearch alpha below minimum. Forcing step at alpha =", alpha)
-                    # alpha = 0.0
+                    if linesearch_force_minstep:
+                        print("Linesearch alpha below minimum. Forcing step at alpha =", alpha)
+                    else:
+                        alpha = 0.0
                     break
 
             print("Linesearch found alpha:", alpha, "loss_alpha:", loss_alpha.item())
@@ -464,10 +491,10 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
             tb_writer.add_scalar('train_loss_full/damping', damp, iteration)
 
         # Update pixel sampling rate
-        if alpha < 0.001:
+        if alpha < 0.01 or (v_stepsize == 0 and damp >= damp_max):
             pixel_sample_rate *= pixel_sample_rate_decrease
             pixel_sample_rate = max(pixel_sample_rate, pixel_sample_rate_min)
-        elif alpha > 0.001:
+        elif alpha > 0.01:
             pixel_sample_rate *= pixel_sample_rate_increase
             pixel_sample_rate = min(pixel_sample_rate, pixel_sample_rate_max)
 
@@ -481,52 +508,6 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
         # safe_interact(local=locals(), banner="after loss vs step size")
 
-
-def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, cameras, gaussians, renderFunc, renderArgs, train_test_exp):
-    if tb_writer:
-        tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
-        # tb_writer.add_scalar('iter_time', elapsed, iteration)
-
-    # Report test and samples of training set
-
-    if iteration in testing_iterations or iteration % 100 == 0:
-        torch.cuda.empty_cache()
-        num_val_images = 30
-        val_stride = max(1, len(cameras) // num_val_images)
-        val_indices = list(range(0, len(cameras), val_stride))
-        validation_configs = ({'name': 'test', 'cameras' : cameras}, 
-                              {'name': 'train', 'cameras' : [cameras[idx] for idx in val_indices]} )
-        print(f"\n[ITER {iteration}] val_indices: {val_indices}")
-
-        for config in validation_configs:
-            if config['cameras'] and len(config['cameras']) > 0:
-                l1_test = 0.0
-                psnr_test = 0.0
-                for idx, viewpoint in enumerate(config['cameras']):
-                    image = torch.clamp(renderFunc(viewpoint, gaussians, *renderArgs)["render"], 0.0, 1.0)
-                    gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
-                    if train_test_exp:
-                        image = image[..., image.shape[-1] // 2:]
-                        gt_image = gt_image[..., gt_image.shape[-1] // 2:]
-                    if tb_writer and (idx < 5):
-                        tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
-                        if iteration == testing_iterations[0]:
-                            tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
-                    l1_test += l1_loss(image, gt_image).mean().double()
-                    psnr_test += psnr(image, gt_image).mean().double()
-                psnr_test /= len(config['cameras'])
-                l1_test /= len(config['cameras'])          
-                print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
-                if tb_writer:
-                    tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
-                    tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
-
-        if tb_writer:
-            # tb_writer.add_histogram("scene/opacity_histogram", gaussians.get_opacity, iteration)
-            # tb_writer.add_scalar('total_points', gaussians.get_xyz.shape[0], iteration)
-            pass
-
-        torch.cuda.empty_cache()
 
 def plot_loss_vs_step_size(iteration, l1_loss, cameras, gaussians, gaussians_start, renderFunc, renderArgs, train_test_exp, s):
     torch.cuda.empty_cache()
