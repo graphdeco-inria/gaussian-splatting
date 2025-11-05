@@ -154,7 +154,6 @@ def cg_steihaug(
 
     return x
 
-
 def cg_damped(
     Ax,             # A @ x, here A is assumed to be SPD
     dot,            # dot(x, y)
@@ -183,6 +182,9 @@ def cg_damped(
         p = z
 
         print(f"[Iter {iter_total}] res: {res:.2e}") if verbose else None
+
+        if iter_total == 0:
+            res_init = res
         
         # import code; code.interact(local=locals(), banner="Debugging CG...")
 
@@ -223,7 +225,9 @@ def cg_damped(
     res = dot(r, r)
     print(f"Final residual norm: {res:.2e}")
 
-    return x
+    res_rel = res / res_init
+
+    return x, res, iter_total, res_rel
 
 
 def cgls_damped(

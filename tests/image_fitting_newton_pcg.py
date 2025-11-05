@@ -149,8 +149,8 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     xyz_scale = 1e-3 * scale_const
     features_dc_scale = 2.5e-3 * scale_const
     featuress_rest_scale = 1e-4 * scale_const
-    scaling_scale = 5e-3 * scale_const
-    rotation_scale = 1e-3 * scale_const
+    scaling_scale = 5e-3 * scale_const * 1e-14
+    rotation_scale = 1e-3 * scale_const * 1e-14
     opacity_scale = 2.5e-2 * scale_const
     exposure_scale = 1.0 * scale_const
 
@@ -184,7 +184,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     damp_increase = 1.2
     damp_decrease = 0.8
 
-    pixel_sample_rate_max = 1.0
+    pixel_sample_rate_max = 0.8
     pixel_sample_rate_min = 0.6
     pixel_sample_rate = pixel_sample_rate_max
     pixel_sample_rate_increase = 1.2
@@ -192,9 +192,9 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
     # NOTE: damp needs to be relative to scale^2
     damp_init = 1e-6 * (scale_const ** 2)      
-    damp_min = 1e-7 * (scale_const ** 2)       
-    damp_max = 1e-3 * (scale_const ** 2)       
-    damp = damp_min
+    damp_min = 1e-8 * (scale_const ** 2)       
+    damp_max = 1e-4 * (scale_const ** 2)       
+    damp = damp_init
 
     pcg_tol = 1e-15
     ####### Some tunable parameters #########
@@ -257,6 +257,9 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
             ref_loss_scalar_i.backward()
         ref_g = GaussianModelState.from_gaussians_grad(gaussians)
 
+        ref_g_norm2 = ref_g.dot(ref_g)
+        print(f"Iteration {iteration}: ref_g norm^2: {ref_g_norm2:.6f}")
+
         # Test vector loss prediction using J
 
         # Generate pixel mask, which is a boolean mask of shape (H*W,) with True for masking out pixels
@@ -285,6 +288,11 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=10)
 
         start_loss, Sg = cur_state.g(viewpoint_cams, 1, use_rescale=True, return_loss=True)
+
+        Sg_norm2 = Sg.dot(Sg)
+        print(f"Iteration {iteration}: Sg norm^2: {Sg_norm2:.6f}")
+        if Sg_norm2 == 0.0:
+            safe_interact(local=locals(), banner="Zero gradient, stopping optimization")
 
         x0 = cur_state.get_initial_solution()
 

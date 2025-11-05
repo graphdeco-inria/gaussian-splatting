@@ -64,7 +64,7 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
 
         # Apply pixel sampling. Set unselected pixels to gt_image to avoid affecting loss
         if pixel_mask is not None:
-            images[i,:,pixel_mask] = gt_images[i,:,pixel_mask]
+            images[i,:,pixel_mask[i]] = gt_images[i,:,pixel_mask[i]]
 
     alpha_masks = None
     if any([vc.alpha_mask is not None for vc in viewpoint_cams]):

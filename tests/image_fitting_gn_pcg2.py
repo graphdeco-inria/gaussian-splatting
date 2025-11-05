@@ -148,13 +148,13 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     # exposure_scale = 1.0 * scale_const
     # damp = 1e-6 * scale_const
     scale_const = 1e0
-    xyz_scale = 1e-3 * scale_const
-    features_dc_scale = 2.5e-3 * scale_const
-    featuress_rest_scale = 1e-4 * scale_const
-    scaling_scale = 5e-3 * scale_const
-    rotation_scale = 1e-3 * scale_const
-    opacity_scale = 2.5e-2 * scale_const
-    exposure_scale = 1.0 * scale_const
+    xyz_scale = 1e-3 * scale_const * 1.0
+    features_dc_scale = 2.5e-3 * scale_const * 1.0
+    featuress_rest_scale = 1e-4 * scale_const * 0.0
+    scaling_scale = 5e-3 * scale_const * 1e-10 * 0.0
+    rotation_scale = 1e-3 * scale_const * 1e-10 * 0.0
+    opacity_scale = 2.5e-2 * scale_const * 1.0
+    exposure_scale = 1.0 * scale_const * 0.0
 
     rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale, 
                                       features_dc_scale=features_dc_scale, 
@@ -177,32 +177,41 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     ####### Some tunable parameters #########
     linesearch_alpha = 1.0
     linesearch_alpha_max = 1.0
-    linesearch_alpha_min = 1e-4
+    linesearch_alpha_min = 1e-2
     linesearch_alpha_decrease = 0.8
     linesearch_alpha_increase = 1.2
-    linesearch_alpha_c = 0.01
-    linesearch_force_minstep = False
+    linesearch_alpha_c = 0.001
+    linesearch_force_minstep = True
 
     damp_alpha_max = 0.2
     damp_alpha_min = 1e-2
-    damp_increase = 1.2
-    damp_decrease = 0.8
+    damp_increase = 1.5
+    damp_increase_high = 10.0
+    damp_decrease = 0.6
 
-    pixel_sample_rate_max = 1.0
-    pixel_sample_rate_min = 0.6
+    pixel_sample_rate_max = 0.75
+    pixel_sample_rate_min = 0.75
     pixel_sample_rate = pixel_sample_rate_max
     pixel_sample_rate_increase = 1.2
     pixel_sample_rate_decrease = 0.9
 
     # NOTE: damp needs to be relative to scale^2
     damp_init = 1e-6 * (scale_const ** 2)      
-    damp_min = 1e-8 * (scale_const ** 2)       
+    damp_min = 1e-9 * (scale_const ** 2)       
     damp_max = 1e-4 * (scale_const ** 2)       
+    # damp_init = 1e-4 * (scale_const ** 2)      
+    # damp_min = 1e-5 * (scale_const ** 2)       
+    # damp_max = 1e+4 * (scale_const ** 2)       
     damp = damp_init
 
+    splat_sample_update_freq = 20
     splat_sample_rate = 1.0
 
+    pcg_num_iter = 2
+    pcg_restart_iter = 5
     pcg_tol = 1e-15
+
+    preconditioner_warmup_iter = 1
     ####### Some tunable parameters #########
 
     first_iter = 0
@@ -226,6 +235,9 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     viewpoint_indices = list(range(len(viewpoint_stack)))
     ema_loss_for_log = 0.0
     ema_Ll1depth_for_log = 0.0
+
+    rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
+    preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -266,7 +278,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         ref_g = GaussianModelState.from_gaussians_grad(gaussians)
 
         if iteration > 1200:
-            if iteration % 20 == 0:
+            if iteration % splat_sample_update_freq == 0:
                 num_gaussians = gaussians.get_xyz.shape[0]
                 splat_mask_out = torch.rand(num_gaussians, device="cuda") > splat_sample_rate if splat_sample_rate < 1.0 else None
                 splat_mask = GaussianModelSplatMask(mask_out_filter=splat_mask_out) if splat_mask_out is not None else None
@@ -279,8 +291,9 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         if pixel_sample_rate >= 1.0:
             pixel_mask = None
         else:
+            B = len(viewpoint_cams)
             H, W = viewpoint_cams[0].image_height, viewpoint_cams[0].image_width
-            pixel_mask = torch.rand((H, W), device="cuda") > pixel_sample_rate
+            pixel_mask = torch.rand((B, H, W), device="cuda") > pixel_sample_rate
 
         render_pkg = render(viewpoint_cams[0], gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
@@ -292,17 +305,19 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         u = GaussianModelState.zero_like_gaussians(gaussians)
         n = ref_g_vec.shape[0]
 
-        rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
-        preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
-
         SHSx = partial(cur_state.JTJv, viewpoint_cams=viewpoint_cams, scale=1, use_rescale=True, use_damping=True)
 
         warmup_sample_size = min(5, len(viewpoint_cams))
         warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
-        preconditioner.reset()
-        preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=10)
+        # preconditioner.reset()
+        preconditioner.update(SHSx, warmup_cam_provider, len(viewpoint_cams) / warmup_sample_size, num_iter=preconditioner_warmup_iter)
 
         start_loss, Sg = cur_state.g(viewpoint_cams, 1, use_rescale=True, return_loss=True)
+
+        # Sg_vec = Sg.as_1d_tensor(with_features_rest=False, with_exposure=False)
+        # safe_interact(local=locals(), banner="Before CG solve")
+        # Sg_vec += torch.randn_like(Sg_vec) * 1e-10
+        # Sg.load_1d_tensor(Sg_vec, with_features_rest=False, with_exposure=False)
 
         Sg_norm = Sg.dot(Sg)
         if Sg_norm == 0.0:
@@ -311,22 +326,34 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
         x0 = cur_state.get_initial_solution()
 
-        y = cg_damped(Ax=SHSx,
+        y, num_iter, res_reduc = cg_damped(Ax=SHSx,
                       dot=cur_state.dot,
                       saxpy=cur_state.saxpy,
                       b=-Sg,
                       x0=x0,
                       M=preconditioner,
                       # M=None,
-                      max_iter=10,
+                      max_iter=pcg_num_iter,
                       # max_iter=1,
-                      restart_iter=3,
+                      restart_iter=pcg_restart_iter,
                       verbose=True,
                       tol=pcg_tol,)
 
         print(f"y norm: {y.dot(y):.6f}")
 
         s_newton = rescale * y
+
+        # DEBUG
+        s_adam = -ref_g / (ref_g.abs() + 1e-15) * (rescale)
+        # safe_interact(local=locals(), banner="Debugging step directions...")
+
+        # DEBUG
+        s_adam.xyz_grad *= 1.0
+        s_adam.features_dc_grad *= 1.0
+        s_adam.scaling_grad *= 1.0
+        s_adam.rotation_grad *= 1.0
+        s_adam.opacity_grad *= 1.0
+        # s_newton = s_adam
 
         v = s_newton
         v_stepsize = math.sqrt(v.dot(v))
@@ -361,6 +388,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         gv = g.dot(v)
 
         gs_newton = g.dot(s_newton)
+        negative_search_direction = res_reduc > 1e3
 
         # import code; code.interact(local=locals(), banner="after loss compute")
 
@@ -389,6 +417,11 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
                 losses_alpha.append(loss_alpha_plot.item())
                 alphas.append(alpha)
 
+                if negative_search_direction:
+                    print("Non-descent direction detected in linesearch.")
+                    alpha = 0.0
+                    break
+
                 # Check Armijo condition
                 if loss_alpha.item() <= loss_0 + linesearch_alpha_c * alpha * gs_newton:
                     break
@@ -404,67 +437,6 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
             print("Linesearch found alpha:", alpha, "loss_alpha:", loss_alpha.item())
 
-
-            """
-            for i in range(-20, 100, 1):
-                # step_size = 0.01
-                step_size = 5e-3
-                alpha = i * step_size
-                gaussians_copy = deepcopy(gaussians)
-                gaussians_copy.update_step(alpha * v)
-
-                loss_alpha = 0.0
-                loss_alpha_plot = 0.0
-                for vc in viewpoint_cams:
-                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=pixel_mask)
-                    loss_alpha_plot += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-
-                losses_alpha.append(loss_alpha_plot.item())
-                alphas.append(alpha)
-
-                if loss_alpha.item() < best_loss:
-                    best_loss = loss_alpha.item()
-                    best_alpha = alpha
-
-                losses_first_order.append(loss_0 + alpha * ref_gv)
-                losses_gn.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vJtJv)
-                losses_second_order.append(loss_0 + alpha * ref_gv + 0.5 * (alpha ** 2) * vHv)
-
-                gaussians_copy = deepcopy(gaussians)
-                gaussians_copy.update_step(alpha * v_adam)
-
-                loss_adam = 0.0
-                for vc in viewpoint_cams:
-                    loss_adam += scalar_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight)[0]
-                losses_adam.append(loss_adam.item())
-
-                print("alpha:", alpha, "loss_alpha:", loss_alpha.item(), "loss_adam:", loss_adam.item(), "gn approx:", losses_gn[-1], "2nd order approx:", losses_second_order[-1])
-            """
-
-
-        """
-        plt.figure(figsize=(10, 6))
-        plt.plot(alphas, losses_alpha, label="Actual loss", alpha=0.5)
-        plt.plot(alphas, losses_first_order, label="First order approx", alpha=0.5)
-        plt.plot(alphas, losses_gn, label="Gauss-Newton approx", alpha=0.5)
-        plt.plot(alphas, losses_second_order, label="Second order approx", alpha=0.5)
-        plt.plot(alphas, losses_adam, label="Adam step", alpha=0.5)
-
-        # Plot vertical line at x = 0 and x = v_stepsize
-        plt.axvline(x=0, color='k', linestyle='--', label='No update')
-        # plt.axvline(x=v_stepsize, color='r', linestyle='--', label='Taken step')
-        # plt.axvline(x=v_stepsize_adam, color='g', linestyle='--', label='Adam step')
-
-        plt.xlabel("Step size")
-        plt.ylabel("Loss")
-
-        plt.legend()
-
-        print("before savefig")
-        plt.savefig("loss_vs_alpha.png")
-        plt.close()
-        print("after savefig")
-        """
 
         training_report(None, iteration, None, None, l1_loss, None, [iteration], cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
 
@@ -499,12 +471,15 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
             pixel_sample_rate = min(pixel_sample_rate, pixel_sample_rate_max)
 
         # Update Damping Factor
-        if alpha < damp_alpha_min or v_stepsize == 0:
-            damp *= damp_increase
+        if num_iter == 0 or negative_search_direction:
+            damp *= damp_increase_high
             damp = min(damp, damp_max)
-        elif alpha > damp_alpha_max:
+        elif res_reduc < 1e-1:
             damp *= damp_decrease
             damp = max(damp, damp_min)
+        elif res_reduc > 1e2:
+            damp *= damp_increase
+            damp = min(damp, damp_max)
 
         # safe_interact(local=locals(), banner="after loss vs step size")
 
