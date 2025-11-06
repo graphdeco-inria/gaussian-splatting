@@ -97,7 +97,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     linesearch_gs_min = 1e-4
     linesearch_alpha_decrease = 0.8
     linesearch_alpha_increase = 1.2
-    linesearch_alpha_c = 1.0
+    linesearch_alpha_c = 0.01
     linesearch_force_minstep = True
 
     damp_alpha_max = 0.2
@@ -106,14 +106,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     damp_increase_high = 10.0
     damp_decrease = 0.6
 
-    pixel_sample_rate_max = 0.8
-    pixel_sample_rate_min = 0.8
+    pixel_sample_rate_max = 1.0
+    pixel_sample_rate_min = 1.0
     pixel_sample_rate = pixel_sample_rate_max
     pixel_sample_rate_increase = 1.2
     pixel_sample_rate_decrease = 0.9
 
     splat_sample_update_freq = 20
-    splat_sample_rate = 0.1
+    splat_sample_rate = 1.0
 
     pcg_num_iter = 5
     pcg_restart_iter = 5
@@ -122,7 +122,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     preconditioner_warmup_iter = 1
 
     scale_const = 1e0
-    xyz_scale_init = 1.6e-4 * scale_const * 1.0
+    xyz_scale_init = 1.6e-6 * scale_const * 1.0
     xyz_scale_final = 1.6e-6 * scale_const * 1.0
     # xyz_scale_init = 1.6e-4 * scale_const * 1.0
     # xyz_scale_final = 1.6e-4 * scale_const * 1.0
@@ -133,12 +133,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     features_dc_scale = 2.5e-3 * scale_const * 1.0
     featuress_rest_scale = features_dc_scale / 20.0
-    scaling_scale = 5e-3 * scale_const * 1e-4 * 1.0
-    rotation_scale = 1e-3 * scale_const * 1e-4 * 1.0
+    scaling_scale = 5e-3 * scale_const * 1e-0 * 1.0
+    rotation_scale = 1e-3 * scale_const * 1e-0 * 1.0
     opacity_scale = 2.5e-2 * scale_const * 1.0
     exposure_scale = 1.0 * scale_const * 1.0
 
-    rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale, 
+    rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale,  
                                       features_dc_scale=features_dc_scale, 
                                       features_rest_scale=featuress_rest_scale, 
                                       scaling_scale=scaling_scale, 
@@ -147,7 +147,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                       exposure_scale=1.0)
 
     # NOTE: damp needs to be relative to scale^2
-    damp_init = 1e-9 * (scale_const ** 2)      
+    damp_init = 1e-11 * (scale_const ** 2)      
     damp_min = 1e-12 * (scale_const ** 2)       
     damp_max = 1e-2 * (scale_const ** 2)       
     # damp_init = 1e-4 * (scale_const ** 2)      
@@ -244,7 +244,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             H, W = viewpoint_cams[0].image_height, viewpoint_cams[0].image_width
             pixel_mask = torch.rand((B, H, W), device="cuda") > pixel_sample_rate
 
-        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=False, pixel_mask=pixel_mask)
+        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=True, pixel_mask=pixel_mask)
         cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=splat_mask, rescale=rescale, damp=damp)
 
         SHSx = partial(cur_state.JTJv, viewpoint_cams=viewpoint_cams, scale=scale, use_rescale=True, use_damping=True)

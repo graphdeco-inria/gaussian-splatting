@@ -29,8 +29,16 @@ def compute_batch_loss_block(images, alpha_masks, gt_images, per_image_alphas, p
         ssim_loss_per_pixel = 1.0 - ssim_per_pixel(images, gt_images)
         ssim_loss_per_pixel = ssim_loss_per_pixel.abs()     # This is not in the original implementation, but it should be there to avoid NaNs
 
-        Ll1_per_pixel = per_image_alphas * torch.sqrt(Ll1_per_pixel + 1e-6)
-        ssim_loss_per_pixel = per_image_betas * torch.sqrt(ssim_loss_per_pixel + 1e-6)
+        Ll1_mask = Ll1_per_pixel != 0.0
+        Ll1_per_pixel[Ll1_mask] = torch.sqrt(Ll1_per_pixel[Ll1_mask])
+        Ll1_per_pixel = per_image_alphas * Ll1_per_pixel
+
+        ssim_mask = ssim_loss_per_pixel != 0.0
+        ssim_loss_per_pixel[ssim_mask] = torch.sqrt(ssim_loss_per_pixel[ssim_mask])
+        ssim_loss_per_pixel = per_image_betas * ssim_loss_per_pixel
+
+        # Ll1_per_pixel = per_image_alphas * torch.sqrt(Ll1_per_pixel)
+        # ssim_loss_per_pixel = per_image_betas * torch.sqrt(ssim_loss_per_pixel)
     return Ll1_per_pixel, ssim_loss_per_pixel
 
 def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, train_test_exp,
