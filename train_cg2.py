@@ -81,6 +81,40 @@ def temp_seed(seed):
         np.random.set_state(np_state)
         torch.random.set_rng_state(torch_state)
 
+def build_rotation(r):
+    norm = torch.sqrt(r[:,0]*r[:,0] + r[:,1]*r[:,1] + r[:,2]*r[:,2] + r[:,3]*r[:,3])
+
+    q = r / norm[:, None]
+
+    R = torch.zeros((q.size(0), 3, 3), device='cuda')
+
+    r = q[:, 0]
+    x = q[:, 1]
+    y = q[:, 2]
+    z = q[:, 3]
+
+    R[:, 0, 0] = 1 - 2 * (y*y + z*z)
+    R[:, 0, 1] = 2 * (x*y - r*z)
+    R[:, 0, 2] = 2 * (x*z + r*y)
+    R[:, 1, 0] = 2 * (x*y + r*z)
+    R[:, 1, 1] = 1 - 2 * (x*x + z*z)
+    R[:, 1, 2] = 2 * (y*z - r*x)
+    R[:, 2, 0] = 2 * (x*z - r*y)
+    R[:, 2, 1] = 2 * (y*z + r*x)
+    R[:, 2, 2] = 1 - 2 * (x*x + y*y)
+    return R
+
+def build_scaling_rotation(s, r):
+    L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")
+    R = build_rotation(r)
+
+    L[:,0,0] = s[:,0]
+    L[:,1,1] = s[:,1]
+    L[:,2,2] = s[:,2]
+
+    L = R @ L
+    return L
+
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, jvp_start, num_images):
     splat_mask = None
 
@@ -119,10 +153,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     pcg_restart_iter = 5
     pcg_tol = 1e-15
 
+    preconditioner_reset = True
     preconditioner_warmup_iter = 1
 
     scale_const = 1e0
-    xyz_scale_init = 1.6e-6 * scale_const * 1.0
+    xyz_scale_init = 1.6e-4 * scale_const * 1.0
     xyz_scale_final = 1.6e-6 * scale_const * 1.0
     # xyz_scale_init = 1.6e-4 * scale_const * 1.0
     # xyz_scale_final = 1.6e-4 * scale_const * 1.0
@@ -156,6 +191,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     damp_res_target = 1e-4
     damp = damp_init
 
+    noise_lr = 5e3
+
     ####### Some tunable parameters #########
 
     first_iter = 0
@@ -180,11 +217,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack = scene.getTrainCameras().copy()
     viewpoint_indices = list(range(len(viewpoint_stack)))
 
+    preconditioner = None
+
     ema_loss_for_log = 0.0
     ema_Ll1depth_for_log = 0.0
-
-    rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
-    preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
 
     with torch.no_grad():
         training_report(None, first_iter, None, None, l1_loss, None, testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, jvp_start, val_indices=None)
@@ -252,8 +288,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         warmup_sample_size = min(5, len(viewpoint_cams))
         warmup_scale = len(viewpoint_cams) / warmup_sample_size
         warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
-        # preconditioner.reset()
-        preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=preconditioner_warmup_iter)
+
+        if preconditioner is None or preconditioner_reset:
+            rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
+            preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
+            preconditioner.reset()
+            preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=100)
+        else:
+            preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=preconditioner_warmup_iter)
 
         start_loss, Sg = cur_state.g(viewpoint_cams, scale, use_rescale=True, return_loss=True)
         g = cur_state.g(viewpoint_cams, scale, use_rescale=True)
@@ -291,8 +333,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # DEBUG 1
         y_vec = y.as_1d_tensor()
-        mask = y_vec.abs() > 1e-0
-        y_vec[mask] = 1e-0 * torch.sign(y_vec[mask])
+        thresh = 1e+0
+        y_vec.clip_(min=-thresh, max=thresh)
+        # mask = y_vec.abs() > thresh
+        # y_vec[mask] = thresh * torch.sign(y_vec[mask])
         y.load_1d_tensor(y_vec)
 
         # DEBUG 2
@@ -376,6 +420,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             print("Update with s_newton")
             gaussians.update_step(alpha * s_newton)
+
+            print("Inject noise")
+            L = build_scaling_rotation(gaussians.get_scaling, gaussians.get_rotation)
+            actual_covariance = L @ L.transpose(1, 2)
+
+            def op_sigmoid(x, k=100, x0=0.995):
+                return 1 / (1 + torch.exp(-k * (x - x0)))
+            
+            noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*noise_lr*rescale.xyz_scale
+            noise = torch.bmm(actual_covariance, noise.unsqueeze(-1)).squeeze(-1)
+            gaussians._xyz.add_(noise)
 
             iter_end.record()
 
