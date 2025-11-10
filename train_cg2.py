@@ -149,11 +149,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     splat_sample_update_freq = 20
     splat_sample_rate = 1.0
 
-    pcg_num_iter = 5
+    pcg_num_iter = 2
     pcg_restart_iter = 5
     pcg_tol = 1e-15
 
     preconditioner_reset = True
+    preconditioner_reset_iter = 200
     preconditioner_warmup_iter = 1
 
     scale_const = 1e0
@@ -182,7 +183,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                       exposure_scale=1.0)
 
     # NOTE: damp needs to be relative to scale^2
-    damp_init = 1e-11 * (scale_const ** 2)      
+    damp_init = 1e-12 * (scale_const ** 2)      
     damp_min = 1e-12 * (scale_const ** 2)       
     damp_max = 1e-2 * (scale_const ** 2)       
     # damp_init = 1e-4 * (scale_const ** 2)      
@@ -191,7 +192,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     damp_res_target = 1e-4
     damp = damp_init
 
-    noise_lr = 5e3
+    noise_opacity_thresh = 0.995
+    noise_lr = 5e5
+    clip_thresh = 4e0
 
     ####### Some tunable parameters #########
 
@@ -285,7 +288,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         SHSx = partial(cur_state.JTJv, viewpoint_cams=viewpoint_cams, scale=scale, use_rescale=True, use_damping=True)
 
-        warmup_sample_size = min(5, len(viewpoint_cams))
+        warmup_sample_size = min(1, len(viewpoint_cams))
         warmup_scale = len(viewpoint_cams) / warmup_sample_size
         warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
 
@@ -293,7 +296,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
             preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
             preconditioner.reset()
-            preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=100)
+            preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=preconditioner_reset_iter)
         else:
             preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=preconditioner_warmup_iter)
 
@@ -333,11 +336,26 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # DEBUG 1
         y_vec = y.as_1d_tensor()
-        thresh = 1e+0
-        y_vec.clip_(min=-thresh, max=thresh)
-        # mask = y_vec.abs() > thresh
-        # y_vec[mask] = thresh * torch.sign(y_vec[mask])
+        y_vec.clip_(min=-clip_thresh, max=clip_thresh)
         y.load_1d_tensor(y_vec)
+
+        # # DEBUG 2
+        # # safe_interact(local=locals(), banner="after CG solve")
+        # low_clip_thresh = clip_thresh * 0.1
+        # opacity_mask = (gaussians.get_opacity >= 0.0).squeeze(-1)
+        # y.xyz_grad[opacity_mask].clip_(min=-clip_thresh, max=clip_thresh)
+        # y.features_dc_grad[opacity_mask].clip_(min=-clip_thresh, max=clip_thresh)
+        # y.features_rest_grad[opacity_mask].clip_(min=-clip_thresh, max=clip_thresh)
+        # y.scaling_grad[opacity_mask].clip_(min=-clip_thresh, max=clip_thresh)
+        # y.rotation_grad[opacity_mask].clip_(min=-clip_thresh, max=clip_thresh)
+        # y.opacity_grad[opacity_mask].clip_(min=-clip_thresh, max=clip_thresh)
+        # y.xyz_grad[~opacity_mask].clip_(min=-low_clip_thresh, max=low_clip_thresh)
+        # y.features_dc_grad[~opacity_mask].clip_(min=-low_clip_thresh, max=low_clip_thresh)
+        # y.features_rest_grad[~opacity_mask].clip_(min=-low_clip_thresh, max=low_clip_thresh)
+        # y.scaling_grad[~opacity_mask].clip_(min=-low_clip_thresh, max=low_clip_thresh)
+        # y.rotation_grad[~opacity_mask].clip_(min=-low_clip_thresh, max=low_clip_thresh)
+        # y.opacity_grad[~opacity_mask].clip_(min=-low_clip_thresh, max=low_clip_thresh)
+
 
         # DEBUG 2
         # print("DEBUG 2: Overriding Newton step with -g")
@@ -361,12 +379,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # import code; code.interact(local=locals(), banner="after loss compute")
 
         with torch.no_grad():
-            loss_0_test = 0.0
             loss_0 = 0.0
+            # for vc_i, vc in enumerate(viewpoint_stack):
+            #     loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
+            # loss_0 *= 1.0
             for vc_i, vc in enumerate(viewpoint_stack):
                 loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
-            loss_0 *= 1.0 # scale
+            loss_0 *= scale
 
+            loss_0_test = 0.0
             for vc_i, vc in enumerate(test_viewpoint_stack):
                 loss_0_test += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
 
@@ -380,12 +401,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 loss_alpha_test = 0.0
                 loss_alpha = 0.0
-                for vc_i, vc in enumerate(viewpoint_stack):
-                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-                loss_alpha *= 1.0
-                # for vc_i, vc in enumerate(viewpoint_cams):
+                # for vc_i, vc in enumerate(viewpoint_stack):
                 #     loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-                # loss_alpha *= scale
+                # loss_alpha *= 1.0
+                for vc_i, vc in enumerate(viewpoint_cams):
+                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
+                loss_alpha *= scale
                 for vc_i, vc in enumerate(test_viewpoint_stack):
                     loss_alpha_test += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
                 print(f" Linesearch alpha: {alpha:.3e}, loss_alpha: {loss_alpha.item():.6f}, test loss_alpha_test: {loss_alpha_test.item():.6f}")
@@ -421,16 +442,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             print("Update with s_newton")
             gaussians.update_step(alpha * s_newton)
 
-            print("Inject noise")
-            L = build_scaling_rotation(gaussians.get_scaling, gaussians.get_rotation)
-            actual_covariance = L @ L.transpose(1, 2)
-
-            def op_sigmoid(x, k=100, x0=0.995):
-                return 1 / (1 + torch.exp(-k * (x - x0)))
-            
-            noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*noise_lr*rescale.xyz_scale
-            noise = torch.bmm(actual_covariance, noise.unsqueeze(-1)).squeeze(-1)
-            gaussians._xyz.add_(noise)
 
             iter_end.record()
 
@@ -475,6 +486,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+
+            print("Inject noise")
+            L = build_scaling_rotation(gaussians.get_scaling, gaussians.get_rotation)
+            actual_covariance = L @ L.transpose(1, 2)
+
+            def op_sigmoid(x, k=100, x0=noise_opacity_thresh):
+                return 1 / (1 + torch.exp(-k * (x - x0)))
+            
+            noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*noise_lr*rescale.xyz_scale
+            noise = torch.bmm(actual_covariance, noise.unsqueeze(-1)).squeeze(-1)
+            gaussians._xyz.add_(noise)
 
         # safe_interact(local=locals(), banner="after loss vs step size")
 
