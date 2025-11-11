@@ -169,8 +169,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     features_dc_scale = 2.5e-3 * scale_const * 1.0
     featuress_rest_scale = features_dc_scale / 20.0
-    scaling_scale = 5e-3 * scale_const * 1e-0 * 1.0
-    rotation_scale = 1e-3 * scale_const * 1e-0 * 1.0
+    scaling_scale = 5e-3 * scale_const * 1e+1 * 1.0
+    rotation_scale = 1e-3 * scale_const * 1e-4 * 1.0
     opacity_scale = 2.5e-2 * scale_const * 1.0
     exposure_scale = 1.0 * scale_const * 1.0
 
@@ -193,7 +193,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     damp = damp_init
 
     noise_opacity_thresh = 0.995
-    noise_lr = 5e5
+    noise_lr = 5e4
     clip_thresh = 4e0
 
     ####### Some tunable parameters #########
@@ -380,12 +380,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         with torch.no_grad():
             loss_0 = 0.0
-            # for vc_i, vc in enumerate(viewpoint_stack):
-            #     loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
-            # loss_0 *= 1.0
             for vc_i, vc in enumerate(viewpoint_stack):
                 loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
-            loss_0 *= scale
+            loss_0 *= 1.0
+            # for vc_i, vc in enumerate(viewpoint_cams):
+            #     loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
+            # loss_0 *= scale
 
             loss_0_test = 0.0
             for vc_i, vc in enumerate(test_viewpoint_stack):
@@ -401,12 +401,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 loss_alpha_test = 0.0
                 loss_alpha = 0.0
-                # for vc_i, vc in enumerate(viewpoint_stack):
-                #     loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-                # loss_alpha *= 1.0
-                for vc_i, vc in enumerate(viewpoint_cams):
+                for vc_i, vc in enumerate(viewpoint_stack):
                     loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-                loss_alpha *= scale
+                loss_alpha *= 1.0
+                # for vc_i, vc in enumerate(viewpoint_cams):
+                #     loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
+                # loss_alpha *= scale
                 for vc_i, vc in enumerate(test_viewpoint_stack):
                     loss_alpha_test += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
                 print(f" Linesearch alpha: {alpha:.3e}, loss_alpha: {loss_alpha.item():.6f}, test loss_alpha_test: {loss_alpha_test.item():.6f}")
