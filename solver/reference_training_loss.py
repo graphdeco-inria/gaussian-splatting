@@ -9,7 +9,8 @@ from utils.loss_utils import l1_loss, ssim
 def reference_training_loss(iteration, opt, viewpoint_cam, gaussians, pipe, bg, train_test_exp,
                          depth_l1_weight, batch_stats=None,
                          SPARSE_ADAM_AVAILABLE=False, FUSED_SSIM_AVAILABLE=False, 
-                         pixel_mask=None
+                         pixel_mask=None,
+                         disable_ssim=False,
                          ):
 
     render_pkg = reference_render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
@@ -31,13 +32,21 @@ def reference_training_loss(iteration, opt, viewpoint_cam, gaussians, pipe, bg, 
     if pixel_mask is not None:
         image[:,pixel_mask] = gt_image[:,pixel_mask]
 
-    Ll1 = l1_loss(image, gt_image)
-    if FUSED_SSIM_AVAILABLE:
-        ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
-    else:
-        ssim_value = ssim(image, gt_image)
+    # Disabling SSIM also entails using L2 loss
+    if not disable_ssim:
 
-    loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+        Ll1 = l1_loss(image, gt_image)
+        if FUSED_SSIM_AVAILABLE:
+            ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+        else:
+            ssim_value = ssim(image, gt_image)
+
+        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+
+    else:
+        Ll2 = torch.linalg.vector_norm((image - gt_image).flatten(), ord=2) / math.sqrt(image.numel())
+
+        loss = Ll2
 
     # Depth regularization
     Ll1depth_pure = 0.0

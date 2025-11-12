@@ -115,6 +115,14 @@ def build_scaling_rotation(s, r):
     L = R @ L
     return L
 
+def compute_ref_loss(ref_loss_func, gaussians, viewpoint_cams, scale):
+    ref_loss = 0.0
+    for vc_i, vc in enumerate(viewpoint_cams):
+        ref_loss_i = ref_loss_func(gaussians=gaussians, viewpoint_cam=vc) ** 2
+        ref_loss_i *= scale
+        ref_loss += ref_loss_i.item()
+    return ref_loss
+
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, jvp_start, num_images):
     splat_mask = None
 
@@ -124,11 +132,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     cameras_extent = 7.5
     model_path = ""
     ####### Some tunable parameters #########
+    disable_ssim = True
+
     linesearch_alpha = 1e-0
     linesearch_alpha_min = 1e-2
     # linesearch_alpha = 1.0
     # linesearch_alpha_min = 1.0
-    linesearch_gs_min = 1e-4
+    linesearch_gs_min = 1e-12
     linesearch_alpha_decrease = 0.8
     linesearch_alpha_increase = 1.2
     linesearch_alpha_c = 0.01
@@ -183,8 +193,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                       exposure_scale=1.0)
 
     # NOTE: damp needs to be relative to scale^2
-    damp_init = 1e-12 * (scale_const ** 2)      
-    damp_min = 1e-12 * (scale_const ** 2)       
+    damp_init = 1e-9 * (scale_const ** 2)      
+    damp_min = 1e-9 * (scale_const ** 2)       
     damp_max = 1e-2 * (scale_const ** 2)       
     # damp_init = 1e-4 * (scale_const ** 2)      
     # damp_min = 1e-5 * (scale_const ** 2)       
@@ -283,13 +293,26 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             H, W = viewpoint_cams[0].image_height, viewpoint_cams[0].image_width
             pixel_mask = torch.rand((B, H, W), device="cuda") > pixel_sample_rate
 
-        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=True, pixel_mask=pixel_mask)
+        # # DEBUG
+        # ref_loss = 0.0
+        # gaussians.zero_grad()
+        # for vc_i, vc in enumerate(viewpoint_cams):
+        #     with torch.enable_grad():
+        #         ref_loss_i = reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=disable_ssim, pixel_mask=pixel_mask) ** 2
+        #         ref_loss_i *= scale
+        #         ref_loss += ref_loss_i.item()
+        #         ref_loss_i.backward()
+        # ref_g = GaussianModelState.from_gaussians_grad(gaussians)
+        # # DEBUG END
+
+
+        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=disable_ssim, pixel_mask=pixel_mask)
         cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=splat_mask, rescale=rescale, damp=damp)
 
         SHSx = partial(cur_state.JTJv, viewpoint_cams=viewpoint_cams, scale=scale, use_rescale=True, use_damping=True)
 
         warmup_sample_size = min(1, len(viewpoint_cams))
-        warmup_scale = len(viewpoint_cams) / warmup_sample_size
+        warmup_scale = len(viewpoint_stack) / warmup_sample_size
         warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
 
         if preconditioner is None or preconditioner_reset:
@@ -301,7 +324,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=preconditioner_warmup_iter)
 
         start_loss, Sg = cur_state.g(viewpoint_cams, scale, use_rescale=True, return_loss=True)
-        g = cur_state.g(viewpoint_cams, scale, use_rescale=True)
+        g = cur_state.g(viewpoint_cams, scale, use_rescale=False)
+
+        print("start loss:", start_loss)
 
         # Sg_vec = Sg.as_1d_tensor(with_features_rest=False, with_exposure=False)
         # safe_interact(local=locals(), banner="Before CG solve")
@@ -321,7 +346,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                       b=-Sg,
                       x0=x0,
                       M=preconditioner,
-                      # M=None,
                       max_iter=pcg_num_iter,
                       # max_iter=1,
                       restart_iter=pcg_restart_iter,
@@ -378,18 +402,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # import code; code.interact(local=locals(), banner="after loss compute")
 
-        with torch.no_grad():
-            loss_0 = 0.0
-            for vc_i, vc in enumerate(viewpoint_stack):
-                loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
-            loss_0 *= 1.0
-            # for vc_i, vc in enumerate(viewpoint_cams):
-            #     loss_0 += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
-            # loss_0 *= scale
+        ref_loss_func = partial(reference_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=disable_ssim, pixel_mask=None)
 
-            loss_0_test = 0.0
-            for vc_i, vc in enumerate(test_viewpoint_stack):
-                loss_0_test += reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None).item()
+        with torch.no_grad():
+            loss_0 = compute_ref_loss(ref_loss_func, gaussians, viewpoint_stack, 1.0)
+            loss_0_test = compute_ref_loss(ref_loss_func, gaussians, test_viewpoint_stack, 1.0)
 
             print("Starting linesearch from loss_0:", loss_0, " test loss_0_test:", loss_0_test)
 
@@ -399,17 +416,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 gaussians_copy = deepcopy(gaussians)
                 gaussians_copy.update_step(alpha * s_newton)
 
-                loss_alpha_test = 0.0
-                loss_alpha = 0.0
-                for vc_i, vc in enumerate(viewpoint_stack):
-                    loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-                loss_alpha *= 1.0
-                # for vc_i, vc in enumerate(viewpoint_cams):
-                #     loss_alpha += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-                # loss_alpha *= scale
-                for vc_i, vc in enumerate(test_viewpoint_stack):
-                    loss_alpha_test += reference_training_loss(iteration, opt, vc, gaussians_copy, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-                print(f" Linesearch alpha: {alpha:.3e}, loss_alpha: {loss_alpha.item():.6f}, test loss_alpha_test: {loss_alpha_test.item():.6f}")
+                loss_alpha = compute_ref_loss(ref_loss_func, gaussians_copy, viewpoint_stack, 1.0)
+                loss_alpha_test = compute_ref_loss(ref_loss_func, gaussians_copy, test_viewpoint_stack, 1.0)
+                print(f" Linesearch alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, test loss_alpha_test: {loss_alpha_test:.6f}")
 
 
                 if math.fabs(gs_newton) < linesearch_gs_min:
@@ -423,7 +432,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     break
 
                 # Check Armijo condition
-                if loss_alpha.item() <= loss_0 + linesearch_alpha_c * alpha * gs_newton:
+                if loss_alpha <= loss_0 + linesearch_alpha_c * alpha * gs_newton:
                     break
 
                 alpha *= linesearch_alpha_decrease
@@ -435,7 +444,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                         alpha = 0.0
                     break
 
-            print(f"Linesearch found alpha: {alpha:.3e}, loss_alpha: {loss_alpha.item():.6f}, loss_alpha_test: {loss_alpha_test.item():.6f}")
+            print(f"Linesearch found alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, loss_alpha_test: {loss_alpha_test:.6f}")
 
 
 
