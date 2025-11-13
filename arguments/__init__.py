@@ -97,6 +97,70 @@ class OptimizationParams(ParamGroup):
         self.depth_l1_weight_final = 0.01
         self.random_background = False
         self.optimizer_type = "default"
+
+
+        self.jvp_start = 15_001
+        self.num_images = 5
+
+        self.disable_ssim = True
+
+        self.linesearch_alpha = 1e-0
+        self.linesearch_alpha_min = 1e-2
+        self.linesearch_gs_min = 1e-12
+        self.linesearch_alpha_decrease = 0.8
+        self.linesearch_alpha_increase = 1.2
+        self.linesearch_alpha_c = 0.01
+        self.linesearch_force_minstep = True
+        self.linesearch_val_images = 1.0
+
+        self.damp_alpha_max = 0.2
+        self.damp_alpha_min = 1e-2
+        self.damp_increase = 1.5
+        self.damp_increase_high = 10.0
+        self.damp_decrease = 0.6
+
+        self.pixel_sample_rate_max = 1.0
+        self.pixel_sample_rate_min = 1.0
+        self.pixel_sample_rate = self.pixel_sample_rate_max
+        self.pixel_sample_rate_increase = 1.2
+        self.pixel_sample_rate_decrease = 0.9
+
+        self.splat_sample_update_freq = 20
+        self.splat_sample_rate = 1.0
+
+        self.pcg_num_iter = 2
+        self.pcg_restart_iter = 5
+        self.pcg_tol = 1e-15
+
+        self.use_preconditioner = True
+        self.preconditioner_reset = True
+        self.preconditioner_reset_iter = 200
+        self.preconditioner_warmup_iter = 10
+
+        scale_const = 1e0
+        self.xyz_scale_init = 1.6e-4 * scale_const * 1.0
+        self.xyz_scale_final = 1.6e-6 * scale_const * 1.0
+        self.xyz_scale_decay = 0.999
+        self.xyz_scale_max_steps = self.iterations
+
+        self.features_dc_scale = 2.5e-3 * scale_const * 1.0
+        self.featuress_rest_scale = self.features_dc_scale / 20.0
+        self.scaling_scale = 5e-3 * scale_const * 1e+1 * 1.0
+        self.rotation_scale = 1e-3 * scale_const * 1e-4 * 1.0
+        self.opacity_scale = 2.5e-2 * scale_const * 1.0
+        self.exposure_scale = 1.0 * scale_const * 1.0
+
+        # NOTE: damp needs to be relative to scale^2
+        self.damp_init = 1e-9 * (scale_const ** 2)      
+        self.damp_min = 1e-9 * (scale_const ** 2)       
+        self.damp_max = 1e-2 * (scale_const ** 2)       
+        self.damp_res_target = 1e-4
+        self.damp = self.damp_init
+
+        self.noise_opacity_thresh = 0.995
+        self.noise_lr = 5e4
+        self.clip_thresh = 4e0
+
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):

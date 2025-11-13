@@ -316,23 +316,25 @@ class GaussianModelState:
                 splat_mask=splat_mask)
 
 
-    def clip(self):
-        feat_dc_grad_norm = self.features_dc_grad.norm()
-        feat_dc_grad_norm_max = self.features_dc_grad.norm(dim=-1).max()
-        feat_dc_grad_max = self.features_dc_grad.abs().max()
-        measured_norm = feat_dc_grad_norm
-        target_norm = min(measured_norm, 8.0)
-        print(f"Max per-gaussian features_dc grad norm: {feat_dc_grad_norm:.4e}")
-        print(f"Max per-gaussian features_dc grad norm: {feat_dc_grad_norm_max:.4e}")
-        print(f"Max per-gaussian features_dc grad abs: {feat_dc_grad_max:.4e}")
-        print(f"Clipping ratio: {target_norm / measured_norm:.4e}")
-        self.xyz_grad *= target_norm / measured_norm
-        self.features_dc_grad *= target_norm / measured_norm
-        self.features_rest_grad *= target_norm / measured_norm
-        self.scaling_grad *= target_norm / measured_norm
-        self.rotation_grad *= target_norm / measured_norm
-        self.opacity_grad *= target_norm / measured_norm
-        self.exposure_grad *= target_norm / measured_norm
+    def clip_(self, other):
+        if isinstance(other, (int, float)):
+            self.xyz_grad.clamp_(-other, other)
+            self.features_dc_grad.clamp_(-other, other)
+            self.features_rest_grad.clamp_(-other, other)
+            self.scaling_grad.clamp_(-other, other)
+            self.rotation_grad.clamp_(-other, other)
+            self.opacity_grad.clamp_(-other, other)
+            self.exposure_grad.clamp_(-other, other)
+        elif isinstance(other, GaussianModelScaleMatrix):
+            self.xyz_grad.clamp_(-other.xyz_scale, other.xyz_scale)
+            self.features_dc_grad.clamp_(-other.features_dc_scale, other.features_dc_scale)
+            self.features_rest_grad.clamp_(-other.features_rest_scale, other.features_rest_scale)
+            self.scaling_grad.clamp_(-other.scaling_scale, other.scaling_scale)
+            self.rotation_grad.clamp_(-other.rotation_scale, other.rotation_scale)
+            self.opacity_grad.clamp_(-other.opacity_scale, other.opacity_scale)
+            self.exposure_grad.clamp_(-other.exposure_scale, other.exposure_scale)
+        else:
+            raise TypeError(f"Can only clip by scalar values or GaussianModelScaleMatrix, not {type(other)}")
 
     def block_average_and_expand(self):
         self.xyz_grad = self.xyz_grad.mean(dim=-1, keepdim=True).expand_as(self.xyz_grad)

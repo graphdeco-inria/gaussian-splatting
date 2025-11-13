@@ -123,7 +123,7 @@ def compute_ref_loss(ref_loss_func, gaussians, viewpoint_cams, scale):
         ref_loss += ref_loss_i.item()
     return ref_loss
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, jvp_start, num_images):
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     splat_mask = None
 
     ####### Some fixed parameters #########
@@ -131,85 +131,22 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     white_background = False
     cameras_extent = 7.5
     model_path = ""
-    ####### Some tunable parameters #########
-    disable_ssim = True
+    ####### Some fixed parameters #########
 
-    linesearch_alpha = 1e-0
-    linesearch_alpha_min = 1e-2
-    # linesearch_alpha = 1.0
-    # linesearch_alpha_min = 1.0
-    linesearch_gs_min = 1e-12
-    linesearch_alpha_decrease = 0.8
-    linesearch_alpha_increase = 1.2
-    linesearch_alpha_c = 0.01
-    linesearch_force_minstep = True
-
-    damp_alpha_max = 0.2
-    damp_alpha_min = 1e-2
-    damp_increase = 1.5
-    damp_increase_high = 10.0
-    damp_decrease = 0.6
-
-    pixel_sample_rate_max = 1.0
-    pixel_sample_rate_min = 1.0
-    pixel_sample_rate = pixel_sample_rate_max
-    pixel_sample_rate_increase = 1.2
-    pixel_sample_rate_decrease = 0.9
-
-    splat_sample_update_freq = 20
-    splat_sample_rate = 1.0
-
-    pcg_num_iter = 2
-    pcg_restart_iter = 5
-    pcg_tol = 1e-15
-
-    preconditioner_reset = True
-    preconditioner_reset_iter = 200
-    preconditioner_warmup_iter = 1
-
-    scale_const = 1e0
-    xyz_scale_init = 1.6e-4 * scale_const * 1.0
-    xyz_scale_final = 1.6e-6 * scale_const * 1.0
-    # xyz_scale_init = 1.6e-4 * scale_const * 1.0
-    # xyz_scale_final = 1.6e-4 * scale_const * 1.0
-    xyz_scale_decay = 0.999
-    xyz_scale_max_steps = opt.iterations
-    xyz_scale = xyz_scale_init
-    # xyz_scale = xyz_scale_init * (xyz_scale_decay ** (min(opt.iterations, xyz_scale_max_steps) / xyz_scale_max_steps))
-
-    features_dc_scale = 2.5e-3 * scale_const * 1.0
-    featuress_rest_scale = features_dc_scale / 20.0
-    scaling_scale = 5e-3 * scale_const * 1e+1 * 1.0
-    rotation_scale = 1e-3 * scale_const * 1e-4 * 1.0
-    opacity_scale = 2.5e-2 * scale_const * 1.0
-    exposure_scale = 1.0 * scale_const * 1.0
+    pixel_sample_rate = opt.pixel_sample_rate_max
+    xyz_scale = opt.xyz_scale_init
+    damp = opt.damp_init
 
     rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale,  
-                                      features_dc_scale=features_dc_scale, 
-                                      features_rest_scale=featuress_rest_scale, 
-                                      scaling_scale=scaling_scale, 
-                                      rotation_scale=rotation_scale, 
-                                      opacity_scale=opacity_scale, 
-                                      exposure_scale=1.0)
-
-    # NOTE: damp needs to be relative to scale^2
-    damp_init = 1e-9 * (scale_const ** 2)      
-    damp_min = 1e-9 * (scale_const ** 2)       
-    damp_max = 1e-2 * (scale_const ** 2)       
-    # damp_init = 1e-4 * (scale_const ** 2)      
-    # damp_min = 1e-5 * (scale_const ** 2)       
-    # damp_max = 1e+4 * (scale_const ** 2)       
-    damp_res_target = 1e-4
-    damp = damp_init
-
-    noise_opacity_thresh = 0.995
-    noise_lr = 5e4
-    clip_thresh = 4e0
-
-    ####### Some tunable parameters #########
+                                      features_dc_scale=opt.features_dc_scale, 
+                                      features_rest_scale=opt.featuress_rest_scale, 
+                                      scaling_scale=opt.scaling_scale, 
+                                      rotation_scale=opt.rotation_scale, 
+                                      opacity_scale=opt.opacity_scale, 
+                                      exposure_scale=opt.exposure_scale)
 
     first_iter = 0
-    tb_writer = prepare_output_and_logger(dataset)
+    tb_writer = prepare_output_and_logger(dataset, opt)
     gaussians = GaussianModel(dataset.sh_degree, opt.optimizer_type)
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
@@ -236,7 +173,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     ema_Ll1depth_for_log = 0.0
 
     with torch.no_grad():
-        training_report(None, first_iter, None, None, l1_loss, None, testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, jvp_start, val_indices=None)
+        training_report(None, first_iter, None, None, l1_loss, None, testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None)
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -260,7 +197,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         gaussians.update_learning_rate(iteration)
 
-        num_batch_cameras = min(num_images, len(viewpoint_indices))
+        num_batch_cameras = min(opt.num_images, len(viewpoint_indices))
         rand_indices = np.random.choice(viewpoint_indices, num_batch_cameras, replace=False)
         scale = len(viewpoint_indices) / num_batch_cameras
 
@@ -269,6 +206,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             viewpoint_cam = viewpoint_stack[rand_idx]
             viewpoint_cams.append(viewpoint_cam)
 
+        num_val_images = int(len(viewpoint_stack) * opt.linesearch_val_images)
+        val_stride = max(1, len(scene.getTrainCameras()) // num_val_images)
+        val_indices = list(range(0, len(scene.getTrainCameras()), val_stride))
+        val_viewpoint_stack = [viewpoint_stack[i] for i in val_indices]
+        val_scale = len(viewpoint_stack) / len(val_viewpoint_stack)
+
         # Render
         if (iteration - 1) == debug_from:
             pipe.debug = True
@@ -276,9 +219,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
         if iteration > 1200:
-            if iteration % splat_sample_update_freq == 0:
+            if iteration % opt.splat_sample_update_freq == 0:
                 num_gaussians = gaussians.get_xyz.shape[0]
-                splat_mask_out = torch.rand(num_gaussians, device="cuda") > splat_sample_rate if splat_sample_rate < 1.0 else None
+                splat_mask_out = torch.rand(num_gaussians, device="cuda") > opt.splat_sample_rate if opt.splat_sample_rate < 1.0 else None
                 splat_mask = GaussianModelSplatMask(mask_out_filter=splat_mask_out) if splat_mask_out is not None else None
         else:
             splat_mask = None
@@ -298,30 +241,34 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # gaussians.zero_grad()
         # for vc_i, vc in enumerate(viewpoint_cams):
         #     with torch.enable_grad():
-        #         ref_loss_i = reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=disable_ssim, pixel_mask=pixel_mask) ** 2
+        #         ref_loss_i = reference_training_loss(iteration, opt, vc, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=opt.disable_ssim, pixel_mask=pixel_mask) ** 2
         #         ref_loss_i *= scale
         #         ref_loss += ref_loss_i.item()
         #         ref_loss_i.backward()
         # ref_g = GaussianModelState.from_gaussians_grad(gaussians)
         # # DEBUG END
 
-
-        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=disable_ssim, pixel_mask=pixel_mask)
+        loss_func = partial(batch_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=background, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=opt.disable_ssim, pixel_mask=pixel_mask)
         cur_state = LinearSolverFunctions(loss_func, gaussians, batch_size=5, param_mask=None, splat_mask=splat_mask, rescale=rescale, damp=damp)
 
-        SHSx = partial(cur_state.JTJv, viewpoint_cams=viewpoint_cams, scale=scale, use_rescale=True, use_damping=True)
+        SJTJSx = partial(cur_state.JTJv, viewpoint_cams=viewpoint_cams, scale=scale, use_rescale=True, use_damping=True)
+        JTJx = partial(cur_state.JTJv, viewpoint_cams=viewpoint_cams, scale=scale, use_rescale=False, use_damping=False)
 
         warmup_sample_size = min(1, len(viewpoint_cams))
         warmup_scale = len(viewpoint_stack) / warmup_sample_size
         warmup_cam_provider = CamProvider(viewpoint_cams, mode="random", max_stride=1, sample_size=warmup_sample_size)
 
-        if preconditioner is None or preconditioner_reset:
-            rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
-            preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
-            preconditioner.reset()
-            preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=preconditioner_reset_iter)
-        else:
-            preconditioner.update(SHSx, warmup_cam_provider, warmup_scale, num_iter=preconditioner_warmup_iter)
+        if opt.use_preconditioner:
+            if preconditioner is None or opt.preconditioner_reset:
+                rademacher_gen = partial(GaussianModelState.rademacher_like_gaussians, gaussians)
+                preconditioner = AdaHessianPreconditioner(rademacher_gen, beta2=0.999, eps=1e-16, hessian_power=1.0)
+                preconditioner.reset()
+                preconditioner.update(SJTJSx, warmup_cam_provider, warmup_scale, num_iter=opt.preconditioner_reset_iter)
+            else:
+                preconditioner.update(SJTJSx, warmup_cam_provider, warmup_scale, num_iter=opt.preconditioner_warmup_iter)
+
+            # if preconditioner is not None:
+            #     preconditioner.set_rescale_and_damp(rescale, damp)
 
         start_loss, Sg = cur_state.g(viewpoint_cams, scale, use_rescale=True, return_loss=True)
         g = cur_state.g(viewpoint_cams, scale, use_rescale=False)
@@ -340,17 +287,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         x0 = cur_state.get_initial_solution()
 
-        y, res, num_iter, res_reduc = cg_damped(Ax=SHSx,
+        y, res, num_iter, res_reduc = cg_damped(Ax=SJTJSx,
                       dot=cur_state.dot,
                       saxpy=cur_state.saxpy,
                       b=-Sg,
                       x0=x0,
                       M=preconditioner,
-                      max_iter=pcg_num_iter,
+                      max_iter=opt.pcg_num_iter,
                       # max_iter=1,
-                      restart_iter=pcg_restart_iter,
+                      restart_iter=opt.pcg_restart_iter,
                       verbose=True,
-                      tol=pcg_tol,)
+                      tol=opt.pcg_tol,)
 
         y_norm = math.sqrt(y.dot(y))
         print(f"y norm: {y_norm:.2e}")
@@ -358,9 +305,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             print("Zero step detected, skipping update.")
             continue
 
+        num_truncated_positions = (y.xyz_grad.abs() >= opt.clip_thresh).sum().item()
+        percentage_truncated = num_truncated_positions / y.xyz_grad.flatten().shape[0] * 100.0
+        print(f"Xyz truncated percentage: {percentage_truncated:.6f} %")
+
         # DEBUG 1
         y_vec = y.as_1d_tensor()
-        y_vec.clip_(min=-clip_thresh, max=clip_thresh)
+        y_vec.clip_(min=-opt.clip_thresh, max=opt.clip_thresh)
         y.load_1d_tensor(y_vec)
 
         # # DEBUG 2
@@ -402,28 +353,32 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # import code; code.interact(local=locals(), banner="after loss compute")
 
-        ref_loss_func = partial(reference_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=disable_ssim, pixel_mask=None)
+        ref_loss_func = partial(reference_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=opt.disable_ssim, pixel_mask=None)
 
         with torch.no_grad():
-            loss_0 = compute_ref_loss(ref_loss_func, gaussians, viewpoint_stack, 1.0)
+            loss_0 = compute_ref_loss(ref_loss_func, gaussians, val_viewpoint_stack, val_scale)
             loss_0_test = compute_ref_loss(ref_loss_func, gaussians, test_viewpoint_stack, 1.0)
 
             print("Starting linesearch from loss_0:", loss_0, " test loss_0_test:", loss_0_test)
 
-            alpha = linesearch_alpha
+            alpha = opt.linesearch_alpha
+            min_loss = loss_0
+            best_alpha = opt.linesearch_alpha_min
+
             while True:
 
                 gaussians_copy = deepcopy(gaussians)
                 gaussians_copy.update_step(alpha * s_newton)
 
-                loss_alpha = compute_ref_loss(ref_loss_func, gaussians_copy, viewpoint_stack, 1.0)
+                loss_alpha = compute_ref_loss(ref_loss_func, gaussians_copy, val_viewpoint_stack, val_scale)
                 loss_alpha_test = compute_ref_loss(ref_loss_func, gaussians_copy, test_viewpoint_stack, 1.0)
-                print(f" Linesearch alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, test loss_alpha_test: {loss_alpha_test:.6f}")
+                emp_c = (loss_alpha - loss_0) / (alpha * gs_newton + 1e-15)
+                print(f" Linesearch alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, test loss_alpha_test: {loss_alpha_test:.6f}, emp_c: {emp_c:.6f}")
 
 
-                if math.fabs(gs_newton) < linesearch_gs_min:
+                if math.fabs(gs_newton) < opt.linesearch_gs_min:
                     print("Gradient too small in linesearch.")
-                    alpha = linesearch_alpha_min
+                    alpha = opt.linesearch_alpha_min
                     break
 
                 if negative_search_direction:
@@ -432,13 +387,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     break
 
                 # Check Armijo condition
-                if loss_alpha <= loss_0 + linesearch_alpha_c * alpha * gs_newton:
+                if loss_alpha <= loss_0 + opt.linesearch_alpha_c * alpha * gs_newton:
+                    if loss_alpha < min_loss:
+                        min_loss = loss_alpha
+                        best_alpha = alpha
+                        print("best alpha updated to:", best_alpha)
                     break
 
-                alpha *= linesearch_alpha_decrease
+                alpha *= opt.linesearch_alpha_decrease
 
-                if alpha < linesearch_alpha_min:
-                    if linesearch_force_minstep:
+                if alpha < opt.linesearch_alpha_min:
+                    if opt.linesearch_force_minstep:
                         print("Linesearch alpha below minimum. Forcing step at alpha =", alpha)
                     else:
                         alpha = 0.0
@@ -446,6 +405,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             print(f"Linesearch found alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, loss_alpha_test: {loss_alpha_test:.6f}")
 
+            alpha = best_alpha
 
 
             print("Update with s_newton")
@@ -459,7 +419,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             print(f"damp: {damp}, pixel_sample_rate: {pixel_sample_rate}\n\n")
 
 
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, jvp_start, val_indices=None)
+            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None)
 
             if tb_writer:
                 tb_writer.add_scalar('train_loss_full/alpha', alpha, iteration)
@@ -467,30 +427,30 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 tb_writer.add_scalar('train_loss_full/damping', damp, iteration)
 
             # Update pixel sampling rate
-            if alpha < 0.01 or (y_norm == 0 and damp >= damp_max):
-                pixel_sample_rate *= pixel_sample_rate_decrease
-                pixel_sample_rate = max(pixel_sample_rate, pixel_sample_rate_min)
+            if alpha < 0.01 or (y_norm == 0 and damp >= opt.damp_max):
+                pixel_sample_rate *= opt.pixel_sample_rate_decrease
+                pixel_sample_rate = max(pixel_sample_rate, opt.pixel_sample_rate_min)
             elif alpha > 0.01:
-                pixel_sample_rate *= pixel_sample_rate_increase
-                pixel_sample_rate = min(pixel_sample_rate, pixel_sample_rate_max)
+                pixel_sample_rate *= opt.pixel_sample_rate_increase
+                pixel_sample_rate = min(pixel_sample_rate, opt.pixel_sample_rate_max)
 
             # Update Damping Factor
             if num_iter == 0 or negative_search_direction:
-                damp *= damp_increase_high
-                damp = min(damp, damp_max)
+                damp *= opt.damp_increase_high
+                damp = min(damp, opt.damp_max)
             elif res_reduc < 1e-1:
-                damp *= damp_decrease
-                damp = max(damp, damp_min)
+                damp *= opt.damp_decrease
+                damp = max(damp, opt.damp_min)
             elif res_reduc > 1e2:
-                damp *= damp_increase
-                damp = min(damp, damp_max)
-            elif res < damp_res_target:
-                damp *= damp_decrease
-                damp = max(damp, damp_min)
+                damp *= opt.damp_increase
+                damp = min(damp, opt.damp_max)
+            elif res < opt.damp_res_target:
+                damp *= opt.damp_decrease
+                damp = max(damp, opt.damp_min)
 
             # Update rescale for xyz
-            rescale.xyz_scale *= xyz_scale_decay
-            rescale.xyz_scale = max(rescale.xyz_scale, xyz_scale_final)
+            rescale.xyz_scale *= opt.xyz_scale_decay
+            rescale.xyz_scale = max(rescale.xyz_scale, opt.xyz_scale_final)
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
@@ -500,10 +460,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             L = build_scaling_rotation(gaussians.get_scaling, gaussians.get_rotation)
             actual_covariance = L @ L.transpose(1, 2)
 
-            def op_sigmoid(x, k=100, x0=noise_opacity_thresh):
+            def op_sigmoid(x, k=100, x0=opt.noise_opacity_thresh):
                 return 1 / (1 + torch.exp(-k * (x - x0)))
             
-            noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*noise_lr*rescale.xyz_scale
+            noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*opt.noise_lr*rescale.xyz_scale
             noise = torch.bmm(actual_covariance, noise.unsqueeze(-1)).squeeze(-1)
             gaussians._xyz.add_(noise)
 
@@ -555,7 +515,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 
-def prepare_output_and_logger(args):    
+def prepare_output_and_logger(args, opt):    
     if not args.model_path:
         if os.getenv('OAR_JOB_ID'):
             unique_str=os.getenv('OAR_JOB_ID')
@@ -568,6 +528,9 @@ def prepare_output_and_logger(args):
     os.makedirs(args.model_path, exist_ok = True)
     with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
         cfg_log_f.write(str(Namespace(**vars(args))))
+        cfg_log_f.write('\n')
+        cfg_log_f.write(str(Namespace(**vars(opt))))
+        cfg_log_f.write('\n')
 
     # Create Tensorboard writer
     tb_writer = None
@@ -596,8 +559,6 @@ if __name__ == "__main__":
     parser.add_argument('--disable_viewer', action='store_true', default=False)
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
-    parser.add_argument("--jvp_start", type=int, default = 15001)
-    parser.add_argument("--num_images", type=int, default = 5)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
@@ -610,7 +571,7 @@ if __name__ == "__main__":
     if not args.disable_viewer:
         network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.jvp_start, args.num_images)
+    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 
     # All done
     print("\nTraining complete.")
