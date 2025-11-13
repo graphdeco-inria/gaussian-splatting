@@ -138,17 +138,28 @@ class OptimizationParams(ParamGroup):
         self.preconditioner_warmup_iter = 10
 
         scale_const = 1e0
-        self.xyz_scale_init = 1.6e-4 * scale_const * 1.0
-        self.xyz_scale_final = 1.6e-6 * scale_const * 1.0
-        self.xyz_scale_decay = 0.999
-        self.xyz_scale_max_steps = self.iterations
 
+        # scale is related to preconditioning the solver
+        self.xyz_scale = 1.6e-4 * scale_const * 1.0
         self.features_dc_scale = 2.5e-3 * scale_const * 1.0
         self.featuress_rest_scale = self.features_dc_scale / 20.0
         self.scaling_scale = 5e-3 * scale_const * 1e+1 * 1.0
         self.rotation_scale = 1e-3 * scale_const * 1e-4 * 1.0
         self.opacity_scale = 2.5e-2 * scale_const * 1.0
         self.exposure_scale = 1.0 * scale_const * 1.0
+
+        self.xyz_lr_init = 1.6e-4 * scale_const * 1.0
+        self.xyz_lr_final = 1.6e-6 * scale_const * 1.0
+        self.xyz_lr_decay = 0.999
+        self.xyz_lr_max_steps = self.iterations
+
+        # lr is the truncated learning rate used in optimization
+        self.features_dc_lr = 2.5e-3 * scale_const * 1.0
+        self.featuress_rest_lr = self.features_dc_scale / 20.0
+        self.scaling_lr = 5e-3 * scale_const * 1e+1 * 1.0
+        self.rotation_lr = 1e-3 * scale_const * 1e-4 * 1.0
+        self.opacity_lr = 2.5e-2 * scale_const * 1.0
+        self.exposure_lr = 1.0 * scale_const * 1.0
 
         # NOTE: damp needs to be relative to scale^2
         self.damp_init = 1e-9 * (scale_const ** 2)      

@@ -134,16 +134,24 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     ####### Some fixed parameters #########
 
     pixel_sample_rate = opt.pixel_sample_rate_max
-    xyz_scale = opt.xyz_scale_init
+    xyz_lr = opt.xyz_lr_init
     damp = opt.damp_init
 
-    rescale = GaussianModelScaleMatrix(xyz_scale=xyz_scale,  
+    rescale = GaussianModelScaleMatrix(xyz_scale=opt.xyz_scale,  
                                       features_dc_scale=opt.features_dc_scale, 
                                       features_rest_scale=opt.featuress_rest_scale, 
                                       scaling_scale=opt.scaling_scale, 
                                       rotation_scale=opt.rotation_scale, 
                                       opacity_scale=opt.opacity_scale, 
                                       exposure_scale=opt.exposure_scale)
+
+    lr = GaussianModelScaleMatrix(xyz_scale=xyz_lr,  
+                                  features_dc_scale=opt.features_dc_lr, 
+                                  features_rest_scale=opt.featuress_rest_lr, 
+                                  scaling_scale=opt.scaling_lr, 
+                                  rotation_scale=opt.rotation_lr, 
+                                  opacity_scale=opt.opacity_lr, 
+                                  exposure_scale=opt.exposure_lr)
 
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset, opt)
@@ -309,10 +317,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         percentage_truncated = num_truncated_positions / y.xyz_grad.flatten().shape[0] * 100.0
         print(f"Xyz truncated percentage: {percentage_truncated:.6f} %")
 
-        # DEBUG 1
-        y_vec = y.as_1d_tensor()
-        y_vec.clip_(min=-opt.clip_thresh, max=opt.clip_thresh)
-        y.load_1d_tensor(y_vec)
+        # # DEBUG 1
+        # y_vec = y.as_1d_tensor()
+        # y_vec.clip_(min=-opt.clip_thresh, max=opt.clip_thresh)
+        # y.load_1d_tensor(y_vec)
 
         # # DEBUG 2
         # # safe_interact(local=locals(), banner="after CG solve")
@@ -337,6 +345,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # s_newton = -g / (g.abs() + 1e-15) * rescale
 
         s_newton = rescale * y
+
+        # Do clipping separately from scaling
+        s_newton.clip_(lr)
 
 
         # DEBUG 2
@@ -448,9 +459,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 damp *= opt.damp_decrease
                 damp = max(damp, opt.damp_min)
 
-            # Update rescale for xyz
-            rescale.xyz_scale *= opt.xyz_scale_decay
-            rescale.xyz_scale = max(rescale.xyz_scale, opt.xyz_scale_final)
+            # Update lr for xyz
+            lr.xyz_scale *= opt.xyz_lr_decay
+            lr.xyz_scale = max(lr.xyz_scale, opt.xyz_lr_final)
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
@@ -463,7 +474,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             def op_sigmoid(x, k=100, x0=opt.noise_opacity_thresh):
                 return 1 / (1 + torch.exp(-k * (x - x0)))
             
-            noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*opt.noise_lr*rescale.xyz_scale
+            noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*opt.noise_lr*lr.xyz_scale
             noise = torch.bmm(actual_covariance, noise.unsqueeze(-1)).squeeze(-1)
             gaussians._xyz.add_(noise)
 
