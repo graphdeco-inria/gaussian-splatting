@@ -175,9 +175,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                             exposure=opt.exposure_scale,
                             gaussians=gaussians)
 
-    D_est = GaussianModelVector.ones_like(gaussians)
+    D_est_t = GaussianModelVector.ones_like(gaussians)
+    D_est_smoothed = 0
+    g_smoothed = 0
+    denom_iter = 0
 
-    damp = 1e-9
+    damp = 1e-12
                              
 
     bg_color = [0, 0, 0]
@@ -260,26 +263,37 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         random_cam_provider = CamProvider(viewpoint_stack)
 
-        preconditioner_batch_size = 100
+        preconditioner_batch_size = 20
+        preconditioner_total_iter = 400 if iteration == first_iter else 20
+        preconditioner_restart_iter = (preconditioner_total_iter // preconditioner_batch_size) // 2 if iteration == first_iter else -1
 
         JTJv_hat_func = partial(JTJv_hat, JTJv_func=JTJv_func, gaussians=gaussians, cam_provider=random_cam_provider, batch_size=preconditioner_batch_size, S=S, damp=damp)
         z_gen_func = partial(GaussianModelVector.rademacher_like, gaussians)
 
-        D_est = restarted_squared_hutchinson(Hz_func=JTJv_hat_func,
-                                               z_gen_func=z_gen_func,
-                                               D_init=D_est, #GaussianModelVector.ones_like(gaussians),
-                                               restart_iter=-1,
-                                               num_iters=2,
-                                               )
-        # D_est = ((1 - 0.999) * D_est_t + 0.999 * D_est) / (1 - 0.999 ** (iteration - first_iter + 1))
+        if iteration == first_iter or iteration % 5 == 0:
+            D_est_t = restarted_squared_hutchinson(Hz_func=JTJv_hat_func,
+                                                   z_gen_func=z_gen_func,
+                                                   D_init=D_est_t, #GaussianModelVector.ones_like(gaussians),
+                                                   restart_iter=10,
+                                                   num_iters=20,
+                                                   )
+            D_est_smoothed = 0
+            g_smoothed = 0
+            denom_iter = 0
 
-        # # DEBUG
-        # print("make sure D_est is greater than damp")
-        # D_vec = D_est.as_1d_tensor()
-        # D_vec[D_vec < damp] = damp
-        # D_est.load_1d_tensor(D_vec)
+        else:
+            D_est_t = restarted_squared_hutchinson(Hz_func=JTJv_hat_func,
+                                                   z_gen_func=z_gen_func,
+                                                   D_init=D_est_t, #GaussianModelVector.ones_like(gaussians),
+                                                   restart_iter=-1,
+                                                   num_iters=preconditioner_total_iter // preconditioner_batch_size,
+                                                   )
 
-        M_sqrt_inv = 1 / (D_est).sqrt()
+        # DEBUG
+        print("make sure D_est is greater than damp")
+        D_vec = D_est_t.as_1d_tensor()
+        D_vec[D_vec < damp] = damp
+        D_est_t.load_1d_tensor(D_vec)
 
         JTJv = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale, S=S, damp=damp)
         JTJv_hat_func1 = partial(JTJv_hat, JTJv_func=JTJv_func, gaussians=gaussians, cam_provider=random_cam_provider, batch_size=200, S=S, damp=damp)
@@ -287,27 +301,46 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # start_loss, g = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale, return_loss=True)
         start_loss, g = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_stack, scale=1.0, return_loss=True)
 
+        denom_iter += 1
+
+        beta1 = 0.1
+        g_smoothed = beta1 * g_smoothed + (1 - beta1) * g
+        g_est = g_smoothed / (1 - beta1 ** denom_iter)
+
+        beta2 = 0.999
+        D_est_smoothed = beta2 * D_est_smoothed + (1 - beta2) * (D_est_t * D_est_t)
+        D_est = (D_est_smoothed / (1 - beta2 ** denom_iter)).sqrt()
+
+        M_sqrt_inv = 1 / (D_est).sqrt()
+
+        y = -(1 / D_est) * g_est
+        res_reduc = 0
+        num_iter = 1
+
         print("start loss:", start_loss)
 
-        x0 = GaussianModelVector.zeros_like(gaussians)
+        # x0 = GaussianModelVector.zeros_like(gaussians)
 
-        y, res, num_iter, res_reduc = conjugate_gradient(
-                                        # Ax=JTJv,
-                                        Ax=JTJv_hat_func1,
-                                        dot=dot,
-                                        saxpy=saxpy,
-                                        b=-g,
-                                        x0=x0,
-                                        MR_inv=M_sqrt_inv,
-                                        ML_inv=M_sqrt_inv,
-                                        # MR_inv=1,
-                                        # ML_inv=1,
-                                        max_iter=1,
-                                        restart_iter=opt.pcg_restart_iter,
-                                        verbose=True,
-                                        tol=opt.pcg_tol,)
+        # y, res, num_iter, res_reduc = conjugate_gradient(
+        #                                 # Ax=JTJv,
+        #                                 Ax=JTJv_hat_func1,
+        #                                 dot=dot,
+        #                                 saxpy=saxpy,
+        #                                 b=-g,
+        #                                 x0=x0,
+        #                                 MR_inv=M_sqrt_inv,
+        #                                 ML_inv=M_sqrt_inv,
+        #                                 # MR_inv=1,
+        #                                 # ML_inv=1,
+        #                                 max_iter=1,
+        #                                 restart_iter=opt.pcg_restart_iter,
+        #                                 verbose=True,
+        #                                 tol=opt.pcg_tol,)
 
         s_newton = S * y
+
+        # DEBUG
+        # s_newton = 0.06 * lr * s_newton
 
         # Do clipping separately from scaling
         s_newton.clip_(-lr, lr)
