@@ -22,7 +22,7 @@ from utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
 from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
-from solver.gaussian_model_state import GaussianModelState
+from solver.gaussian_model_vector import GaussianModelVector
 from contextlib import contextmanager
 from copy import deepcopy
 
@@ -71,7 +71,7 @@ class GaussianModel:
 
     @contextmanager
     def make_dual(self, v):
-        assert isinstance(v, GaussianModelState), "v must be an instance of GaussianModelState"
+        assert isinstance(v, GaussianModelVector), "v must be an instance of GaussianModelVector"
         # Make copy of original leaf tensors
         xyz_orig = self._xyz
         features_dc_orig = self._features_dc
@@ -81,13 +81,21 @@ class GaussianModel:
         opacity_orig = self._opacity
         exposure_orig = self._exposure
 
-        self._xyz = fwAD.make_dual(self._xyz, v.xyz_grad)
-        self._features_dc = fwAD.make_dual(self._features_dc, v.features_dc_grad)
-        self._features_rest = fwAD.make_dual(self._features_rest, v.features_rest_grad)
-        self._scaling = fwAD.make_dual(self._scaling, v.scaling_grad)
-        self._rotation = fwAD.make_dual(self._rotation, v.rotation_grad)
-        self._opacity = fwAD.make_dual(self._opacity, v.opacity_grad)
-        self._exposure = fwAD.make_dual(self._exposure, v.exposure_grad)
+        v_xyz = v.xyz if v.tensor_xyz else torch.ones_like(self._xyz) * v.xyz
+        v_features_dc = v.features_dc if v.tensor_features_dc else torch.ones_like(self._features_dc) * v.features_dc
+        v_features_rest = v.features_rest if v.tensor_features_rest else torch.ones_like(self._features_rest) * v.features_rest
+        v_scaling = v.scaling if v.tensor_scaling else torch.ones_like(self._scaling) * v.scaling
+        v_rotation = v.rotation if v.tensor_rotation else torch.ones_like(self._rotation) * v.rotation
+        v_opacity = v.opacity if v.tensor_opacity else torch.ones_like(self._opacity) * v.opacity
+        v_exposure = v.exposure if v.tensor_exposure else torch.ones_like(self._exposure) * v.exposure
+
+        self._xyz = fwAD.make_dual(self._xyz, v_xyz)
+        self._features_dc = fwAD.make_dual(self._features_dc, v_features_dc)
+        self._features_rest = fwAD.make_dual(self._features_rest, v_features_rest)
+        self._scaling = fwAD.make_dual(self._scaling, v_scaling)
+        self._rotation = fwAD.make_dual(self._rotation, v_rotation)
+        self._opacity = fwAD.make_dual(self._opacity, v_opacity)
+        self._exposure = fwAD.make_dual(self._exposure, v_exposure)
 
         try:
             yield
@@ -101,25 +109,6 @@ class GaussianModel:
             self._opacity = opacity_orig
             self._exposure = exposure_orig
 
-    # def make_dual(self, v):
-    #     assert isinstance(v, GaussianModelState), "v must be an instance of GaussianModelState"
-    #     self._xyz = fwAD.make_dual(self._xyz, v.xyz_grad)
-    #     self._features_dc = fwAD.make_dual(self._features_dc, v.features_dc_grad)
-    #     self._features_rest = fwAD.make_dual(self._features_rest, v.features_rest_grad)
-    #     self._scaling = fwAD.make_dual(self._scaling, v.scaling_grad)
-    #     self._rotation = fwAD.make_dual(self._rotation, v.rotation_grad)
-    #     self._opacity = fwAD.make_dual(self._opacity, v.opacity_grad)
-    #     self._exposure = fwAD.make_dual(self._exposure, v.exposure_grad)
-
-    # def unmake_dual(self):
-    #     self._xyz = fwAD.unpack_dual(self._xyz).primal
-    #     self._features_dc = fwAD.unpack_dual(self._features_dc).primal
-    #     self._features_rest = fwAD.unpack_dual(self._features_rest).primal
-    #     self._scaling = fwAD.unpack_dual(self._scaling).primal
-    #     self._rotation = fwAD.unpack_dual(self._rotation).primal
-    #     self._opacity = fwAD.unpack_dual(self._opacity).primal
-    #     self._exposure = fwAD.unpack_dual(self._exposure).primal
-
     def zero_grad(self):
         self._xyz.grad = None
         self._features_dc.grad = None
@@ -130,14 +119,14 @@ class GaussianModel:
         self._exposure.grad = None
 
     def update_step(self, s):
-        assert isinstance(s, GaussianModelState), "s must be an instance of GaussianModelState"
-        self._xyz.data += s.xyz_grad
-        self._features_dc.data += s.features_dc_grad
-        self._features_rest.data += s.features_rest_grad
-        self._scaling.data += s.scaling_grad
-        self._rotation.data += s.rotation_grad
-        self._opacity.data += s.opacity_grad
-        self._exposure.data += s.exposure_grad
+        assert isinstance(s, GaussianModelVector), "s must be an instance of GaussianModelVector"
+        self._xyz.data += s.xyz
+        self._features_dc.data += s.features_dc
+        self._features_rest.data += s.features_rest
+        self._scaling.data += s.scaling
+        self._rotation.data += s.rotation
+        self._opacity.data += s.opacity
+        self._exposure.data += s.exposure
 
     @property
     def device(self):

@@ -114,13 +114,14 @@ def build_scaling_rotation(s, r):
     return L
 
 class CamProvider:
-    def __init__(self, viewpoint_stack):
-        self.viewpoint_stack = viewpoint_stack
+    def __init__(self, cameras, scale1=1.0):
+        self.cameras = cameras
+        self.scale1 = scale1
 
     def sample_new(self, batch_size):
-        indices = np.random.choice(len(self.viewpoint_stack), batch_size, replace=True)
-        viewpoint_batch = [self.viewpoint_stack[idx] for idx in indices]
-        return viewpoint_batch, len(self.viewpoint_stack) / batch_size
+        indices = np.random.choice(len(self.cameras), batch_size, replace=True)
+        viewpoint_batch = [self.cameras[idx] for idx in indices]
+        return viewpoint_batch, self.scale1 * len(self.cameras) / batch_size
 
 def JTJv_hat(v, JTJv_func, gaussians, cam_provider, batch_size, S=None, damp=0.0):
     viewpoint_batch, scale = cam_provider.sample_new(batch_size=batch_size)
@@ -155,8 +156,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
     if checkpoint:
-        (model_params, first_iter) = torch.load(checkpoint)
+        checkpoint_data = torch.load(checkpoint)
+        if len(checkpoint_data) == 3:
+            (model_params, first_iter, D_est) = checkpoint_data
+        else:
+            (model_params, first_iter) = checkpoint_data
         gaussians.restore(model_params, opt)
+        del checkpoint_data
 
     lr = GaussianModelVector(xyz=xyz_lr,  
                              features_dc=opt.features_dc_lr, 
@@ -175,7 +181,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                             exposure=opt.exposure_scale,
                             gaussians=gaussians)
 
-    D_est_t = GaussianModelVector.ones_like(gaussians)
+    if not opt.preconditioner_use_adam_variance:
+        D_est = GaussianModelVector.ones_like(gaussians)
+    else:
+        safe_interact(local=locals(), banner="Using Adam variance preconditioner - not AdaHessian")
     D_est_smoothed = 0
     g_smoothed = 0
     denom_iter = 0
@@ -202,7 +211,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     ema_Ll1depth_for_log = 0.0
 
     with torch.no_grad():
-        training_report(None, first_iter, None, None, l1_loss, None, testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None)
+        training_report(tb_writer, first_iter, 0.0, 0.0, l1_loss, 0.0, testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None)
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -261,32 +270,39 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         g_func = construct_g_func(**render_args)
         JTJv_func = construct_JTJv_func(**render_args)
 
-        random_cam_provider = CamProvider(viewpoint_stack)
+        if opt.preconditioner_warmup_from_gradient_samples:
+            random_cam_provider = CamProvider(viewpoint_batch, scale)
+        else:
+            random_cam_provider = CamProvider(viewpoint_stack)
 
-        preconditioner_batch_size = 20
-        preconditioner_total_iter = 400 if iteration == first_iter else 20
-        preconditioner_restart_iter = (preconditioner_total_iter // preconditioner_batch_size) // 2 if iteration == first_iter else -1
-
-        JTJv_hat_func = partial(JTJv_hat, JTJv_func=JTJv_func, gaussians=gaussians, cam_provider=random_cam_provider, batch_size=preconditioner_batch_size, S=S, damp=damp)
+        JTJv_hat_func = partial(JTJv_hat, JTJv_func=JTJv_func, gaussians=gaussians, cam_provider=random_cam_provider, batch_size=opt.preconditioner_image_batch_size, S=S, damp=damp)
         z_gen_func = partial(GaussianModelVector.rademacher_like, gaussians)
 
-        if iteration == first_iter or iteration % 5 == 0:
+        JTJv = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale, S=S, damp=damp)
+
+        start_loss, g = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale, return_loss=True)
+        # start_loss, g = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_stack, scale=1.0, return_loss=True)
+
+        # DEBUG
+        print("preconditioner start")
+        if iteration == first_iter:
             D_est_t = restarted_squared_hutchinson(Hz_func=JTJv_hat_func,
                                                    z_gen_func=z_gen_func,
-                                                   D_init=D_est_t, #GaussianModelVector.ones_like(gaussians),
-                                                   restart_iter=10,
-                                                   num_iters=20,
+                                                   D_init=D_est, #GaussianModelVector.ones_like(gaussians),
+                                                   restart_iter=-1,
+                                                   num_iters=opt.preconditioner_reset_iter,
+                                                   damp=damp
                                                    )
             D_est_smoothed = 0
             g_smoothed = 0
             denom_iter = 0
-
         else:
             D_est_t = restarted_squared_hutchinson(Hz_func=JTJv_hat_func,
                                                    z_gen_func=z_gen_func,
-                                                   D_init=D_est_t, #GaussianModelVector.ones_like(gaussians),
+                                                   D_init=D_est, #GaussianModelVector.ones_like(gaussians),
                                                    restart_iter=-1,
-                                                   num_iters=preconditioner_total_iter // preconditioner_batch_size,
+                                                   num_iters=opt.preconditioner_warmup_iter,
+                                                   damp=damp
                                                    )
 
         # DEBUG
@@ -295,19 +311,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         D_vec[D_vec < damp] = damp
         D_est_t.load_1d_tensor(D_vec)
 
-        JTJv = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale, S=S, damp=damp)
-        JTJv_hat_func1 = partial(JTJv_hat, JTJv_func=JTJv_func, gaussians=gaussians, cam_provider=random_cam_provider, batch_size=200, S=S, damp=damp)
-
-        # start_loss, g = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale, return_loss=True)
-        start_loss, g = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_stack, scale=1.0, return_loss=True)
 
         denom_iter += 1
 
-        beta1 = 0.1
+        beta1 = opt.adahessian_beta1
         g_smoothed = beta1 * g_smoothed + (1 - beta1) * g
         g_est = g_smoothed / (1 - beta1 ** denom_iter)
 
-        beta2 = 0.999
+        beta2 = opt.adahessian_beta2
         D_est_smoothed = beta2 * D_est_smoothed + (1 - beta2) * (D_est_t * D_est_t)
         D_est = (D_est_smoothed / (1 - beta2 ** denom_iter)).sqrt()
 
@@ -332,7 +343,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         #                                 ML_inv=M_sqrt_inv,
         #                                 # MR_inv=1,
         #                                 # ML_inv=1,
-        #                                 max_iter=1,
+        #                                 max_iter=2,
         #                                 restart_iter=opt.pcg_restart_iter,
         #                                 verbose=True,
         #                                 tol=opt.pcg_tol,)
@@ -340,7 +351,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         s_newton = S * y
 
         # DEBUG
-        # s_newton = 0.06 * lr * s_newton
+        # s_newton = 0.01 * lr * s_newton
 
         # Do clipping separately from scaling
         s_newton.clip_(-lr, lr)
@@ -355,66 +366,69 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # s_newton.load_1d_tensor(s_newton_vec)
 
 
+        D_est_norm = D_est.as_1d_tensor().norm()
+        g_norm = g.as_1d_tensor().norm()
+        s_norm = s_newton.as_1d_tensor().norm()
         gs_newton = g.dot(s_newton)
         negative_search_direction = res_reduc > 1e3
 
-        print(f"gs_newton: {gs_newton:.6e}, res_reduc: {res_reduc:.6e}")
+        print(f"s_newton_norm = {s_norm:.6e}, g_norm = {g_norm:.6e}, D_norm = {D_est_norm:.6e}, gs_newton: {gs_newton:.6e}, res_reduc: {res_reduc:.6e}")
 
         # import code; code.interact(local=locals(), banner="after loss compute")
 
         ref_loss_func = partial(reference_training_loss, iteration=iteration, opt=opt, pipe=pipe, bg=bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, disable_ssim=opt.disable_ssim, pixel_mask=None)
 
         with torch.no_grad():
-            loss_0 = compute_ref_loss(ref_loss_func, gaussians, val_viewpoint_stack, val_scale)
-            loss_0_test = compute_ref_loss(ref_loss_func, gaussians, test_viewpoint_stack, 1.0)
+            # loss_0 = compute_ref_loss(ref_loss_func, gaussians, val_viewpoint_stack, val_scale)
+            # loss_0_test = compute_ref_loss(ref_loss_func, gaussians, test_viewpoint_stack, 1.0)
 
-            print("Starting linesearch from loss_0:", loss_0, " test loss_0_test:", loss_0_test)
+            # print("Starting linesearch from loss_0:", loss_0, " test loss_0_test:", loss_0_test)
 
             alpha = opt.linesearch_alpha
-            min_loss = loss_0
-            best_alpha = opt.linesearch_alpha_min
+            # min_loss = loss_0
+            # best_alpha = opt.linesearch_alpha_min
 
-            while True:
+            # while True:
 
-                gaussians_copy = deepcopy(gaussians)
-                gaussians_copy.update_step(alpha * s_newton)
+            #     gaussians_copy = deepcopy(gaussians)
+            #     gaussians_copy.update_step(alpha * s_newton)
 
-                loss_alpha = compute_ref_loss(ref_loss_func, gaussians_copy, val_viewpoint_stack, val_scale)
-                loss_alpha_test = compute_ref_loss(ref_loss_func, gaussians_copy, test_viewpoint_stack, 1.0)
-                emp_c = (loss_alpha - loss_0) / (alpha * gs_newton + 1e-15)
-                print(f" Linesearch alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, test loss_alpha_test: {loss_alpha_test:.6f}, emp_c: {emp_c:.6f}")
+            #     loss_alpha = compute_ref_loss(ref_loss_func, gaussians_copy, val_viewpoint_stack, val_scale)
+            #     loss_alpha_test = compute_ref_loss(ref_loss_func, gaussians_copy, test_viewpoint_stack, 1.0)
+            #     emp_c = (loss_alpha - loss_0) / (alpha * gs_newton + 1e-15)
+            #     print(f" Linesearch alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, test loss_alpha_test: {loss_alpha_test:.6f}, emp_c: {emp_c:.6f}")
 
 
-                if math.fabs(gs_newton) < opt.linesearch_gs_min:
-                    print("Gradient too small in linesearch.")
-                    alpha = opt.linesearch_alpha_min
-                    break
+            #     if math.fabs(gs_newton) < opt.linesearch_gs_min:
+            #         print("Gradient too small in linesearch.")
+            #         alpha = opt.linesearch_alpha_min
+            #         break
 
-                if negative_search_direction:
-                    print("Non-descent direction detected in linesearch.")
-                    alpha = 0.0
-                    break
+            #     if negative_search_direction:
+            #         print("Non-descent direction detected in linesearch.")
+            #         alpha = 0.0
+            #         break
 
-                # Check Armijo condition
-                if loss_alpha <= loss_0 + opt.linesearch_alpha_c * alpha * gs_newton:
-                    if loss_alpha < min_loss:
-                        min_loss = loss_alpha
-                        best_alpha = alpha
-                        print("best alpha updated to:", best_alpha)
-                    break
+            #     # Check Armijo condition
+            #     if loss_alpha <= loss_0 + opt.linesearch_alpha_c * alpha * gs_newton:
+            #         if loss_alpha < min_loss:
+            #             min_loss = loss_alpha
+            #             best_alpha = alpha
+            #             print("best alpha updated to:", best_alpha)
+            #         break
 
-                alpha *= opt.linesearch_alpha_decrease
+            #     alpha *= opt.linesearch_alpha_decrease
 
-                if alpha < opt.linesearch_alpha_min:
-                    if opt.linesearch_force_minstep:
-                        print("Linesearch alpha below minimum. Forcing step at alpha =", alpha)
-                    else:
-                        alpha = 0.0
-                    break
+            #     if alpha < opt.linesearch_alpha_min:
+            #         if opt.linesearch_force_minstep:
+            #             print("Linesearch alpha below minimum. Forcing step at alpha =", alpha)
+            #         else:
+            #             alpha = 0.0
+            #         break
 
-            print(f"Linesearch found alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, loss_alpha_test: {loss_alpha_test:.6f}")
+            # print(f"Linesearch found alpha: {alpha:.3e}, loss_alpha: {loss_alpha:.6f}, loss_alpha_test: {loss_alpha_test:.6f}")
 
-            alpha = best_alpha
+            # alpha = best_alpha
 
 
             print("Update with s_newton")
@@ -422,41 +436,46 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
 
             iter_end.record()
+            torch.cuda.synchronize()
 
-            loss = loss_func(gaussians=gaussians, viewpoint_cams=viewpoint_stack, scale=1.0)
+            # loss = loss_func(gaussians=gaussians, viewpoint_cams=viewpoint_stack, scale=1.0)
+            loss = 0.0
             Ll1 = 0.0
-            print("\n\nPost-update loss (no pixel mask):", loss.item())
+            # print("\n\nPost-update loss (no pixel mask):", loss.item())
             print(f"damp: {damp}, pixel_sample_rate: {pixel_sample_rate}\n\n")
 
 
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None)
+            print("Compute training loss for logging", iteration % opt.eval_interval)
+
+            if iteration % opt.eval_interval == 0:
+                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None)
 
             if tb_writer:
                 tb_writer.add_scalar('train_loss_full/alpha', alpha, iteration)
                 tb_writer.add_scalar('train_loss_full/pixel_sample_rate', pixel_sample_rate, iteration)
                 tb_writer.add_scalar('train_loss_full/damping', damp, iteration)
 
-            # Update pixel sampling rate
-            if alpha < 0.01: # or (y_norm == 0 and damp >= opt.damp_max):
-                pixel_sample_rate *= opt.pixel_sample_rate_decrease
-                pixel_sample_rate = max(pixel_sample_rate, opt.pixel_sample_rate_min)
-            elif alpha > 0.01:
-                pixel_sample_rate *= opt.pixel_sample_rate_increase
-                pixel_sample_rate = min(pixel_sample_rate, opt.pixel_sample_rate_max)
+            # # Update pixel sampling rate
+            # if alpha < 0.01: # or (y_norm == 0 and damp >= opt.damp_max):
+            #     pixel_sample_rate *= opt.pixel_sample_rate_decrease
+            #     pixel_sample_rate = max(pixel_sample_rate, opt.pixel_sample_rate_min)
+            # elif alpha > 0.01:
+            #     pixel_sample_rate *= opt.pixel_sample_rate_increase
+            #     pixel_sample_rate = min(pixel_sample_rate, opt.pixel_sample_rate_max)
 
-            # Update Damping Factor
-            if num_iter == 0 or negative_search_direction:
-                damp *= opt.damp_increase_high
-                damp = min(damp, opt.damp_max)
-            elif res_reduc < 1e-1:
-                damp *= opt.damp_decrease
-                damp = max(damp, opt.damp_min)
-            elif res_reduc > 1e2:
-                damp *= opt.damp_increase
-                damp = min(damp, opt.damp_max)
-            elif res < opt.damp_res_target:
-                damp *= opt.damp_decrease
-                damp = max(damp, opt.damp_min)
+            # # Update Damping Factor
+            # if num_iter == 0 or negative_search_direction:
+            #     damp *= opt.damp_increase_high
+            #     damp = min(damp, opt.damp_max)
+            # elif res_reduc < 1e-1:
+            #     damp *= opt.damp_decrease
+            #     damp = max(damp, opt.damp_min)
+            # elif res_reduc > 1e2:
+            #     damp *= opt.damp_increase
+            #     damp = min(damp, opt.damp_max)
+            # elif res < opt.damp_res_target:
+            #     damp *= opt.damp_decrease
+            #     damp = max(damp, opt.damp_min)
 
             # Update lr for xyz
             lr *= opt.xyz_lr_decay
@@ -465,7 +484,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+                torch.save((gaussians.capture(), iteration, D_est), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
             print("Inject noise")
             L = build_scaling_rotation(gaussians.get_scaling, gaussians.get_rotation)
@@ -474,9 +493,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             def op_sigmoid(x, k=100, x0=opt.noise_opacity_thresh):
                 return 1 / (1 + torch.exp(-k * (x - x0)))
             
-            noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*opt.noise_lr*lr.xyz
-            noise = torch.bmm(actual_covariance, noise.unsqueeze(-1)).squeeze(-1)
-            gaussians._xyz.add_(noise)
+            xyz_noise = torch.randn_like(gaussians._xyz) * (op_sigmoid(1- gaussians.get_opacity))*opt.noise_lr*lr.xyz
+            xyz_noise = torch.bmm(actual_covariance, xyz_noise.unsqueeze(-1)).squeeze(-1)
+            gaussians._xyz.add_(xyz_noise)
+
+            # rotation_noise = torch.randn_like(gaussians._opacity) * (op_sigmoid(1- gaussians.get_opacity))*opt.noise_lr*lr.rotation*0.001
+            # gaussians._rotation.add_(rotation_noise)
+
+            # opacity_noise = torch.randn_like(gaussians._opacity) * (op_sigmoid(1- gaussians.get_opacity))*opt.noise_lr*lr.opacity*0.0001
+            # gaussians._opacity.add_(opacity_noise)
 
         # safe_interact(local=locals(), banner="after loss vs step size")
 
@@ -491,7 +516,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
     if iteration in testing_iterations or (iteration >= jvp_start):
         torch.cuda.empty_cache()
         if val_indices is None:
-            num_val_images = 100
+            num_val_images = 20
             val_stride = max(1, len(scene.getTrainCameras()) // num_val_images)
             val_indices = list(range(0, len(scene.getTrainCameras()), val_stride))
         validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
@@ -522,7 +547,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
 
         if tb_writer:
-            tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
+            # tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 

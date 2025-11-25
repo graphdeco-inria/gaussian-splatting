@@ -1,5 +1,6 @@
 import torch
 from utils.general_utils import safe_interact
+from copy import deepcopy
 
 class Preconditioner:
     def __init__(self, matrix):
@@ -64,6 +65,7 @@ class AdaHessianPreconditioner:
     @property
     def D_corrected(self):
         return self.D_sq / (1 - self.beta2 ** self.iteration)
+        # return self.D / (1 - self.beta2 ** self.iteration)
 
     def __call__(self, v):
         D_corrected_sqrt = (self.D_sq / (1 - self.beta2 ** self.iteration)).sqrt()
