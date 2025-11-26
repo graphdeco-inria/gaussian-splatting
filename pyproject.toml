@@ -1,0 +1,41 @@
+[project]
+name = "gaussian-splatting"
+version = "0.1.0"
+description = "3D Gaussian Splatting for Real-Time Radiance Field Rendering"
+requires-python = ">=3.9,<3.13"
+dependencies = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "torchaudio>=2.1.0",
+    "setuptools>=61.0",
+    "wheel",
+    "ninja",
+    "tqdm",
+    "plyfile",
+    "opencv-python",
+    "joblib",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools]
+py-modules = ["train", "render", "metrics", "convert", "full_eval"]
+
+[tool.setuptools.packages.find]
+include = ["scene*", "utils*", "gaussian_renderer*", "arguments*", "lpipsPyTorch*"]
+exclude = ["submodules*", "SIBR_viewers*", "data*", "assets*", "output*"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "torch", "ninja"]
+build-backend = "setuptools.build_meta"
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
