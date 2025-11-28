@@ -397,14 +397,30 @@ https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/0940547f-1
 
 
 
-After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
+After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.:
 ```shell
 ./<SIBR install dir>/bin/SIBR_gaussianViewer_app -m <path to trained model>
 ```
 
-It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. Combine it with ```--force-aspect-ratio``` if you want the exact resolution and don't mind image distortion. 
+It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. Combine it with ```--force-aspect-ratio``` if you want the exact resolution and don't mind image distortion.
 
 **To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display). In a multi-GPU system (e.g., laptop) your OpenGL/Display GPU should be the same as your CUDA GPU (e.g., by setting the application's GPU preference on Windows, see below) for maximum performance.**
+
+#### Running on Linux (after building from source)
+
+After building with CMake, install and run:
+```shell
+cd SIBR_viewers/build && ninja install && cd ../..
+export LD_LIBRARY_PATH=./SIBR_viewers/install/bin:$LD_LIBRARY_PATH
+./SIBR_viewers/install/bin/SIBR_gaussianViewer_app -m <path to trained model>
+```
+
+**For hybrid GPU laptops (NVIDIA Optimus):** If you see "FALLING BACK TO SLOWER RENDERING WITH CPU ROUNDTRIP", use PRIME offload:
+```shell
+export __NV_PRIME_RENDER_OFFLOAD=1
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+./SIBR_viewers/install/bin/SIBR_gaussianViewer_app -m <path to trained model>
+```
 
 ![Teaser image](assets/select.png)
 
