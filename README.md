@@ -73,7 +73,7 @@ The codebase has 4 main components:
 - An OpenGL-based real-time viewer to render trained models in real-time.
 - A script to help you turn your own images into optimization-ready SfM data sets
 
-The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
+The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10, Ubuntu Linux 22.04, and Ubuntu Linux 24.04. Instructions for setting up and running each of them are found in the sections below.
 
 
 
@@ -96,15 +96,22 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 ### Setup
 
-#### Local Setup
+#### Local Setup (uv - Recommended)
 
-Our default, provided install method is based on Conda package and environment management:
+```shell
+uv sync
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+```
+
+#### Local Setup (Conda)
+
 ```shell
 SET DISTUTILS_USE_SDK=1 # Windows only
 conda env create --file environment.yml
 conda activate gaussian_splatting
 ```
-Please note that this process assumes that you have CUDA SDK **11** installed, not **12**. For modifications, see below.
+Please note that Conda setup assumes CUDA SDK **11**, not **12**. For modifications, see below.
 
 Tip: Downloading packages and creating a new environment with Conda can require a significant amount of disk space. By default, Conda will use the main system hard drive. You can avoid this by specifying a different package download location and an environment on a different drive:
 
@@ -327,16 +334,18 @@ cmake --build build --target install --config RelWithDebInfo
 ```
 You may specify a different configuration, e.g. ```Debug``` if you need more control during development.
 
-#### Ubuntu 22.04
+#### Ubuntu 22.04 / 24.04
 You will need to install a few dependencies before running the project setup.
 ```shell
 # Dependencies
 sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libopencv-dev libglfw3-dev libavdevice-dev libavcodec-dev libeigen3-dev libxxf86vm-dev libembree-dev
 # Project setup
 cd SIBR_viewers
-cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
+cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release -G Ninja
 cmake --build build -j24 --target install
-``` 
+```
+
+> **Note (Ubuntu 24.04):** Build from a clean shell without Anaconda/Miniconda in PATH to avoid library conflicts. 
 
 #### Ubuntu 20.04
 Backwards compatibility with Focal Fossa is not fully tested, but building SIBR with CMake should still work after invoking
