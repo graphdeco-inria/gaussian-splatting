@@ -113,6 +113,28 @@ conda activate gaussian_splatting
 ```
 Please note that Conda setup assumes CUDA SDK **11**, not **12**. For modifications, see below.
 
+#### Installing CUDA Submodules
+
+After setting up the environment with either uv or Conda, you must install the CUDA extension submodules. These are custom CUDA/C++ packages that cannot be installed via `uv sync` or `conda` alone—they require compilation from source.
+
+```shell
+# Activate your environment first (uv or conda)
+
+# Install the required submodules
+pip install submodules/diff-gaussian-rasterization
+pip install submodules/simple-knn
+pip install submodules/fused-ssim
+```
+
+For uv users, you can alternatively use:
+```shell
+uv pip install submodules/diff-gaussian-rasterization
+uv pip install submodules/simple-knn
+uv pip install submodules/fused-ssim
+```
+
+**Note:** These submodules contain CUDA kernels that are compiled during installation. Ensure you have a compatible CUDA toolkit installed and that your C++ compiler is properly configured.
+
 Tip: Downloading packages and creating a new environment with Conda can require a significant amount of disk space. By default, Conda will use the main system hard drive. You can avoid this by specifying a different package download location and an environment on a different drive:
 
 ```shell
