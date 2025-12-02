@@ -22,6 +22,7 @@ conn = None
 addr = None
 
 listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 def init(wish_host, wish_port):
     global host, port, listener
@@ -42,17 +43,30 @@ def try_connect():
             
 def read():
     global conn
-    messageLength = conn.recv(4)
+    # Read exactly 4 bytes for message length
+    messageLength = b""
+    while len(messageLength) < 4:
+        chunk = conn.recv(4 - len(messageLength))
+        if not chunk:
+            raise ConnectionError("Connection closed while reading length")
+        messageLength += chunk
     messageLength = int.from_bytes(messageLength, 'little')
-    message = conn.recv(messageLength)
+    # Read the full message
+    message = b""
+    while len(message) < messageLength:
+        chunk = conn.recv(messageLength - len(message))
+        if not chunk:
+            raise ConnectionError("Connection closed while reading message")
+        message += chunk
     return json.loads(message.decode("utf-8"))
 
 def send(message_bytes, verify):
     global conn
     if message_bytes != None:
         conn.sendall(message_bytes)
-    conn.sendall(len(verify).to_bytes(4, 'little'))
-    conn.sendall(bytes(verify, 'ascii'))
+    verify_bytes = verify.encode('utf-8')
+    conn.sendall(len(verify_bytes).to_bytes(4, 'little'))
+    conn.sendall(verify_bytes)
 
 def receive():
     message = read()

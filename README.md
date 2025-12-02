@@ -380,7 +380,7 @@ git checkout fossa_compatibility
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D, Q, E``` for camera translation and ```I, K, J, L, U, O``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
 
-### Running the Network Viewer
+### Running the Network Viewer (Live Training Visualization)
 
 
 
@@ -388,11 +388,26 @@ https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/90a2e4d3-c
 
 
 
-After extracting or installing the viewers, you may run the compiled ```SIBR_remoteGaussian_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
-```shell
-./<SIBR install dir>/bin/SIBR_remoteGaussian_app
-```
-The network viewer allows you to connect to a running training process on the same or a different machine. If you are training on the same machine and OS, no command line parameters should be required: the optimizer communicates the location of the training data to the network viewer. By default, optimizer and network viewer will try to establish a connection on **localhost** on port **6009**. You can change this behavior by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. If for some reason the path used by the optimizer to find the training data is not reachable by the network viewer (e.g., due to them running on different (virtual) machines), you may specify an override location to the viewer by using ```-s <source path>```. 
+The network viewer allows you to visualize training progress in real-time by connecting to a running training process.
+
+#### Quick Start (Linux)
+
+1. **Start training** in one terminal:
+   ```shell
+   python train.py -s <path to dataset>
+   ```
+
+2. **Start the network viewer** in another terminal with the same dataset path:
+   ```shell
+   export LD_LIBRARY_PATH=./SIBR_viewers/install/bin:$LD_LIBRARY_PATH
+   ./SIBR_viewers/install/bin/SIBR_remoteGaussian_app -s <path to dataset>
+   ```
+
+> **Important:** You must provide the dataset path (`-s`) to the viewer to initialize camera and resolution settings. Without it, the viewer cannot properly connect to the training process.
+
+#### Connection Settings
+
+By default, the optimizer and network viewer communicate on **localhost** port **6009**. You can change this by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. 
 
 <details>
 <summary><span style="font-weight: bold;">Primary Command Line Arguments for Network Viewer</span></summary>
