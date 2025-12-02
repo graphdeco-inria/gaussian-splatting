@@ -73,7 +73,7 @@ The codebase has 4 main components:
 - An OpenGL-based real-time viewer to render trained models in real-time.
 - A script to help you turn your own images into optimization-ready SfM data sets
 
-The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
+The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10, Ubuntu Linux 22.04, and Ubuntu Linux 24.04. Instructions for setting up and running each of them are found in the sections below.
 
 
 
@@ -96,15 +96,44 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 ### Setup
 
-#### Local Setup
+#### Local Setup (uv - Recommended)
 
-Our default, provided install method is based on Conda package and environment management:
+```shell
+uv sync
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+```
+
+#### Local Setup (Conda)
+
 ```shell
 SET DISTUTILS_USE_SDK=1 # Windows only
 conda env create --file environment.yml
 conda activate gaussian_splatting
 ```
-Please note that this process assumes that you have CUDA SDK **11** installed, not **12**. For modifications, see below.
+Please note that Conda setup assumes CUDA SDK **11**, not **12**. For modifications, see below.
+
+#### Installing CUDA Submodules
+
+After setting up the environment with either uv or Conda, you must install the CUDA extension submodules. These are custom CUDA/C++ packages that cannot be installed via `uv sync` or `conda` alone—they require compilation from source.
+
+```shell
+# Activate your environment first (uv or conda)
+
+# Install the required submodules
+pip install submodules/diff-gaussian-rasterization
+pip install submodules/simple-knn
+pip install submodules/fused-ssim
+```
+
+For uv users, you can alternatively use:
+```shell
+uv pip install submodules/diff-gaussian-rasterization
+uv pip install submodules/simple-knn
+uv pip install submodules/fused-ssim
+```
+
+**Note:** These submodules contain CUDA kernels that are compiled during installation. Ensure you have a compatible CUDA toolkit installed and that your C++ compiler is properly configured.
 
 Tip: Downloading packages and creating a new environment with Conda can require a significant amount of disk space. By default, Conda will use the main system hard drive. You can avoid this by specifying a different package download location and an environment on a different drive:
 
@@ -327,16 +356,18 @@ cmake --build build --target install --config RelWithDebInfo
 ```
 You may specify a different configuration, e.g. ```Debug``` if you need more control during development.
 
-#### Ubuntu 22.04
+#### Ubuntu 22.04 / 24.04
 You will need to install a few dependencies before running the project setup.
 ```shell
 # Dependencies
 sudo apt install -y libglew-dev libassimp-dev libboost-all-dev libgtk-3-dev libopencv-dev libglfw3-dev libavdevice-dev libavcodec-dev libeigen3-dev libxxf86vm-dev libembree-dev
 # Project setup
 cd SIBR_viewers
-cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release # add -G Ninja to build faster
+cmake -Bbuild . -DCMAKE_BUILD_TYPE=Release -G Ninja
 cmake --build build -j24 --target install
-``` 
+```
+
+> **Note (Ubuntu 24.04):** Build from a clean shell without Anaconda/Miniconda in PATH to avoid library conflicts. 
 
 #### Ubuntu 20.04
 Backwards compatibility with Focal Fossa is not fully tested, but building SIBR with CMake should still work after invoking
@@ -344,10 +375,12 @@ Backwards compatibility with Focal Fossa is not fully tested, but building SIBR 
 git checkout fossa_compatibility
 ```
 
+> **Note:** After following the installation steps above, the SIBR install directory (`<SIBR install dir>`) will be `SIBR_viewers/install`. The viewer executables are located in `SIBR_viewers/install/bin/`.
+
 ### Navigation in SIBR Viewers
 The SIBR interface provides several methods of navigating the scene. By default, you will be started with an FPS navigator, which you can control with ```W, A, S, D, Q, E``` for camera translation and ```I, K, J, L, U, O``` for rotation. Alternatively, you may want to use a Trackball-style navigator (select from the floating menu). You can also snap to a camera from the data set with the ```Snap to``` button or find the closest camera with ```Snap to closest```. The floating menues also allow you to change the navigation speed. You can use the ```Scaling Modifier``` to control the size of the displayed Gaussians, or show the initial point cloud.
 
-### Running the Network Viewer
+### Running the Network Viewer (Live Training Visualization)
 
 
 
@@ -355,11 +388,26 @@ https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/90a2e4d3-c
 
 
 
-After extracting or installing the viewers, you may run the compiled ```SIBR_remoteGaussian_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
-```shell
-./<SIBR install dir>/bin/SIBR_remoteGaussian_app
-```
-The network viewer allows you to connect to a running training process on the same or a different machine. If you are training on the same machine and OS, no command line parameters should be required: the optimizer communicates the location of the training data to the network viewer. By default, optimizer and network viewer will try to establish a connection on **localhost** on port **6009**. You can change this behavior by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. If for some reason the path used by the optimizer to find the training data is not reachable by the network viewer (e.g., due to them running on different (virtual) machines), you may specify an override location to the viewer by using ```-s <source path>```. 
+The network viewer allows you to visualize training progress in real-time by connecting to a running training process.
+
+#### Quick Start (Linux)
+
+1. **Start training** in one terminal:
+   ```shell
+   python train.py -s <path to dataset>
+   ```
+
+2. **Start the network viewer** in another terminal with the same dataset path:
+   ```shell
+   export LD_LIBRARY_PATH=./SIBR_viewers/install/bin:$LD_LIBRARY_PATH
+   ./SIBR_viewers/install/bin/SIBR_remoteGaussian_app -s <path to dataset>
+   ```
+
+> **Important:** You must provide the dataset path (`-s`) to the viewer to initialize camera and resolution settings. Without it, the viewer cannot properly connect to the training process.
+
+#### Connection Settings
+
+By default, the optimizer and network viewer communicate on **localhost** port **6009**. You can change this by providing matching ```--ip``` and ```--port``` parameters to both the optimizer and the network viewer. 
 
 <details>
 <summary><span style="font-weight: bold;">Primary Command Line Arguments for Network Viewer</span></summary>
@@ -388,14 +436,30 @@ https://github.com/graphdeco-inria/gaussian-splatting/assets/40643808/0940547f-1
 
 
 
-After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.: 
+After extracting or installing the viewers, you may run the compiled ```SIBR_gaussianViewer_app[_config]``` app in ```<SIBR install dir>/bin```, e.g.:
 ```shell
 ./<SIBR install dir>/bin/SIBR_gaussianViewer_app -m <path to trained model>
 ```
 
-It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. Combine it with ```--force-aspect-ratio``` if you want the exact resolution and don't mind image distortion. 
+It should suffice to provide the ```-m``` parameter pointing to a trained model directory. Alternatively, you can specify an override location for training input data using ```-s```. To use a specific resolution other than the auto-chosen one, specify ```--rendering-size <width> <height>```. Combine it with ```--force-aspect-ratio``` if you want the exact resolution and don't mind image distortion.
 
 **To unlock the full frame rate, please disable V-Sync on your machine and also in the application (Menu &rarr; Display). In a multi-GPU system (e.g., laptop) your OpenGL/Display GPU should be the same as your CUDA GPU (e.g., by setting the application's GPU preference on Windows, see below) for maximum performance.**
+
+#### Running on Linux (after building from source)
+
+After building with CMake, install and run:
+```shell
+cd SIBR_viewers/build && ninja install && cd ../..
+export LD_LIBRARY_PATH=./SIBR_viewers/install/bin:$LD_LIBRARY_PATH
+./SIBR_viewers/install/bin/SIBR_gaussianViewer_app -m <path to trained model>
+```
+
+**For hybrid GPU laptops (NVIDIA Optimus):** If you see "FALLING BACK TO SLOWER RENDERING WITH CPU ROUNDTRIP", use PRIME offload:
+```shell
+export __NV_PRIME_RENDER_OFFLOAD=1
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+./SIBR_viewers/install/bin/SIBR_gaussianViewer_app -m <path to trained model>
+```
 
 ![Teaser image](assets/select.png)
 
