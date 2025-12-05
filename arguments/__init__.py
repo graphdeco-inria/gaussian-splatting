@@ -98,10 +98,13 @@ class OptimizationParams(ParamGroup):
         self.random_background = False
         self.optimizer_type = "default"
 
+        self.reset_optimizer = False
 
         self.jvp_start = 15_001
         self.num_images = 5
 
+        self.loss_type = "huber"
+        self.huber_delta = 1e-1
         self.disable_ssim = True
 
         self.linesearch_alpha = 1e-0
@@ -137,8 +140,13 @@ class OptimizationParams(ParamGroup):
         self.preconditioner_image_batch_size = 5
         self.preconditioner_reset = True
         self.preconditioner_reset_iter = 20
-        self.preconditioner_warmup_from_gradient_samples = True
+        self.preconditioner_warmup_from_gradient_samples = False
+        self.preconditioner_warmup_interval = 10
         self.preconditioner_warmup_iter = 2
+        self.sophia_gamma = 1.0
+        self.sophia_epsilon = 1.0
+
+        self.use_adam = False
 
         self.adahessian_beta1 = 0.9
         self.adahessian_beta2 = 0.999
@@ -164,8 +172,9 @@ class OptimizationParams(ParamGroup):
         self.opacity_scale = 2.5e-2 * scale_const * 1.0
         self.exposure_scale = 1.0 * scale_const * 1.0
 
-        self.xyz_lr_init = 1.6e-4 * scale_const * 0.65
-        self.xyz_lr_final = 1.6e-6 * scale_const * 0.65
+        lr_scale = 1.0
+        self.xyz_lr_init = 1.6e-4 * scale_const * lr_scale
+        self.xyz_lr_final = 1.6e-6 * scale_const * lr_scale
         self.xyz_lr_decay = 1.0 # 0.996
         self.xyz_lr_max_steps = self.iterations
 
@@ -178,11 +187,11 @@ class OptimizationParams(ParamGroup):
         # self.exposure_lr = 1.0 * scale_const * 1.0
 
         # lr is the truncated learning rate used in optimization
-        self.features_dc_lr = 2.5e-3 * scale_const * 1.0
+        self.features_dc_lr = 2.5e-3 * scale_const * 1.0 * lr_scale
         self.features_rest_lr = self.features_dc_scale / 20.0
-        self.scaling_lr = 5e-3 * scale_const * 1e-0 * 0.65
-        self.rotation_lr = 1e-3 * scale_const * 1e-0 * 0.65
-        self.opacity_lr = 2.5e-2 * scale_const * 1.0 * 0.65
+        self.scaling_lr = 5e-3 * scale_const * 1e-0 * lr_scale
+        self.rotation_lr = 1e-3 * scale_const * 1e-0 * lr_scale
+        self.opacity_lr = 2.5e-2 * scale_const * 1.0 * lr_scale
         self.exposure_lr = 1.0 * scale_const * 1.0
 
         # NOTE: damp needs to be relative to scale^2
@@ -193,8 +202,7 @@ class OptimizationParams(ParamGroup):
         self.damp = self.damp_init
 
         self.noise_opacity_thresh = 0.995
-        self.noise_lr = 5e0 # 5e4
-        self.clip_thresh = 4e0
+        self.noise_lr = 0 # 5e4
 
         super().__init__(parser, "Optimization Parameters")
 

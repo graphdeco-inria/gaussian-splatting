@@ -24,9 +24,9 @@ class BatchLossImageState:
         self.Ll1_per_pixel = loss_image[:, :3, :, :]  # (B, 3, H, W)
         self.ssim_loss_per_pixel = loss_image[:, 3:6, :, :] # (B, 3, H, W)
         self.Ll1depth_per_pixel = loss_image[:, 6:, :, :]
-        self.Ll1_scalar = torch.linalg.vector_norm(self.Ll1_per_pixel.flatten(), ord=2) ** 2
-        self.ssim_loss_scalar = torch.linalg.vector_norm(self.ssim_loss_per_pixel.flatten(), ord=2) ** 2
-        self.Ll1depth_scalar = torch.linalg.vector_norm(self.Ll1depth_per_pixel.flatten(), ord=2) ** 2
+        self.Ll1_scalar = 0.5 * (torch.linalg.vector_norm(self.Ll1_per_pixel.flatten(), ord=2) ** 2)
+        self.ssim_loss_scalar = 0.5 * (torch.linalg.vector_norm(self.ssim_loss_per_pixel.flatten(), ord=2) ** 2)
+        self.Ll1depth_scalar = 0.5 * (torch.linalg.vector_norm(self.Ll1depth_per_pixel.flatten(), ord=2) ** 2)
         self.loss_scalar = self.Ll1_scalar + self.ssim_loss_scalar + self.Ll1depth_scalar
         self.sizes_list = sizes_list  # List of tuples (H, W) for each image
         self.has_depth = has_depth  # Boolean indicating if depth loss is included

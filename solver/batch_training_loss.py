@@ -7,19 +7,25 @@ from solver.loss_image_state import BatchLossImageState
 from gaussian_renderer.batch_render import batch_render
 from utils.loss_utils import l1_loss, l1_loss_per_pixel, ssim, ssim_per_pixel
 
-def compute_batch_loss_block(images, alpha_masks, gt_images, per_image_alphas, per_image_betas, FUSED_SSIM_AVAILABLE=False, disable_ssim=False):
+def huber_loss(x, delta=0.1):
+    x_abs = x.abs()
+    mask = x_abs <= delta
+    x_abs[~mask] = (2 * delta * x_abs[~mask] - delta ** 2).sqrt()
+    return x_abs
+
+def compute_batch_loss_block(images, alpha_masks, gt_images, per_image_alphas, per_image_betas, FUSED_SSIM_AVAILABLE=False, **kwargs): # use_l1_loss=False, disable_ssim=False):
+    disable_ssim = kwargs.get("disable_ssim", False)
+    loss_type = kwargs.get("loss_type", "l2")
+    huber_delta = kwargs.get("huber_delta", 0.1)
+
     if alpha_masks is not None:
         images = images * alpha_masks
 
+    Ll1_per_pixel = images - gt_images
 
     if disable_ssim:
-        Ll1_per_pixel = (images - gt_images)
-        ssim_loss_per_pixel = Ll1_per_pixel
-        Ll1_per_pixel = per_image_alphas * Ll1_per_pixel
-        ssim_loss_per_pixel = per_image_betas * ssim_loss_per_pixel
-
+        ssim_loss_per_pixel = torch.zeros_like(Ll1_per_pixel)
     else:
-        Ll1_per_pixel = l1_loss_per_pixel(images, gt_images)
         if FUSED_SSIM_AVAILABLE:
             # raise NotImplementedError("Fused SSIM is not implemented in this version.")
             ssim_value = fused_ssim(images, gt_images)
@@ -27,25 +33,32 @@ def compute_batch_loss_block(images, alpha_masks, gt_images, per_image_alphas, p
             ssim_value = ssim_per_pixel(images, gt_images)
 
         ssim_loss_per_pixel = 1.0 - ssim_per_pixel(images, gt_images)
-        ssim_loss_per_pixel = ssim_loss_per_pixel.abs()     # This is not in the original implementation, but it should be there to avoid NaNs
 
+    if loss_type == "l2":
+        pass
+    elif loss_type == "l1":
+        Ll1_per_pixel = Ll1_per_pixel.abs()
         Ll1_mask = Ll1_per_pixel != 0.0
         Ll1_per_pixel[Ll1_mask] = torch.sqrt(Ll1_per_pixel[Ll1_mask])
-        Ll1_per_pixel = per_image_alphas * Ll1_per_pixel
 
+        ssim_loss_per_pixel = ssim_loss_per_pixel.abs()
         ssim_mask = ssim_loss_per_pixel != 0.0
         ssim_loss_per_pixel[ssim_mask] = torch.sqrt(ssim_loss_per_pixel[ssim_mask])
-        ssim_loss_per_pixel = per_image_betas * ssim_loss_per_pixel
+    elif loss_type == "huber":
+        Ll1_per_pixel = huber_loss(Ll1_per_pixel, delta=huber_delta)
+        ssim_loss_per_pixel = huber_loss(ssim_loss_per_pixel, delta=huber_delta)
 
-        # Ll1_per_pixel = per_image_alphas * torch.sqrt(Ll1_per_pixel)
-        # ssim_loss_per_pixel = per_image_betas * torch.sqrt(ssim_loss_per_pixel)
+
+    Ll1_per_pixel = per_image_alphas * Ll1_per_pixel
+    ssim_loss_per_pixel = per_image_betas * ssim_loss_per_pixel
+
     return Ll1_per_pixel, ssim_loss_per_pixel
 
 def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, train_test_exp,
                         depth_l1_weight, batch_stats=None,
                         SPARSE_ADAM_AVAILABLE=False, FUSED_SSIM_AVAILABLE=False, 
-                        disable_ssim=False, 
-                        pixel_mask=None
+                        pixel_mask=None,
+                        **kwargs
                         ):
 
     B = len(viewpoint_cams)
@@ -94,7 +107,7 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
 
     
     # TODO: get checkpointing to work here
-    Ll1_per_pixel, ssim_loss_per_pixel = compute_batch_loss_block(images, alpha_masks, gt_images, alpha_per_image, beta_per_image, FUSED_SSIM_AVAILABLE, disable_ssim)
+    Ll1_per_pixel, ssim_loss_per_pixel = compute_batch_loss_block(images, alpha_masks, gt_images, alpha_per_image, beta_per_image, FUSED_SSIM_AVAILABLE, **kwargs) # use_l1_loss, disable_ssim)
 
     has_depth = any([vc.depth_reliable for vc in viewpoint_cams])
 

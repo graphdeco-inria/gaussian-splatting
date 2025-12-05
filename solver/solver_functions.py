@@ -14,7 +14,8 @@ def loss(gaussians, viewpoint_cams, scale=1.0, **render_kwargs):
     with torch.no_grad():
         l = 0.0
         for vc in viewpoint_cams:
-            l += scalar_training_loss(gaussians=gaussians, viewpoint_cam=vc, **render_kwargs) ** 2
+            # l += scalar_training_loss(gaussians=gaussians, viewpoint_cam=vc, **render_kwargs) ** 2
+            l += batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
         return l * scale
 
 def g(gaussians, viewpoint_cams, scale=1.0, return_loss=False, **render_kwargs):
@@ -23,7 +24,8 @@ def g(gaussians, viewpoint_cams, scale=1.0, return_loss=False, **render_kwargs):
     with torch.enable_grad():
         l = 0.0
         for vc in viewpoint_cams:
-            li = scalar_training_loss(gaussians=gaussians, viewpoint_cam=vc, **render_kwargs) ** 2
+            # li = scalar_training_loss(gaussians=gaussians, viewpoint_cam=vc, **render_kwargs) ** 2
+            li = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
             li *= scale
 
             l += li.item()
@@ -47,7 +49,8 @@ def JTJv(v, gaussians, viewpoint_cams, scale=1.0, S=None, damp=None, **render_kw
         Sv = v
 
     B = len(viewpoint_cams)
-    batch_size = render_kwargs.get("hessian_batch_size", 1)
+    batch_size = render_kwargs.get("batch_size", 1)
+    batch_size = B if batch_size < 0 else batch_size
 
     gaussians.zero_grad()
 
