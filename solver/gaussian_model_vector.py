@@ -286,12 +286,12 @@ class GaussianModelVector:
         if self.tensor_opacity:
             l.append(self.opacity.flatten())
         else:
-            l.append(torch.ones(N5, device="cuda") * self.opacity)
+            l.append(torch.ones(N6, device="cuda") * self.opacity)
         if with_exposure:
             if self.tensor_exposure:
                 l.append(self.exposure.flatten())
             else:
-                l.append(torch.ones(N6, device="cuda") * self.exposure)
+                l.append(torch.ones(N7, device="cuda") * self.exposure)
 
         return torch.cat(l, dim=0)
 

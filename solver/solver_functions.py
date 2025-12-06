@@ -48,6 +48,7 @@ def JTJv(v, gaussians, viewpoint_cams, scale=1.0, S=None, damp=None, **render_kw
     else:
         Sv = v
 
+
     B = len(viewpoint_cams)
     batch_size = render_kwargs.get("batch_size", 1)
     batch_size = B if batch_size < 0 else batch_size
@@ -83,6 +84,9 @@ def construct_loss_func(**render_kwargs):
 
 def construct_g_func(**render_kwargs):
     return partial(g, **render_kwargs)
+
+def construct_Jv_func(**render_kwargs):
+    return partial(Jv, **render_kwargs)
 
 def construct_JTJv_func(**render_kwargs):
     return partial(JTJv, **render_kwargs)

@@ -30,12 +30,20 @@ import math
 from contextlib import contextmanager
 from PIL import Image
 
-from image_fitting_utils import prepare_output_and_logger, get_image_name
+from functools import partial
+from solver.gaussian_model_vector import GaussianModelVector
+from solver.training_loss import scalar_training_loss
+from solver.batch_training_loss import batch_training_loss
+from solver.training_loss_hessian import scalar_training_loss_hessian
+from solver.reference_training_loss import reference_training_loss
+from solver.conjugate_gradient import conjugate_gradient
+from solver.diagonal_estimator import restarted_squared_hutchinson, restarted_hutchinson
+from solver.solver_functions import construct_loss_func, construct_g_func, construct_JTJv_func, dot, saxpy
 
 from copy import deepcopy
 
 from matplotlib import pyplot as plt
-
+import matplotlib.colors as colors
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -128,8 +136,7 @@ def build_camera(image_path):
                     data_device="cuda",)
     return camera
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_checkpoint_dir, checkpoint_iterations, checkpoint, debug_from, image_path, num_points):
-    tb_writer = prepare_output_and_logger(args)
+def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, all_columns, sum_column):
     
     cameras = [build_camera(image_path)]
 
@@ -138,15 +145,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
     train_test_exp = False
     white_background = False
     cameras_extent = 7.5
-    image_name = get_image_name(image_path)
-    model_path = save_checkpoint_dir
+    model_path = ""
     ####### Some fixed parameters #########
 
-    if model_path != "":
-        os.makedirs(model_path, exist_ok=True)
-
     first_iter = 0
-    sh_degree = 3
+    sh_degree = 0
+    tb_writer = None
     gaussians = init_uniform_gaussians(num_points, sh_degree, opt)
 
     if checkpoint:
@@ -167,8 +171,25 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
     ema_loss_for_log = 0.0
     ema_Ll1depth_for_log = 0.0
 
-    print("before train")
-    training_report(None, first_iter + 1, 0, 0, l1_loss, 0, testing_iterations, cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
+    S = GaussianModelVector(xyz=1e-4, 
+                            features_dc=1.0,
+                            features_rest=1.0,
+                            scaling=1.0,
+                            rotation=1.0,
+                            opacity=1.0,
+                            exposure=1.0,
+                            gaussians=gaussians)
+
+    # S = GaussianModelVector(xyz=opt.xyz_scale,
+    #                         features_dc=opt.features_dc_scale,
+    #                         features_rest=opt.features_rest_scale,
+    #                         scaling=opt.scaling_scale,
+    #                         rotation=opt.rotation_scale,
+    #                         opacity=opt.opacity_scale,
+    #                         exposure=opt.exposure_scale,
+    #                         gaussians=gaussians)
+
+    S = (1 / S).sqrt()
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -192,12 +213,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
 
         gaussians.update_learning_rate(iteration)
 
-        # Every 1000 its we increase the levels of SH up to a maximum degree
-        if iteration % 100 == 0:
-            gaussians.oneupSHdegree()
-
-        # Pick the only Camera
-        viewpoint_cam = cameras[0]
+        viewpoint_cams = cameras
 
         # Render
         if (iteration - 1) == debug_from:
@@ -205,106 +221,159 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
-        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+        render_args = {"iteration": iteration,
+                       "opt": opt,
+                       "pipe": pipe,
+                       "bg": bg,
+                       "train_test_exp": train_test_exp,
+                       "depth_l1_weight": depth_l1_weight,
+                       "loss_type": opt.loss_type,
+                       "huber_delta": opt.huber_delta,
+                       "disable_ssim": opt.disable_ssim,
+                       "batch_size": 1,
+                       "pixel_mask": None,}
 
-        if viewpoint_cam.alpha_mask is not None:
-            alpha_mask = viewpoint_cam.alpha_mask.cuda()
-            image *= alpha_mask
+        loss_func = construct_loss_func(**render_args)
+        g_func = construct_g_func(**render_args)
+        JTJv_func = construct_JTJv_func(**render_args)
+        z_gen_func = partial(GaussianModelVector.rademacher_like, gaussians)
 
-        # Loss
-        gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
-        if FUSED_SSIM_AVAILABLE:
-            ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+        ref_loss_vec = batch_training_loss(**render_args, gaussians=gaussians, viewpoint_cams=viewpoint_cams).Ll1_per_pixel.flatten()
+
+        scalar_loss = loss_func(gaussians=gaussians, viewpoint_cams=viewpoint_cams)
+        g = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_cams)
+
+        m = ref_loss_vec.shape[0]
+        n = g.as_1d_tensor().shape[0]
+
+        J_ref = torch.zeros((m, n), device="cuda")
+        H = torch.zeros((n, n), device="cuda")
+
+        for i in range(m):
+            gaussians.zero_grad()
+            ref_loss_vec[i].backward(retain_graph=True)
+            Ji = GaussianModelVector.from_gaussians_grad(gaussians=gaussians)
+
+            J_ref[i, :] = Ji.as_1d_tensor()
+
+        H_ref = J_ref.T @ J_ref
+
+        v = GaussianModelVector.zeros_like(gaussians)
+        v_vec = v.as_1d_tensor()
+
+        for j in range(n):
+            v_vec *= 0.0
+            v_vec[j] = 1.0
+            v.load_1d_tensor(v_vec)
+            Hj = JTJv_func(v, gaussians=gaussians, viewpoint_cams=viewpoint_cams).as_1d_tensor()
+            H[:, j] = Hj
+
+        H_diff = H - H_ref
+
+        H_error = H.T - H
+
+        _, sigma, _ = torch.linalg.svd(H)
+        __, sigma_ref, _ = torch.linalg.svd(H_ref)
+
+        sigma = sigma[sigma.nonzero()]
+        sigma_ref = sigma_ref[sigma_ref.nonzero()]
+
+        # Plot singular values
+        plt.figure()
+        plt.plot(np.arange(len(sigma)), sigma.cpu().numpy(), label="Computed JTJ singular values")
+        plt.plot(np.arange(len(sigma_ref)), sigma_ref.cpu().numpy(), label="Reference JTJ singular values")
+        plt.yscale("log")
+        plt.xlabel("Index")
+        plt.ylabel("Singular Value (log scale)")
+        plt.legend()
+        plt.savefig(f"figures/debug_svd.png")
+
+        num_preconditioner_iters = 50
+
+        squared_hutchinson = False
+
+        SJTJSv = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=viewpoint_cams, S=S, scale=-1, )
+
+        if squared_hutchinson:
+            D_est = restarted_squared_hutchinson(Hz_func=SJTJSv,
+                                                 z_gen_func=z_gen_func,
+                                                 # D_init=D_est, 
+                                                 D_init=GaussianModelVector.ones_like(gaussians),
+                                                 restart_iter=-1,
+                                                 num_iters=num_preconditioner_iters,
+                                                 )
+            D_est = D_est.sqrt()
+
         else:
-            ssim_value = ssim(image, gt_image)
+            D_init = GaussianModelVector.ones_like(gaussians)
+            D_init.load_1d_tensor(torch.diag(H).clamp(min=1e-6))
+            D_est = restarted_hutchinson(Hz_func=SJTJSv,
+                                         z_gen_func=z_gen_func,
+                                         D_init=GaussianModelVector.ones_like(gaussians),
+                                         # D_init=D_init,
+                                         restart_iter=-1,
+                                         num_iters=num_preconditioner_iters,
+                                         )
 
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+        D_est = D_est.abs() / (S * S)
 
-        # Depth regularization
-        Ll1depth_pure = 0.0
-        if depth_l1_weight(iteration) > 0 and viewpoint_cam.depth_reliable:
-            invDepth = render_pkg["depth"]
-            mono_invdepth = viewpoint_cam.invdepthmap.cuda()
-            depth_mask = viewpoint_cam.depth_mask.cuda()
+        D_ref = H_ref.diag()
+        D = H.diag()
 
-            Ll1depth_pure = torch.abs((invDepth  - mono_invdepth) * depth_mask).mean()
-            Ll1depth = depth_l1_weight(iteration) * Ll1depth_pure 
-            loss += Ll1depth
-            Ll1depth = Ll1depth.item()
+        sorted_indices = torch.argsort(D_ref, descending=True)
+        # sorted_indices = torch.arange(D_ref.shape[0])
+
+        # Plot estimator
+        plt.figure()
+        plt.plot(D_ref[sorted_indices].cpu().numpy(), label="Reference JTJ diagonal")
+        plt.plot(D[sorted_indices].cpu().numpy(), label="Computed JTJ diagonal")
+        plt.plot(D_est.as_1d_tensor()[sorted_indices].cpu().numpy(), label="Estimated JTJ diagonal")
+        plt.yscale("log")
+        plt.xlabel("Index")
+        plt.ylabel("Diagonal Value (log scale)")
+        plt.title("JTJ Diagonal Comparison num_iters=" + str(num_preconditioner_iters))
+        plt.legend()
+        plt.savefig(f"figures/debug_jtj_diagonal_estimator.png")
+
+
+        H_abs = H.abs()
+        H_abs[H_abs < H_abs[H_abs > 0].min()] = H_abs[H_abs > 0].min()
+        norm = colors.LogNorm(vmin=H_abs.min().item(), vmax=H_abs.max().item())
+
+
+
+        plt.figure()
+        plt.imshow(H_abs[sorted_indices][:,sorted_indices].abs().cpu().numpy(), norm=norm, cmap='hot')
+        plt.colorbar()
+        plt.savefig(f"figures/debug_jtj_matrix.png")
+
+        safe_interact(local=locals(), banner="Computed loss vector")
+
+        exit()
+
+
+
+def prepare_output_and_logger(args):    
+    if not args.model_path:
+        if os.getenv('OAR_JOB_ID'):
+            unique_str=os.getenv('OAR_JOB_ID')
         else:
-            Ll1depth = 0
+            unique_str = str(uuid.uuid4())
+        args.model_path = os.path.join("./output/", unique_str[0:10])
+        
+    # Set up output folder
+    print("Output folder: {}".format(args.model_path))
+    os.makedirs(args.model_path, exist_ok = True)
+    with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
+        cfg_log_f.write(str(Namespace(**vars(args))))
 
-        loss.backward()
-        # print(f"in image fitting.py L1: {Ll1.item():.6f} SSIM: {ssim_value.item():.6f}, loss: {loss.item():.6f}, Depth L1: {Ll1depth:.6f}")
-
-        iter_end.record()
-        torch.cuda.synchronize()
-
-        with torch.no_grad():
-
-            # loss_ref = reference_training_loss(iteration, opt, viewpoint_cam, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
-
-            # if tb_writer:
-            #     tb_writer.add_scalar('total_loss_ref', loss_ref.item(), iteration)
-
-            # Progress bar
-            ema_loss_for_log = 0.4 * loss + 0.6 * ema_loss_for_log
-            ema_Ll1depth_for_log = 0.4 * Ll1depth + 0.6 * ema_Ll1depth_for_log
-
-            if iteration % 10 == 0:
-                progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
-                progress_bar.update(10)
-            if iteration == opt.iterations:
-                progress_bar.close()
-
-            # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
-
-            # Densification
-            if iteration < opt.densify_until_iter:
-                # Keep track of max radii in image-space for pruning
-                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-                # Disabling positional gradient based densification
-                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
-
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, cameras_extent, size_threshold, radii)
-                
-                if iteration % opt.opacity_reset_interval == 0 or (white_background and iteration == opt.densify_from_iter):
-                    gaussians.reset_opacity()
-
-            # gaussians_old = deepcopy(gaussians)
-
-            # safe_interact(local=locals(), banner="Debug prompt before optimizer step")
-
-
-            # Optimizer step
-            if iteration < opt.iterations:
-                gaussians.exposure_optimizer.step()
-                gaussians.exposure_optimizer.zero_grad(set_to_none = True)
-                if use_sparse_adam:
-                    visible = radii > 0
-                    gaussians.optimizer.step(visible, radii.shape[0])
-                    gaussians.optimizer.zero_grad(set_to_none = True)
-                else:
-                    gaussians.optimizer.step()
-                    gaussians.optimizer.zero_grad(set_to_none = True)
-
-            # s = GaussianModelState.from_gaussians(gaussians) - GaussianModelState.from_gaussians(gaussians_old)
-
-            # safe_interact(local=locals(), banner="Debug prompt after training step")
-            # plot_loss_vs_step_size(iteration, l1_loss, cameras, gaussians, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
-
-            if (iteration in checkpoint_iterations):
-                print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                print("Model path: {}".format(model_path + "/chkpnt" + str(iteration) + ".pth"))
-                torch.save((gaussians.capture(), iteration), model_path + "/chkpnt" + str(iteration) + ".pth")
-                import code; code.interact(local=locals(), banner="Debug prompt after saving")
-            # safe_interact(local=locals(), banner="After iteration prompt")
+    # Create Tensorboard writer
+    tb_writer = None
+    if TENSORBOARD_FOUND:
+        tb_writer = SummaryWriter(args.model_path)
+    else:
+        print("Tensorboard not available: not logging progress")
+    return tb_writer
 
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, cameras, gaussians, renderFunc, renderArgs, train_test_exp):
     if tb_writer:
@@ -314,8 +383,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
 
     # Report test and samples of training set
 
-    if iteration in testing_iterations or iteration % 100 == 0 or iteration == 1001:
-        print(gaussians._xyz.shape)
+    if iteration in testing_iterations or iteration % 100 == 0:
         torch.cuda.empty_cache()
         num_val_images = 30
         val_stride = max(1, len(cameras) // num_val_images)
@@ -348,7 +416,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
 
         if tb_writer:
-            # tb_writer.add_histogram("scene/opacity_histogram", gaussians.get_opacity, iteration)
+            tb_writer.add_histogram("scene/opacity_histogram", gaussians.get_opacity, iteration)
             tb_writer.add_scalar('total_points', gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 
@@ -431,16 +499,14 @@ if __name__ == "__main__":
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument('--disable_viewer', action='store_true', default=False)
-    parser.add_argument("--save_checkpoint_dir", type=str, default="")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--num_points", type=int, default=2_000)
     parser.add_argument("--image_path", type=str, default="")
+    parser.add_argument("--all_columns", action="store_true", default=False)
+    parser.add_argument("--sum_column", action="store_true", default=False)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
-
-    if args.checkpoint_iterations != []:
-        assert args.save_checkpoint_dir != "", "Please provide a directory to save checkpoints."
     
     print("Optimizing " + args.model_path)
 
@@ -451,17 +517,17 @@ if __name__ == "__main__":
     if not args.disable_viewer:
         network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args),
-             op.extract(args), 
+    training(op.extract(args), 
              pp.extract(args), 
              args.test_iterations, 
              args.save_iterations, 
-             args.save_checkpoint_dir,
              args.checkpoint_iterations, 
              args.start_checkpoint, 
              args.debug_from, 
              args.image_path, 
-             args.num_points)
+             args.num_points,
+             args.all_columns,
+             args.sum_column)
 
     # All done
     print("\nTraining complete.")

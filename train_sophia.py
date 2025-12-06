@@ -151,14 +151,12 @@ def compute_ref_loss(ref_loss_func, gaussians, viewpoint_cams, scale):
         ref_loss += ref_loss_i.item()
     return ref_loss
 
-def plot_diagonal_est(v, adam_v, g):
-    v = v.as_1d_tensor()
-    adam_v = adam_v.as_1d_tensor()
-    g = g.as_1d_tensor()
-    sorted_indices = torch.argsort(adam_v)
-
-    safe_interact(local=locals(), banner="Plotting diagonal estimates")
-
+def compute_JTJ_col(JTJv_func, index, gaussians):
+    v = GaussianModelVector.zeros_like(gaussians)
+    v_vec = v.as_1d_tensor()
+    v_vec[index] = 1.0
+    v.load_1d_tensor(v_vec)
+    return JTJv_func(v=v).as_1d_tensor()
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     splat_mask = None
@@ -207,11 +205,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     #                         opacity=opt.opacity_scale,
     #                         exposure=opt.exposure_scale,
     #                         gaussians=gaussians)
-    S = GaussianModelVector(xyz=1.0,
+    S = GaussianModelVector(xyz=1e0,
                             features_dc=1.0,
                             features_rest=1.0,
-                            scaling=1.0,
-                            rotation=1.0,
+                            scaling=1e0,
+                            rotation=1e0,
                             opacity=1.0,
                             exposure=1.0,
                             gaussians=gaussians)
@@ -224,6 +222,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     g_denom_iter = 0
     D_denom_iter = 0
     D_est_smoothed = 0
+    D_est_smoothed_abs = 0
     adam_D_denom_iter = 0
     adam_D_est_smoothed = 0
 
@@ -241,8 +240,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     use_sparse_adam = opt.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
     depth_l1_weight = get_expon_lr_func(opt.depth_l1_weight_init, opt.depth_l1_weight_final, max_steps=opt.iterations)
 
-    test_viewpoint_stack = scene.getTestCameras().copy()
     viewpoint_stack = scene.getTrainCameras().copy()
+    # DEBUG: restrict to 2 views 
+    viewpoint_stack = [viewpoint_stack[i] for i in (0, 1)]
+    test_stack = viewpoint_stack
     viewpoint_indices = list(range(len(viewpoint_stack)))
 
     preconditioner = None
@@ -259,7 +260,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         safe_interact(local=locals(), banner="Using Adam optimizer - not Sophia")
 
     with torch.no_grad():
-        training_report(tb_writer, first_iter, 0.0, 0.0, l1_loss, 0.0, testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None)
+        training_report(tb_writer, first_iter, 0.0, 0.0, l1_loss, 0.0, testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None, test_stack=test_stack, train_stack=viewpoint_stack)
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -293,8 +294,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             viewpoint_batch.append(viewpoint_cam)
 
         num_val_images = int(len(viewpoint_stack) * opt.linesearch_val_images)
-        val_stride = max(1, len(scene.getTrainCameras()) // num_val_images)
-        val_indices = list(range(0, len(scene.getTrainCameras()), val_stride))
+        val_stride = max(1, len(viewpoint_stack) // num_val_images)
+        val_indices = list(range(0, len(viewpoint_stack), val_stride))
         val_viewpoint_stack = [viewpoint_stack[i] for i in val_indices]
         val_scale = len(viewpoint_stack) / len(val_viewpoint_stack)
 
@@ -357,11 +358,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             squared_hutchinson = False
 
-            num_preconditioner_iters = opt.preconditioner_warmup_iter if iteration != first_iter else 200
+            num_preconditioner_iters = opt.preconditioner_warmup_iter if iteration != first_iter else 50
 
             D_denom_iter += 1
             if squared_hutchinson:
-                D_est_t = restarted_squared_hutchinson(Hz_func=JTJv_hat_func,
+                D_est_t = restarted_squared_hutchinson(Hz_func=JTJv,
                                                        z_gen_func=z_gen_func,
                                                        D_init=D_est, 
                                                        # D_init=GaussianModelVector.ones_like(gaussians),
@@ -377,7 +378,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 D_precond = D_est * 1
                 D_precond.clip_(damp, 1e20)
 
-                D_est_t = restarted_hutchinson(Hz_func=JTJv_hat_func,
+                D_est_t = restarted_hutchinson(Hz_func=JTJv,
                                                z_gen_func=z_gen_func,
                                                # D_init=D_precond, 
                                                D_init=GaussianModelVector.ones_like(gaussians),
@@ -388,19 +389,31 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 # safe_interact(local=locals(), banner="Hutchinson preconditioner debug")
 
-
                 beta2 = opt.adahessian_beta2
                 D_est_smoothed = beta2 * D_est_smoothed + (1 - beta2) * D_est_t
+                D_est_smoothed_abs = beta2 * D_est_smoothed_abs + (1 - beta2) * D_est_t.abs()
                 D_est = (D_est_smoothed / (1 - beta2 ** D_denom_iter))
+                D_est_abs = (D_est_smoothed_abs / (1 - beta2 ** D_denom_iter))
 
-            v = opt.sophia_gamma * (D_est / (S * S))
-            v.clip_(damp, 1e20)
+            v = opt.sophia_gamma * (D_est.abs() / (S * S))
+            v_abs = opt.sophia_gamma * (D_est_abs.abs() / (S * S))
+
+            v.clip_(1e-16, 1e20)
+            v_abs.clip_(1e-16, 1e20)
 
         preconditioner_end.record()
 
-        # plot_diagonal_est(v, adam_v, g_est)
+        g_vec = g.as_1d_tensor()
+        v_vec = v.as_1d_tensor()
+        v_abs_vec = v_abs.as_1d_tensor()
+        adam_v_vec = adam_v.as_1d_tensor() + 1e-15
+        D_est_t_vec = D_est_t.as_1d_tensor()
+        step_abs = (g_vec / v_vec).abs()
+        adam_step_abs = (g_vec / adam_v_vec).abs()
 
-        adam_mixed_mode = "weighted" # "weighted" "replace" "none"
+        safe_interact(local={**locals(), **globals()}, banner="Preconditioner debug")
+
+        adam_mixed_mode = "none" # "weighted" "replace" "none"
 
         if adam_mixed_mode == "weighted":
             adam_weight = 0.1
@@ -411,15 +424,36 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             v_vec = torch.max(v_vec, adam_v_vec)
             # v_vec = torch.min(v_vec, adam_v_vec)
             v.load_1d_tensor(v_vec)
+        elif adam_mixed_mode == "xyz":
+            # v.xyz = (adam_v.xyz + 1e-15)
+            # v.rotation = (adam_v.rotation + 1e-15)
+            # v.scaling = (adam_v.scaling + 1e-15)
+            # v.opacity = (adam_v.opacity + 1e-15)
+            # v.features_dc = (adam_v.features_dc + 1e-15)
+            # v.features_rest = (adam_v.features_rest + 1e-15)
+            pass
         else:
             pass
 
+        experimental_step = True
+        if experimental_step:
+            print("Using experimental Sophia step")
+            v.xyz *= 1e22
+            v.rotation = adam_v.rotation
+            v.scaling *= 1e22
+            v.exposure *= 1e22
+            v.features_dc *= 1e22
+            v.features_rest *= 1e22
+
         s_sophia = -(1 / v) * g_est
-        s_sophia.clip_(-1, 1)
+        clip_thresh = 1.0
+        s_sophia.clip_(-clip_thresh, clip_thresh)
         s_sophia = s_sophia * lr
 
         if opt.use_adam:
             s_sophia = s_adam
+        else:
+            print("Using Sophia step")
 
         # safe_interact(local=locals(), banner="Before clip")
 
@@ -446,7 +480,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             Ll1 = 0.0
 
             if iteration % opt.eval_interval == 0:
-                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None)
+                training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, opt.jvp_start, val_indices=None, test_stack=test_stack, train_stack=viewpoint_stack)
 
             if tb_writer:
 
@@ -487,7 +521,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 tb_writer.add_scalar('timings/update_time', update_time, iteration)
                 tb_writer.add_scalar('timings/iter_time', iter_time, iteration)
 
-def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp, jvp_start, val_indices=None):
+def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp, jvp_start, val_indices=None, test_stack=None, train_stack=None):
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1, iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss, iteration)
@@ -499,10 +533,10 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
         torch.cuda.empty_cache()
         if val_indices is None:
             num_val_images = 20
-            val_stride = max(1, len(scene.getTrainCameras()) // num_val_images)
-            val_indices = list(range(0, len(scene.getTrainCameras()), val_stride))
-        validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
-                              {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx] for idx in val_indices]} )
+            val_stride = max(1, len(train_stack) // num_val_images)
+            val_indices = list(range(0, len(train_stack), val_stride))
+        validation_configs = ({'name': 'test', 'cameras' : test_stack}, 
+                              {'name': 'train', 'cameras' : [train_stack[idx] for idx in val_indices]} )
         print(f"\n[ITER {iteration}] val_indices: {val_indices}")
 
         for config in validation_configs:
