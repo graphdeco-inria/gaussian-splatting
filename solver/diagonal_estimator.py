@@ -1,7 +1,13 @@
 import torch
 from utils.general_utils import safe_interact
 
-def restarted_hutchinson(Hz_func, z_gen_func, D_init, restart_iter=-1, num_iters=200, eps=1e-16, damp=0.0):
+def restarted_hutchinson(Hz_func, z_gen_func, D_init, restart_iter=-1, num_iters=200, eps=1e-16, damp=0.0, 
+                         with_xyz=True,
+                         with_features_dc=True,
+                         with_features_rest=True,
+                         with_scaling=True,
+                         with_rotation=True, 
+                         with_opacity=True):
 
     D_accum = 0
     denom_iters = 0
@@ -15,6 +21,20 @@ def restarted_hutchinson(Hz_func, z_gen_func, D_init, restart_iter=-1, num_iters
         denom_iters += 1
 
         z = z_gen_func()
+
+        if not with_xyz:
+            z.xyz *= 0.0
+        if not with_features_dc:
+            z.features_dc *= 0.0
+        if not with_features_rest:
+            z.features_rest *= 0.0
+        if not with_scaling:
+            z.scaling *= 0.0
+        if not with_rotation:
+            z.rotation *= 0.0
+        if not with_opacity:
+            z.opacity *= 0.0
+
         Sz = S_hat * z
 
         HSz = Hz_func(Sz)
@@ -31,7 +51,7 @@ def restarted_hutchinson(Hz_func, z_gen_func, D_init, restart_iter=-1, num_iters
             D_est = D_accum / denom_iters
             D_vec = D_est.as_1d_tensor()
 
-            S_hat = 1 / (D_est + eps).sqrt()
+            S_hat = 1 / (D_est.abs() + eps).sqrt()
             S_hat_sq = S_hat * S_hat
 
             D_accum = 0

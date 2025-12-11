@@ -38,7 +38,7 @@ from solver.training_loss_hessian import scalar_training_loss_hessian
 from solver.reference_training_loss import reference_training_loss
 from solver.conjugate_gradient import conjugate_gradient
 from solver.diagonal_estimator import restarted_squared_hutchinson, restarted_hutchinson
-from solver.solver_functions import construct_loss_func, construct_g_func, construct_JTJv_func, dot, saxpy
+from solver.solver_functions import construct_loss_func, construct_g_func, construct_JTJv_func, dot, saxpy, construct_Dhat_func
 
 from copy import deepcopy
 
@@ -171,7 +171,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
     ema_loss_for_log = 0.0
     ema_Ll1depth_for_log = 0.0
 
-    S = GaussianModelVector(xyz=1e-4, 
+    S = GaussianModelVector(xyz=1.0, 
                             features_dc=1.0,
                             features_rest=1.0,
                             scaling=1.0,
@@ -236,6 +236,7 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         loss_func = construct_loss_func(**render_args)
         g_func = construct_g_func(**render_args)
         JTJv_func = construct_JTJv_func(**render_args)
+        Dhat_func = construct_Dhat_func(**render_args)
         z_gen_func = partial(GaussianModelVector.rademacher_like, gaussians)
 
         ref_loss_vec = batch_training_loss(**render_args, gaussians=gaussians, viewpoint_cams=viewpoint_cams).Ll1_per_pixel.flatten()
@@ -246,49 +247,52 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         m = ref_loss_vec.shape[0]
         n = g.as_1d_tensor().shape[0]
 
-        J_ref = torch.zeros((m, n), device="cuda")
+        # J_ref = torch.zeros((m, n), device="cuda")
         H = torch.zeros((n, n), device="cuda")
 
-        for i in range(m):
-            gaussians.zero_grad()
-            ref_loss_vec[i].backward(retain_graph=True)
-            Ji = GaussianModelVector.from_gaussians_grad(gaussians=gaussians)
+        # for i in range(m):
+        #     gaussians.zero_grad()
+        #     ref_loss_vec[i].backward(retain_graph=True)
+        #     Ji = GaussianModelVector.from_gaussians_grad(gaussians=gaussians)
 
-            J_ref[i, :] = Ji.as_1d_tensor()
+        #     J_ref[i, :] = Ji.as_1d_tensor()
 
-        H_ref = J_ref.T @ J_ref
+        # H_ref = J_ref.T @ J_ref
 
         v = GaussianModelVector.zeros_like(gaussians)
         v_vec = v.as_1d_tensor()
 
-        for j in range(n):
-            v_vec *= 0.0
-            v_vec[j] = 1.0
-            v.load_1d_tensor(v_vec)
-            Hj = JTJv_func(v, gaussians=gaussians, viewpoint_cams=viewpoint_cams).as_1d_tensor()
-            H[:, j] = Hj
+        # for j in range(n):
+        #     print(f"Computing JTJ column {j+1}/{n}", end="\r")
+        #     v_vec *= 0.0
+        #     v_vec[j] = 1.0
+        #     v.load_1d_tensor(v_vec)
+        #     Hj = JTJv_func(v, gaussians=gaussians, viewpoint_cams=viewpoint_cams).as_1d_tensor()
+        #     H[:, j] = Hj
 
-        H_diff = H - H_ref
+        H = torch.load("H_picasso1_20x24.pth")
+
+        # H_diff = H - H_ref
 
         H_error = H.T - H
 
         _, sigma, _ = torch.linalg.svd(H)
-        __, sigma_ref, _ = torch.linalg.svd(H_ref)
+        # __, sigma_ref, _ = torch.linalg.svd(H_ref)
 
         sigma = sigma[sigma.nonzero()]
-        sigma_ref = sigma_ref[sigma_ref.nonzero()]
+        # sigma_ref = sigma_ref[sigma_ref.nonzero()]
 
-        # Plot singular values
-        plt.figure()
-        plt.plot(np.arange(len(sigma)), sigma.cpu().numpy(), label="Computed JTJ singular values")
-        plt.plot(np.arange(len(sigma_ref)), sigma_ref.cpu().numpy(), label="Reference JTJ singular values")
-        plt.yscale("log")
-        plt.xlabel("Index")
-        plt.ylabel("Singular Value (log scale)")
-        plt.legend()
-        plt.savefig(f"figures/debug_svd.png")
+        # # Plot singular values
+        # plt.figure()
+        # plt.plot(np.arange(len(sigma)), sigma.cpu().numpy(), label="Computed JTJ singular values")
+        # plt.plot(np.arange(len(sigma_ref)), sigma_ref.cpu().numpy(), label="Reference JTJ singular values")
+        # plt.yscale("log")
+        # plt.xlabel("Index")
+        # plt.ylabel("Singular Value (log scale)")
+        # plt.legend()
+        # plt.savefig(f"figures/debug_svd.png")
 
-        num_preconditioner_iters = 50
+        num_preconditioner_iters = 5
 
         squared_hutchinson = False
 
@@ -317,15 +321,14 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
         D_est = D_est.abs() / (S * S)
 
-        D_ref = H_ref.diag()
+        # D_ref = H_ref.diag()
         D = H.diag()
 
-        sorted_indices = torch.argsort(D_ref, descending=True)
-        # sorted_indices = torch.arange(D_ref.shape[0])
+        sorted_indices = torch.argsort(D, descending=True)
+        # sorted_indices = torch.arange(D.shape[0])
 
         # Plot estimator
         plt.figure()
-        plt.plot(D_ref[sorted_indices].cpu().numpy(), label="Reference JTJ diagonal")
         plt.plot(D[sorted_indices].cpu().numpy(), label="Computed JTJ diagonal")
         plt.plot(D_est.as_1d_tensor()[sorted_indices].cpu().numpy(), label="Estimated JTJ diagonal")
         plt.yscale("log")
@@ -336,18 +339,83 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
         plt.savefig(f"figures/debug_jtj_diagonal_estimator.png")
 
 
-        H_abs = H.abs()
-        H_abs[H_abs < H_abs[H_abs > 0].min()] = H_abs[H_abs > 0].min()
-        norm = colors.LogNorm(vmin=H_abs.min().item(), vmax=H_abs.max().item())
+        # H_abs = H.abs() + 1e-20
+        # H_abs[H_abs < H_abs[H_abs > 0].min()] = H_abs[H_abs > 0].min()
+        # norm = colors.LogNorm(vmin=H_abs.min().item(), vmax=H_abs.max().item())
 
 
 
+        # plt.figure()
+        # plt.imshow(H_abs[sorted_indices][:,sorted_indices].abs().cpu().numpy(), norm=norm, cmap='hot')
+        # plt.colorbar()
+        # plt.savefig(f"figures/debug_jtj_matrix.png")
+
+        Dhat = Dhat_func(gaussians=gaussians, viewpoint_cams=viewpoint_stack)
+
+        v.load_1d_tensor(D)
+
+        num_preconditioner_iters1 = 10
+        num_preconditioner_iters2 = 1
+        num_preconditioner_iters3 = 1
+
+        D_est1 = restarted_hutchinson(Hz_func=SJTJSv,
+                                     z_gen_func=z_gen_func,
+                                     D_init=Dhat,
+                                     # D_init=D_init,
+                                     restart_iter=-1,
+                                     num_iters=num_preconditioner_iters1,
+                                     )
+        D_est1 = D_est1.abs() / (S * S)
+        D_est2 = restarted_hutchinson(Hz_func=SJTJSv,
+                                     z_gen_func=z_gen_func,
+                                     D_init=D_est1,
+                                     # D_init=D_init,
+                                     restart_iter=-1,
+                                     num_iters=num_preconditioner_iters2,
+                                     )
+        D_est2 = D_est2.abs() / (S * S)
+        D_est = restarted_hutchinson(Hz_func=SJTJSv,
+                                     z_gen_func=z_gen_func,
+                                     D_init=D_est2,
+                                     # D_init=D_init,
+                                     restart_iter=-1,
+                                     num_iters=num_preconditioner_iters3,
+                                     )
+        D_est = D_est.abs() / (S * S)
+
+        # Plot estimator
         plt.figure()
-        plt.imshow(H_abs[sorted_indices][:,sorted_indices].abs().cpu().numpy(), norm=norm, cmap='hot')
-        plt.colorbar()
-        plt.savefig(f"figures/debug_jtj_matrix.png")
+        plt.plot(Dhat.as_1d_tensor()[sorted_indices].cpu().numpy(), label="Initial JTJ diagonal")
+        plt.plot(D_est1.as_1d_tensor()[sorted_indices].cpu().numpy(), label=f"Estimated JTJ diagonal at iter {num_preconditioner_iters1}")
+        plt.plot(D_est2.as_1d_tensor()[sorted_indices].cpu().numpy(), label=f"Estimated JTJ diagonal at iter {num_preconditioner_iters1 + num_preconditioner_iters2}")
+        plt.plot(D_est.as_1d_tensor()[sorted_indices].cpu().numpy(), label=f"Estimated JTJ diagonal at iter {num_preconditioner_iters1 + num_preconditioner_iters2 + num_preconditioner_iters3}")
+        plt.plot(D[sorted_indices].cpu().numpy(), label="Computed JTJ diagonal")
+        plt.yscale("log")
+        plt.xlabel("Index")
+        plt.ylabel("Diagonal Value (log scale)")
 
-        safe_interact(local=locals(), banner="Computed loss vector")
+        # Set x_lim
+        plt.xlim(0, 2000)
+
+        plt.title("JTJ Diagonal Comparison num_iters=" + str(num_preconditioner_iters1 + num_preconditioner_iters2 + num_preconditioner_iters3))
+        plt.legend()
+        plt.savefig(f"figures/debug_jtj_diagonal_estimator_with_Dhat.png")
+
+        safe_interact(local=locals(), banner="End of training loop")
+
+        # Test raw diagonal estimation
+        D_est_raw = 0
+        num_iters = 200
+        for _ in range(num_iters):
+            # Generate a random Rademacher vector
+            z = torch.randint(0, 2, (n,), device="cuda").float() * 2 - 1
+            Hz = H @ z
+            D_est_raw += z * Hz
+        D_est_raw /= num_iters
+
+        safe_interact(local=locals(), banner="End of training loop")
+
+
 
         exit()
 

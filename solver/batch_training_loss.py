@@ -17,6 +17,7 @@ def compute_batch_loss_block(images, alpha_masks, gt_images, per_image_alphas, p
     disable_ssim = kwargs.get("disable_ssim", False)
     loss_type = kwargs.get("loss_type", "l2")
     huber_delta = kwargs.get("huber_delta", 0.1)
+    regularize = kwargs.get("regularize", False)
 
     if alpha_masks is not None:
         images = images * alpha_masks
@@ -55,9 +56,10 @@ def compute_batch_loss_block(images, alpha_masks, gt_images, per_image_alphas, p
     return Ll1_per_pixel, ssim_loss_per_pixel
 
 def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, train_test_exp,
-                        depth_l1_weight, batch_stats=None,
+                        depth_l1_weight, return_stats=False,
                         SPARSE_ADAM_AVAILABLE=False, FUSED_SSIM_AVAILABLE=False, 
                         pixel_mask=None,
+                        track_weights=False,
                         **kwargs
                         ):
 
@@ -68,15 +70,17 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
     max_H = max(s[0] for s in sizes_list)
     max_W = max(s[1] for s in sizes_list)
 
-    batch_render_pkg = batch_render(viewpoint_cams, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
+    batch_render_pkg = batch_render(viewpoint_cams, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE, track_weights=track_weights)
 
-    images, viewspace_point_tensor, visibility_filter, max_radii = batch_render_pkg["render"], batch_render_pkg["viewspace_points"], batch_render_pkg["visibility_filter"], batch_render_pkg["max_radii"]
+    images, viewspace_point_tensor, visibility_filter, max_radii, squared_weights = batch_render_pkg["render"], batch_render_pkg["viewspace_points"], batch_render_pkg["visibility_filter"], batch_render_pkg["max_radii"], batch_render_pkg["squared_weights"]
 
-    if batch_stats is not None:
+    if return_stats:
+        batch_stats = {}
         batch_stats['viewspace_point_tensor'] = viewspace_point_tensor
         batch_stats['visibility_filter'] = visibility_filter
         batch_stats['max_radii'] = max_radii
         batch_stats['viewcount'] = batch_render_pkg.get('viewcount', None)
+        batch_stats['squared_weights'] = squared_weights
 
     gt_images = torch.zeros_like(images)
     for i, vc in enumerate(viewpoint_cams):
@@ -130,5 +134,8 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
 
     loss_image_state = BatchLossImageState(loss_image, sizes_list, has_depth)
 
+    if return_stats:
+        return loss_image_state, batch_stats
+    
     return loss_image_state
 

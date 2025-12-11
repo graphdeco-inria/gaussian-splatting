@@ -5,7 +5,7 @@ from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 from utils.general_utils import safe_interact
 
-def batch_render(viewpoint_cameras, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, separate_sh = False, override_color = None, use_trained_exp=False):
+def batch_render(viewpoint_cameras, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, separate_sh = False, override_color = None, use_trained_exp=False, track_weights=False):
     """
     Render the scene. 
     
@@ -44,7 +44,8 @@ def batch_render(viewpoint_cameras, pc : GaussianModel, pipe, bg_color : torch.T
         camposes=camposes,
         prefiltered=False,
         debug=pipe.debug,
-        antialiasing=pipe.antialiasing
+        antialiasing=pipe.antialiasing,
+        track_weights=track_weights
     )
 
     rasterizer = BatchGaussianRasterizer(batch_raster_settings=raster_settings)
@@ -84,9 +85,8 @@ def batch_render(viewpoint_cameras, pc : GaussianModel, pipe, bg_color : torch.T
     else:
         colors_precomp = override_color
 
-    # Rasterize visible Gaussians to image, obtain their radii (on screen). 
     if separate_sh:
-        rendered_image, radii, depth_image = rasterizer(
+        rendered_image, radii, depth_image, squared_weights = rasterizer(
             means3D = means3D,
             means2D = means2D,
             dc = dc,
@@ -97,7 +97,7 @@ def batch_render(viewpoint_cameras, pc : GaussianModel, pipe, bg_color : torch.T
             rotations = rotations,
             cov3D_precomp = cov3D_precomp)
     else:
-        rendered_image, radii, depth_image = rasterizer(
+        rendered_image, radii, depth_image, squared_weights = rasterizer(
             means3D = means3D,
             means2D = means2D,
             shs = shs,
@@ -129,7 +129,8 @@ def batch_render(viewpoint_cameras, pc : GaussianModel, pipe, bg_color : torch.T
         "visibility_filter" : visibility_filter,
         "max_radii": max_radii,
         "depth" : depth_image,
-        "viewcount": viewcount
+        "viewcount": viewcount,
+        "squared_weights": squared_weights
         }
     
     return out

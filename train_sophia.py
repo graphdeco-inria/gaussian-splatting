@@ -205,11 +205,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     #                         opacity=opt.opacity_scale,
     #                         exposure=opt.exposure_scale,
     #                         gaussians=gaussians)
-    S = GaussianModelVector(xyz=1e0,
+    S = GaussianModelVector(xyz=1.0,
                             features_dc=1.0,
                             features_rest=1.0,
-                            scaling=1e0,
-                            rotation=1e0,
+                            scaling=1.0,
+                            rotation=1.0,
                             opacity=1.0,
                             exposure=1.0,
                             gaussians=gaussians)
@@ -223,6 +223,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     D_denom_iter = 0
     D_est_smoothed = 0
     D_est_smoothed_abs = 0
+    adam_g_smoothed = 0
+    adam_g_denom_iter = 0
     adam_D_denom_iter = 0
     adam_D_est_smoothed = 0
 
@@ -335,24 +337,26 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         start_loss, g = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale, return_loss=True)
 
         ## ADAM ##
-        g_denom_iter += 1
-        beta1 = opt.adahessian_beta1
-        g_smoothed = beta1 * g_smoothed + (1 - beta1) * g
-        g_est = g_smoothed / (1 - beta1 ** g_denom_iter)
+        adam_g_denom_iter += 1
+        adam_g_smoothed = opt.adam_beta1 * adam_g_smoothed + (1 - opt.adam_beta1) * g
+        adam_g_est = adam_g_smoothed / (1 - opt.adam_beta1 ** adam_g_denom_iter)
 
         gradient_end.record()
 
         # print("Using Adam variance for preconditioner")
         adam_D_denom_iter += 1
-        beta2 = opt.adahessian_beta2
-        adam_D_est_smoothed = beta2 * adam_D_est_smoothed + (1 - beta2) * (g * g)
-        adam_v = (adam_D_est_smoothed / (1 - beta2 ** adam_D_denom_iter)).sqrt()
+        adam_D_est_smoothed = opt.adam_beta2 * adam_D_est_smoothed + (1 - opt.adam_beta2) * (g * g)
+        adam_v = (adam_D_est_smoothed / (1 - opt.adam_beta2 ** adam_D_denom_iter)).sqrt()
 
-        s_adam = -(1 / (adam_v + 1e-15)) * g_est
+        s_adam = -(1 / (adam_v + 1e-15)) * adam_g_est
         s_adam.clip_(-1, 1)
         s_adam = s_adam * lr
 
         ## ADAM ##
+
+        g_denom_iter += 1
+        g_smoothed = opt.adahessian_beta1 * g_smoothed + (1 - opt.adahessian_beta1) * g
+        g_est = g_smoothed / (1 - opt.adahessian_beta1 ** g_denom_iter)
 
         if iteration == first_iter or iteration % opt.preconditioner_warmup_interval == 0:
 
@@ -403,15 +407,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         preconditioner_end.record()
 
-        g_vec = g.as_1d_tensor()
+        g_vec = g_est.as_1d_tensor()
         v_vec = v.as_1d_tensor()
         v_abs_vec = v_abs.as_1d_tensor()
         adam_v_vec = adam_v.as_1d_tensor() + 1e-15
         D_est_t_vec = D_est_t.as_1d_tensor()
-        step_abs = (g_vec / v_vec).abs()
-        adam_step_abs = (g_vec / adam_v_vec).abs()
 
-        safe_interact(local={**locals(), **globals()}, banner="Preconditioner debug")
+        # safe_interact(local={**locals(), **globals()}, banner="Preconditioner debug")
 
         adam_mixed_mode = "none" # "weighted" "replace" "none"
 
@@ -437,13 +439,31 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         experimental_step = True
         if experimental_step:
-            print("Using experimental Sophia step")
-            v.xyz *= 1e22
-            v.rotation = adam_v.rotation
-            v.scaling *= 1e22
-            v.exposure *= 1e22
-            v.features_dc *= 1e22
-            v.features_rest *= 1e22
+            print("Using experimental Sophia step min indices")
+            ratio = (adam_v_vec / v_vec)
+            num_indices = 1000000
+            mask = g_vec != 0.0
+            pos = ratio.abs()[mask]
+            _, max_indices = torch.topk(pos, k=num_indices)
+            max_indices = torch.nonzero(mask, as_tuple=False).squeeze(-1)[max_indices]
+            _, min_indices = torch.topk(pos, k=num_indices, largest=False)
+            min_indices = torch.nonzero(mask, as_tuple=False).squeeze(-1)[min_indices]
+            indices = min_indices
+
+            v_vec_copy = v_vec.clone()
+            v_vec *= 1e22
+            # v_vec[min_indices] = adam_v_vec[min_indices] * 1e-1
+            v_vec[indices] = v_vec_copy[indices] * 1e-1
+            v.load_1d_tensor(v_vec)
+
+            s_adam_vec = s_adam.as_1d_tensor()
+            s_adam_vec_copy = s_adam_vec.clone()
+            s_adam_vec *= 0.0
+            s_adam_vec[indices] = s_adam_vec_copy[indices]
+            s_adam.load_1d_tensor(s_adam_vec)
+
+            step_abs = (g_vec / v_vec).abs()
+            adam_step_abs = (g_vec / adam_v_vec).abs()
 
         s_sophia = -(1 / v) * g_est
         clip_thresh = 1.0
@@ -459,18 +479,30 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         clip_end.record()
 
+        def get_true_diagonals(vc_idx, indices):
+            JTJv_vc = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=[viewpoint_stack[vc_idx]], scale=scale, S=S, damp=damp)
+            ds = []
+            for i in indices:
+                d = compute_JTJ_col(JTJv_vc, i, gaussians)[i]
+                ds.append(d.item())
+            return ds
 
-        # print("start loss:", start_loss)
+        print("start loss:", start_loss)
 
         with torch.no_grad():
 
             alpha = opt.linesearch_alpha
 
+            gaussians_copy = deepcopy(gaussians)
             gaussians.update_step(alpha * s_sophia)
+            gaussians_copy.update_step(alpha * s_adam)
 
             end_loss = loss_func(gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale)
+            end_loss_adam = loss_func(gaussians=gaussians_copy, viewpoint_cams=viewpoint_batch, scale=scale)
+            _, batch_stats = batch_training_loss(gaussians=gaussians, viewpoint_cams=viewpoint_batch, scale=scale, return_stats=True, track_weights=True, **render_args)
+            print(f"end_loss (Sophia): {end_loss}, end_loss (Adam): {end_loss_adam}")
 
-            # print("end loss:", end_loss)
+            safe_interact(local={**locals(), **globals()}, banner="experimental step debug")
 
             iter_end.record()
             torch.cuda.synchronize()

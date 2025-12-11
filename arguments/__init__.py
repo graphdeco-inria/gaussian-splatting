@@ -150,6 +150,8 @@ class OptimizationParams(ParamGroup):
 
         self.adahessian_beta1 = 0.9
         self.adahessian_beta2 = 0.999
+        self.adam_beta1 = 0.9
+        self.adam_beta2 = 0.999
 
         self.eval_interval = 10
 
