@@ -15,4 +15,6 @@ storage_remote_config.sh
 *.json
 scripts/.env
 *.env
+data2
 data
+./data
