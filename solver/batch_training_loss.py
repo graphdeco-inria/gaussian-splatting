@@ -81,6 +81,7 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
         batch_stats['max_radii'] = max_radii
         batch_stats['viewcount'] = batch_render_pkg.get('viewcount', None)
         batch_stats['squared_weights'] = squared_weights
+        batch_stats['images'] = images
 
     gt_images = torch.zeros_like(images)
     for i, vc in enumerate(viewpoint_cams):

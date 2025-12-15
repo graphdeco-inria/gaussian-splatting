@@ -34,12 +34,26 @@ def Dhat(gaussians, viewpoint_cams, scale=1.0, **render_kwargs):
     return D * scale
 
 def loss(gaussians, viewpoint_cams, scale=1.0, **render_kwargs):
-    with torch.no_grad():
-        l = 0.0
-        for vc in viewpoint_cams:
-            # l += scalar_training_loss(gaussians=gaussians, viewpoint_cam=vc, **render_kwargs) ** 2
-            l += batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
-        return l * scale
+    return_stats = render_kwargs.get("return_stats", False)
+    if return_stats:
+        with torch.no_grad():
+            l = 0.0
+            stats = []
+            for vc in viewpoint_cams:
+                li, stats_i = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs)
+                l += 0.5 * (li.norm() ** 2)
+                stats.append(stats_i)
+                # l += batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
+            return l * scale, stats
+    else:
+        with torch.no_grad():
+            l = 0.0
+            for vc in viewpoint_cams:
+                li = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs)
+                l += 0.5 * (li.norm() ** 2)
+                # l += batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
+            return l * scale
+    
 
 def g(gaussians, viewpoint_cams, scale=1.0, return_loss=False, **render_kwargs):
     gaussians.zero_grad()
@@ -47,8 +61,8 @@ def g(gaussians, viewpoint_cams, scale=1.0, return_loss=False, **render_kwargs):
     with torch.enable_grad():
         l = 0.0
         for vc in viewpoint_cams:
-            # li = scalar_training_loss(gaussians=gaussians, viewpoint_cam=vc, **render_kwargs) ** 2
-            li = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
+            li = 0.5 * (batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).norm() ** 2)
+            # li = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
             li *= scale
 
             l += li.item()
@@ -83,7 +97,8 @@ def JTJv(v, gaussians, viewpoint_cams, scale=1.0, S=None, damp=None, **render_kw
             end_idx = min(start_idx + batch_size, B)
             viewpoint_cams_batch = [viewpoint_cams[i] for i in range(start_idx, end_idx)]
             loss_dual = batch_training_loss(gaussians=gaussians, viewpoint_cams=viewpoint_cams_batch, **render_kwargs)
-            loss_primal, loss_tangent = loss_dual.unpack_dual()
+            loss_primal, loss_tangent = fwAD.unpack_dual(loss_dual)
+            # loss_primal, loss_tangent = loss_dual.unpack_dual()
             loss_primal.backward(loss_tangent, retain_graph=False)
 
     JTJv = GaussianModelVector.from_gaussians_grad(gaussians) * scale
@@ -103,16 +118,31 @@ def saxpy(a, x, y):
     return a * x + y
 
 def construct_Dhat_func(**render_kwargs):
-    return partial(Dhat, **render_kwargs)
+    def Dhat_func(**kwargs):
+        all_kwargs = {**render_kwargs, **kwargs}
+        return Dhat(**all_kwargs)
+    return Dhat_func
 
 def construct_loss_func(**render_kwargs):
-    return partial(loss, **render_kwargs)
+    def loss_func(**kwargs):
+        all_kwargs = {**render_kwargs, **kwargs}
+        return loss(**all_kwargs)
+    return loss_func
 
 def construct_g_func(**render_kwargs):
-    return partial(g, **render_kwargs)
+    def g_func(**kwargs):
+        all_kwargs = {**render_kwargs, **kwargs}
+        return g(**all_kwargs)
+    return g_func
 
 def construct_Jv_func(**render_kwargs):
-    return partial(Jv, **render_kwargs)
+    def Jv_func(v, **kwargs):
+        all_kwargs = {**render_kwargs, **kwargs}
+        return JTJv(v, **all_kwargs)
+    return Jv_func
 
 def construct_JTJv_func(**render_kwargs):
-    return partial(JTJv, **render_kwargs)
+    def JTJv_func(v, **kwargs):
+        all_kwargs = {**render_kwargs, **kwargs}
+        return JTJv(v, **all_kwargs)
+    return JTJv_func

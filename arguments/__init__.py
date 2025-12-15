@@ -174,26 +174,30 @@ class OptimizationParams(ParamGroup):
         self.opacity_scale = 2.5e-2 * scale_const * 1.0
         self.exposure_scale = 1.0 * scale_const * 1.0
 
-        lr_scale = 1.0
-        self.xyz_lr_init = 1.6e-4 * scale_const * lr_scale
-        self.xyz_lr_final = 1.6e-6 * scale_const * lr_scale
-        self.xyz_lr_decay = 1.0 # 0.996
+        # # lr is the truncated learning rate used in optimization
+        # self.xyz_lr_init = 1.0
+        # self.xyz_lr_final = 1.0
+        # self.xyz_lr_max_steps = self.iterations
+        # self.features_dc_lr = 1.0
+        # self.features_rest_lr = 1.0
+        # self.scaling_lr = 1.0
+        # self.rotation_lr = 1.0
+        # self.opacity_lr = 1.0
+        # self.exposure_lr = 1.0
+
+        # self.lr_scale = 10.0
+        self.lr_scale = 10.0
+        self.xyz_lr_init = 1.6e-4 * scale_const * self.lr_scale
+        self.xyz_lr_final = 1.6e-6 * scale_const * self.lr_scale
+        self.xyz_lr_decay = 0.2 # 0.996
         self.xyz_lr_max_steps = self.iterations
 
-        # # lr is the truncated learning rate used in optimization
-        # self.features_dc_lr = 2.5e-3 * scale_const * 1.0
-        # self.features_rest_lr = self.features_dc_scale / 20.0
-        # self.scaling_lr = 5e-3 * scale_const * 1e-0 * 1.0
-        # self.rotation_lr = 1e-3 * scale_const * 1e-0 * 1.0
-        # self.opacity_lr = 2.5e-2 * scale_const * 1.0
-        # self.exposure_lr = 1.0 * scale_const * 1.0
-
         # lr is the truncated learning rate used in optimization
-        self.features_dc_lr = 2.5e-3 * scale_const * 1.0 * lr_scale
+        self.features_dc_lr = 2.5e-3 * scale_const * 1.0 * self.lr_scale
         self.features_rest_lr = self.features_dc_scale / 20.0
-        self.scaling_lr = 5e-3 * scale_const * 1e-0 * lr_scale
-        self.rotation_lr = 1e-3 * scale_const * 1e-0 * lr_scale
-        self.opacity_lr = 2.5e-2 * scale_const * 1.0 * lr_scale
+        self.scaling_lr = 5e-3 * scale_const * 1e-0 * self.lr_scale
+        self.rotation_lr = 1e-3 * scale_const * 1e-0 * self.lr_scale
+        self.opacity_lr = 2.5e-2 * scale_const * 1.0 * self.lr_scale
         self.exposure_lr = 1.0 * scale_const * 1.0
 
         # NOTE: damp needs to be relative to scale^2
@@ -205,6 +209,11 @@ class OptimizationParams(ParamGroup):
 
         self.noise_opacity_thresh = 0.995
         self.noise_lr = 0 # 5e4
+
+        self.regularize_scaling = False
+        self.scaling_reg_weight = 5e-3
+        self.scaling_reg_thresh = 5
+        self.debug_loss = False
 
         super().__init__(parser, "Optimization Parameters")
 
