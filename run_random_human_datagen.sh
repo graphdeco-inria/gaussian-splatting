@@ -58,7 +58,10 @@ abspath() {
 # -----------------------------------------------------------------------------
 # Storage toggles so the same runner can ship data to different targets.
 ENABLE_LOCAL_STORAGE=${ENABLE_LOCAL_STORAGE:-true}
+ENABLE_LOCAL_STORAGE=${ENABLE_LOCAL_STORAGE:-true}
 ENABLE_NAS_STORAGE=${ENABLE_NAS_STORAGE:-false}
+ENABLE_REMOTE_STORAGE=${ENABLE_REMOTE_STORAGE:-false}
+CLEAR_LOCAL_OUTPUT_DIR=${CLEAR_LOCAL_OUTPUT_DIR:-false}
 ENABLE_REMOTE_STORAGE=${ENABLE_REMOTE_STORAGE:-false}
 CLEAR_LOCAL_OUTPUT_DIR=${CLEAR_LOCAL_OUTPUT_DIR:-false}
 
@@ -98,6 +101,7 @@ fi
 
 # Core configuration for assignment planning + rendering. Most callers just tweak
 # DATA roots or seeds via environment variables.
+SEED=${SEED:-65}
 SEED=${SEED:-65}
 CONDA_ENV=${CONDA_ENV:-cuda121}
 ACTOR_ROOT=${ACTOR_ROOT:-./data/human_gs_source}
