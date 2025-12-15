@@ -26,7 +26,7 @@ show_usage_and_exit() {
 # consumes the following logfile argument so the remainder of the script can lean
 # on env vars only.
 RESUME_MODE=false
-RESUME_LOG_PATH="./33w.log"
+RESUME_LOG_PATH="./65k.log"
 if [ $# -gt 0 ]; then
   if [ "$1" = "RESUME" ]; then
     RESUME_MODE=true
@@ -57,10 +57,10 @@ abspath() {
 # Collect everything editable here so deployments only need to tweak this block.
 # -----------------------------------------------------------------------------
 # Storage toggles so the same runner can ship data to different targets.
-ENABLE_LOCAL_STORAGE=${ENABLE_LOCAL_STORAGE:-false}
+ENABLE_LOCAL_STORAGE=${ENABLE_LOCAL_STORAGE:-true}
 ENABLE_NAS_STORAGE=${ENABLE_NAS_STORAGE:-false}
-ENABLE_REMOTE_STORAGE=${ENABLE_REMOTE_STORAGE:-true}
-CLEAR_LOCAL_OUTPUT_DIR=${CLEAR_LOCAL_OUTPUT_DIR:-true}
+ENABLE_REMOTE_STORAGE=${ENABLE_REMOTE_STORAGE:-false}
+CLEAR_LOCAL_OUTPUT_DIR=${CLEAR_LOCAL_OUTPUT_DIR:-false}
 
 if ! storage_bool_true "$ENABLE_LOCAL_STORAGE" \
   && ! storage_bool_true "$ENABLE_NAS_STORAGE" \
@@ -98,24 +98,24 @@ fi
 
 # Core configuration for assignment planning + rendering. Most callers just tweak
 # DATA roots or seeds via environment variables.
-SEED=${SEED:-33}
+SEED=${SEED:-65}
 CONDA_ENV=${CONDA_ENV:-cuda121}
 ACTOR_ROOT=${ACTOR_ROOT:-./data/human_gs_source}
 BAN_LIST=${BAN_LIST:-${ACTOR_ROOT}/BanList.txt}
-ASSIGNMENTS_OUT=${ASSIGNMENTS_OUT:-./data/actor_assignments_w_ban_33w.json}
+ASSIGNMENTS_OUT=${ASSIGNMENTS_OUT:-./data/actor_assignments_w_ban_65k.json}
 SCENES_DIR=${SCENES_DIR:-./data/scenes}
-TASKS_DIR=${TASKS_DIR:-./data/selected_33w}
-OUTPUT_DIR=${OUTPUT_DIR:-./data/path_video_frames_random_humans_33w}
-OFFLOAD_NAS_DIR=${OFFLOAD_NAS_DIR:-/mnt/nas/jiankundong/random_human_dataset_w_ban_33w}
+TASKS_DIR=${TASKS_DIR:-./data/selected_65k}
+OUTPUT_DIR=${OUTPUT_DIR:-./data/path_video_frames_random_humans_65k}
+OFFLOAD_NAS_DIR=${OFFLOAD_NAS_DIR:-/mnt/nas/jiankundong/random_human_dataset_w_ban_65k}
 OFFLOAD_MIN_FREE_GB=${OFFLOAD_MIN_FREE_GB:-0.5}
 PROGRESS_JSON=${PROGRESS_JSON:-./analysis/random_human_progress.json}
 PER_JOB_METRICS_DIR=${PER_JOB_METRICS_DIR:-./analysis/random_human_metrics}
-REMOTE_STORAGE_ROOT=${REMOTE_STORAGE_ROOT:-${REMOTE_OUTPUT_DIR:-/mnt/DATA/navdp_data_33w}}
+REMOTE_STORAGE_ROOT=${REMOTE_STORAGE_ROOT:-${REMOTE_OUTPUT_DIR:-/mnt/DATA/navdp_data_65k}}
 REMOTE_SSH_TARGET=${REMOTE_SSH_TARGET:-lenovo@192.168.151.40}
 LOCAL_OUTPUT_BASENAME="$(basename "$OUTPUT_DIR")"
 REMOTE_TARGET_DIR="${REMOTE_STORAGE_ROOT%/}/${LOCAL_OUTPUT_BASENAME}"
 REMOTE_SYNC_INTERVAL_SECS=${REMOTE_SYNC_INTERVAL_SECS:-120}
-WORKERS=${WORKERS:-16}
+WORKERS=${WORKERS:-12}
 MINIMAL_FRAMES=${MINIMAL_FRAMES:-38}
 # vram reserve function
 RESERVE_VRAM_GB=${RESERVE_VRAM_GB:-0}

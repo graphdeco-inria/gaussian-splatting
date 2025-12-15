@@ -75,6 +75,23 @@ DEBUG_PLY_DTYPE = np.dtype(
 )
 
 
+def ensure_output_dir_writable(path: Path) -> None:
+    """Ensure the target directory exists and is writable, raising a loud error otherwise."""
+
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:  # pylint: disable=broad-except
+        raise RuntimeError(f"Unable to create output directory {path}: {exc}") from exc
+    sentinel = path / f".write_test_{os.getpid()}_{time.time_ns()}"
+    try:
+        sentinel.write_text("navdp_datagen_probe", encoding="utf-8")
+    except Exception as exc:  # pylint: disable=broad-except
+        raise PermissionError(f"Cannot write to output directory {path}: {exc}") from exc
+    finally:
+        with contextlib.suppress(Exception):
+            sentinel.unlink()
+
+
 ###
 def _disk_free_bytes(path: Path) -> int:
     """Return free bytes on the filesystem hosting 'path'."""
@@ -3676,6 +3693,8 @@ def main() -> None:
     width, height = args.resolution
     nas_offload_dir: Path | None = args.offload_nas_dir
     offload_min_free_bytes: int = int(float(args.offload_min_free_gb) * (1024**3))
+    ensure_output_dir_writable(args.output_dir)
+    print(f"[CHECK] Output directory ready: {args.output_dir}", flush=True)
 
     pipeline_parser = ArgumentParser(description="Pipeline parameters placeholder")
     pipeline = PipelineParams(pipeline_parser)
@@ -4026,8 +4045,10 @@ def main() -> None:
         metrics_path.write_text(json.dumps(metrics_payload, indent=2))
         print(f"[METRICS] Wrote per-path runtime metrics to {metrics_path}", flush=True)
 
+    exit_code = 0
     if error_count > 0:
         print(f"{error_count} error(s) logged to {error_log_path}", flush=True)
+        exit_code = 2
     else:
         print("All scenes completed without logged errors.", flush=True)
 
@@ -4035,6 +4056,8 @@ def main() -> None:
         f"Processed {processed_scenes} scenes covering {overall_labels} labels.",
         flush=True,
     )
+    if exit_code != 0:
+        raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":
