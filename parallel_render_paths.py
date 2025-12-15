@@ -93,6 +93,7 @@ class ProgressTracker:
         self.completed_jobs = 0
         self.completed_paths = 0
         self.total_render_time = 0.0
+        self.total_frames_rendered = 0
         self.stage_totals: defaultdict[str, float] = defaultdict(float)
         self.slot_vram: defaultdict[str, list[float]] = defaultdict(list)
         self.paths: list[dict] = []
@@ -112,6 +113,11 @@ class ProgressTracker:
                 except (TypeError, ValueError):
                     duration = 0.0
                 self.total_render_time += duration
+                try:
+                    frames_rendered = int(entry.get("frames") or 0)
+                except (TypeError, ValueError):
+                    frames_rendered = 0
+                self.total_frames_rendered += frames_rendered
                 stage_seconds = entry.get("stage_seconds") or {}
                 for stage, seconds in stage_seconds.items():
                     try:
@@ -135,6 +141,16 @@ class ProgressTracker:
             remaining_paths = max(self.total_paths - self.completed_paths, 0)
         avg_path_time = (
             self.total_render_time / self.completed_paths
+            if self.completed_paths > 0
+            else None
+        )
+        avg_frame_time = (
+            self.total_render_time / self.total_frames_rendered
+            if self.total_frames_rendered > 0
+            else None
+        )
+        avg_frames_per_path = (
+            self.total_frames_rendered / self.completed_paths
             if self.completed_paths > 0
             else None
         )
@@ -162,6 +178,8 @@ class ProgressTracker:
             "completed_paths": self.completed_paths,
             "progress_pct": progress_pct,
             "avg_path_time_sec": avg_path_time,
+            "avg_frame_time_sec": avg_frame_time,
+            "avg_frames_per_path": avg_frames_per_path,
             "eta_seconds": eta_seconds,
             "avg_vram_per_thread": avg_vram_per_thread,
             "stage_ratio": stage_ratios,

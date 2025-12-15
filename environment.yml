@@ -137,7 +137,6 @@ dependencies:
       - contourpy==1.3.2
       - cryptography==46.0.3
       - cycler==0.12.1
-      - diff-gaussian-rasterization==0.0.0
       - distro==1.9.0
       - dotenv==0.9.9
       - exceptiongroup==1.3.1
@@ -146,7 +145,6 @@ dependencies:
       - filelock==3.19.1
       - fonttools==4.61.0
       - fsspec==2025.9.0
-      - fused-ssim==0.0.0
       - gradio==6.1.0
       - gradio-client==2.0.1
       - groovy==0.1.2
@@ -206,7 +204,6 @@ dependencies:
       - safehttpx==0.1.7
       - semantic-version==2.10.0
       - shellingham==1.5.4
-      - simple-knn==0.0.0
       - six==1.17.0
       - sniffio==1.3.1
       - starlette==0.50.0

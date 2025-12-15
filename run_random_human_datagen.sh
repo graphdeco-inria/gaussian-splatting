@@ -58,7 +58,10 @@ abspath() {
 # -----------------------------------------------------------------------------
 # Storage toggles so the same runner can ship data to different targets.
 ENABLE_LOCAL_STORAGE=${ENABLE_LOCAL_STORAGE:-true}
+ENABLE_LOCAL_STORAGE=${ENABLE_LOCAL_STORAGE:-true}
 ENABLE_NAS_STORAGE=${ENABLE_NAS_STORAGE:-false}
+ENABLE_REMOTE_STORAGE=${ENABLE_REMOTE_STORAGE:-false}
+CLEAR_LOCAL_OUTPUT_DIR=${CLEAR_LOCAL_OUTPUT_DIR:-false}
 ENABLE_REMOTE_STORAGE=${ENABLE_REMOTE_STORAGE:-false}
 CLEAR_LOCAL_OUTPUT_DIR=${CLEAR_LOCAL_OUTPUT_DIR:-false}
 
@@ -75,9 +78,30 @@ if ! storage_bool_true "$ENABLE_LOCAL_STORAGE" \
   && storage_bool_true "$ENABLE_REMOTE_STORAGE"; then
   REMOTE_ONLY_STORAGE=true
 fi
+: "${REMOTE_SYNC_REMOVE_SOURCE_FILES:=false}"
+if [ "$REMOTE_ONLY_STORAGE" = true ]; then
+  : "${REMOTE_SYNC_REMOVE_SOURCE_FILES:=true}"
+fi
+ENABLE_REMOTE_STORAGE_GUARD=${ENABLE_REMOTE_STORAGE_GUARD:-true}
+REMOTE_STORAGE_LIMIT_GB=${REMOTE_STORAGE_LIMIT_GB:-500}
+REMOTE_STORAGE_RESUME_GB=${REMOTE_STORAGE_RESUME_GB:-200}
+REMOTE_STORAGE_GUARD_INTERVAL_SECS=${REMOTE_STORAGE_GUARD_INTERVAL_SECS:-60}
+REMOTE_STORAGE_GUARD_ENABLED=false
+if [ "$REMOTE_ONLY_STORAGE" = true ] && storage_bool_true "$ENABLE_REMOTE_STORAGE_GUARD"; then
+  REMOTE_STORAGE_GUARD_ENABLED=true
+fi
+SETSID_BIN=""
+if command -v setsid >/dev/null 2>&1; then
+  SETSID_BIN=$(command -v setsid)
+fi
+if [ "$REMOTE_STORAGE_GUARD_ENABLED" = true ] && [ -z "$SETSID_BIN" ]; then
+  echo "[STORAGE] WARN: setsid is unavailable; disabling remote storage guard throttling." >&2
+  REMOTE_STORAGE_GUARD_ENABLED=false
+fi
 
 # Core configuration for assignment planning + rendering. Most callers just tweak
 # DATA roots or seeds via environment variables.
+SEED=${SEED:-65}
 SEED=${SEED:-65}
 CONDA_ENV=${CONDA_ENV:-cuda121}
 ACTOR_ROOT=${ACTOR_ROOT:-./data/human_gs_source}
@@ -141,6 +165,22 @@ if ! [[ "$RESERVE_VRAM_GB" =~ ^[0-9]+$ ]]; then
 fi
 if ! [[ "$RESERVE_VRAM_HEADROOM_GB" =~ ^[0-9]+$ ]]; then
   echo "[VRAM] ERROR: RESERVE_VRAM_HEADROOM_GB must be an integer value (received '$RESERVE_VRAM_HEADROOM_GB')." >&2
+  exit 1
+fi
+if ! [[ "$REMOTE_STORAGE_LIMIT_GB" =~ ^[0-9]+$ ]]; then
+  echo "[STORAGE] ERROR: REMOTE_STORAGE_LIMIT_GB must be an integer value (received '$REMOTE_STORAGE_LIMIT_GB')." >&2
+  exit 1
+fi
+if ! [[ "$REMOTE_STORAGE_RESUME_GB" =~ ^[0-9]+$ ]]; then
+  echo "[STORAGE] ERROR: REMOTE_STORAGE_RESUME_GB must be an integer value (received '$REMOTE_STORAGE_RESUME_GB')." >&2
+  exit 1
+fi
+if [ "$REMOTE_STORAGE_RESUME_GB" -ge "$REMOTE_STORAGE_LIMIT_GB" ]; then
+  echo "[STORAGE] ERROR: REMOTE_STORAGE_RESUME_GB (${REMOTE_STORAGE_RESUME_GB}GB) must be less than REMOTE_STORAGE_LIMIT_GB (${REMOTE_STORAGE_LIMIT_GB}GB)." >&2
+  exit 1
+fi
+if ! [[ "$REMOTE_STORAGE_GUARD_INTERVAL_SECS" =~ ^[0-9]+$ ]]; then
+  echo "[STORAGE] ERROR: REMOTE_STORAGE_GUARD_INTERVAL_SECS must be an integer value (received '$REMOTE_STORAGE_GUARD_INTERVAL_SECS')." >&2
   exit 1
 fi
 
@@ -334,9 +374,87 @@ wait_remote_sync_worker() {
   fi
 }
 
+REMOTE_STORAGE_GUARD_PID=""
+REMOTE_STORAGE_GUARD_STOP_FILE=""
+PARALLEL_GROUP_ID=""
+
+storage_guard_loop() {
+  local watch_dir="$1"
+  local pgid="$2"
+  local limit_bytes="$3"
+  local resume_bytes="$4"
+  local interval_secs="$5"
+  local stop_flag="$6"
+  local limit_gb="$7"
+  local resume_gb="$8"
+  local paused=false
+  if [ -z "$interval_secs" ] || [ "$interval_secs" -le 0 ]; then
+    interval_secs=60
+  fi
+  while true; do
+    if [ -n "$stop_flag" ] && [ -f "$stop_flag" ]; then
+      break
+    fi
+    if [ -z "$pgid" ] || ! kill -0 "$pgid" >/dev/null 2>&1; then
+      break
+    fi
+    local usage_bytes
+    usage_bytes=$(du -sb "$watch_dir" 2>/dev/null | awk '{print $1}')
+    if [ -z "$usage_bytes" ]; then
+      usage_bytes=0
+    fi
+    if [ "$usage_bytes" -ge "$limit_bytes" ]; then
+      if [ "$paused" = false ]; then
+        local usage_gb
+        usage_gb=$(awk -v b="$usage_bytes" 'BEGIN { printf("%.2f", b / (1024*1024*1024)) }')
+        echo "[STORAGE] Local usage ${usage_gb}GB reached limit ${limit_gb}GB; pausing generation until below ${resume_gb}GB."
+        kill -STOP -- "-$pgid" >/dev/null 2>&1 || true
+        paused=true
+      fi
+    elif [ "$paused" = true ] && [ "$usage_bytes" -le "$resume_bytes" ]; then
+      echo "[STORAGE] Local usage dropped below ${resume_gb}GB; resuming generation."
+      kill -CONT -- "-$pgid" >/dev/null 2>&1 || true
+      paused=false
+    fi
+    sleep "$interval_secs"
+  done
+  if [ "$paused" = true ] && [ -n "$pgid" ]; then
+    kill -CONT -- "-$pgid" >/dev/null 2>&1 || true
+  fi
+}
+
+start_storage_guard() {
+  local watch_dir="$1"
+  local pgid="$2"
+  local limit_gb="$3"
+  local resume_gb="$4"
+  local interval_secs="$5"
+  local limit_bytes=$((limit_gb * 1024 * 1024 * 1024))
+  local resume_bytes=$((resume_gb * 1024 * 1024 * 1024))
+  REMOTE_STORAGE_GUARD_STOP_FILE=$(mktemp "${TMPDIR:-/tmp}/storage_guard_stop.XXXXXX") || return 1
+  rm -f "$REMOTE_STORAGE_GUARD_STOP_FILE"
+  storage_guard_loop "$watch_dir" "$pgid" "$limit_bytes" "$resume_bytes" "$interval_secs" "$REMOTE_STORAGE_GUARD_STOP_FILE" "$limit_gb" "$resume_gb" &
+  REMOTE_STORAGE_GUARD_PID=$!
+}
+
+stop_storage_guard() {
+  if [ -n "$REMOTE_STORAGE_GUARD_STOP_FILE" ]; then
+    : > "$REMOTE_STORAGE_GUARD_STOP_FILE"
+  fi
+  if [ -n "$REMOTE_STORAGE_GUARD_PID" ]; then
+    wait "$REMOTE_STORAGE_GUARD_PID" || true
+    REMOTE_STORAGE_GUARD_PID=""
+  fi
+  if [ -n "$REMOTE_STORAGE_GUARD_STOP_FILE" ]; then
+    rm -f "$REMOTE_STORAGE_GUARD_STOP_FILE"
+    REMOTE_STORAGE_GUARD_STOP_FILE=""
+  fi
+}
+
 cleanup_run() {
   release_vram
   wait_remote_sync_worker
+  stop_storage_guard
 }
 
 # Always tear down helpers even on errors.
@@ -525,11 +643,24 @@ fi
 
 render_status=0
 set +e
-"${parallel_cmd[@]}" &
+if [ "$REMOTE_STORAGE_GUARD_ENABLED" = true ]; then
+  "$SETSID_BIN" "${parallel_cmd[@]}" &
+else
+  "${parallel_cmd[@]}" &
+fi
 PARALLEL_PID=$!
+if [ "$REMOTE_STORAGE_GUARD_ENABLED" = true ]; then
+  PARALLEL_GROUP_ID="$PARALLEL_PID"
+  if ! start_storage_guard "$OUTPUT_DIR" "$PARALLEL_GROUP_ID" "$REMOTE_STORAGE_LIMIT_GB" "$REMOTE_STORAGE_RESUME_GB" "$REMOTE_STORAGE_GUARD_INTERVAL_SECS"; then
+    echo "[STORAGE] WARN: Failed to start storage guard; continuing without throttling." >&2
+    REMOTE_STORAGE_GUARD_ENABLED=false
+    stop_storage_guard
+  fi
+fi
 wait "$PARALLEL_PID"
 render_status=$?
 PARALLEL_PID=""
+PARALLEL_GROUP_ID=""
 set -e
 if [ "$REMOTE_STORAGE_UNAVAILABLE" = true ]; then
   render_status=99

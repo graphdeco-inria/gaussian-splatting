@@ -100,6 +100,7 @@ storage_sync_remote() {
       info_flags="progress2"
     fi
   fi
+  local remove_sources="${REMOTE_SYNC_REMOVE_SOURCE_FILES:-false}"
   local -a rsync_cmd=(-az --partial --inplace -e "$ssh_base_str")
   if [ -n "$info_flags" ]; then
     rsync_cmd+=(--info="${info_flags}")
@@ -108,12 +109,22 @@ storage_sync_remote() {
     local -a extra_opts=(${REMOTE_RSYNC_EXTRA_OPTS})
     rsync_cmd+=("${extra_opts[@]}")
   fi
+  if storage_bool_true "$remove_sources"; then
+    rsync_cmd+=(--remove-source-files)
+  fi
   rsync_cmd+=(
     --rsync-path "$remote_path_cmd"
     "${source_dir}/"
     "${remote_host}:${remote_dir}/"
   )
-  rsync "${rsync_cmd[@]}"
+  if rsync "${rsync_cmd[@]}"; then
+    if storage_bool_true "$remove_sources"; then
+      # Clean up any empty directories that remain after rsync removes the files.
+      find "$source_dir" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+    fi
+    return 0
+  fi
+  return 1
 }
 
 storage_test_remote_connection() {
