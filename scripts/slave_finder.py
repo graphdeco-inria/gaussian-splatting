@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import gradio as gr
 
@@ -46,10 +47,13 @@ TABLE_HEADERS = [
     "PC",
     "Host",
     "Address",
+    "GPU",
     "Monitor",
     "Load (1m / 5m / 15m)",
     "CPU cores",
     "Memory (used / total)",
+    "Disk R/W",
+    "Net In/Out",
     "Uptime",
     "Status",
 ]
@@ -60,6 +64,11 @@ if command -v btop >/dev/null 2>&1; then
   monitor="btop"
 elif command -v vtop >/dev/null 2>&1; then
   monitor="vtop"
+fi
+
+gpu_info="none"
+if command -v nvidia-smi >/dev/null 2>&1; then
+  gpu_info=$(nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits | sed 's/, /|/g' | paste -sd';' -)
 fi
 
 load1=$(cut -d' ' -f1 /proc/loadavg)
@@ -73,8 +82,16 @@ mem_avail=$(awk '/MemAvailable/{print $2}' /proc/meminfo 2>/dev/null)
 
 uptime_out=$(uptime -p 2>/dev/null || uptime)
 
+read_bytes=$(awk '{r+=$6} END{print r*512}' /proc/diskstats)
+write_bytes=$(awk '{w+=$10} END{print w*512}' /proc/diskstats)
+rx_bytes=$(awk 'NR>2{rx+=$2} END{print rx}' /proc/net/dev)
+tx_bytes=$(awk 'NR>2{tx+=$10} END{print tx}' /proc/net/dev)
+now_ts=$(date +%s)
+
 printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n" \
   "$monitor" "$load1" "$load5" "$load15" "$cpu_count" "$mem_total" "$mem_avail" "$uptime_out"
+printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n" \
+  "$gpu_info" "$rx_bytes" "$tx_bytes" "$read_bytes" "$write_bytes" "$now_ts" "end"
 """
 
 
@@ -188,13 +205,68 @@ def format_memory(mem_total_kb: float, mem_avail_kb: float) -> str:
     return f"{mem_used_gb:.2f} / {mem_total_gb:.2f} GB ({mem_used_pct:.1f}%)"
 
 
+def format_rate(bytes_per_sec: float) -> str:
+    """Return human-readable bytes/sec."""
+    units = ["B/s", "KB/s", "MB/s", "GB/s"]
+    val = bytes_per_sec
+    for unit in units:
+        if abs(val) < 1024 or unit == units[-1]:
+            return f"{val:.1f} {unit}"
+        val /= 1024
+
+
+def parse_gpu_line(line: str) -> List[dict]:
+    """Parse semicolon-separated GPU entries of form idx|name|util|mem_used|mem_total."""
+    if not line or line.strip() == "none":
+        return []
+    entries = []
+    for chunk in line.split(";"):
+        parts = chunk.split("|")
+        if len(parts) < 5:
+            continue
+        try:
+            idx = int(parts[0])
+            name = parts[1]
+            util = float(parts[2])
+            mem_used = float(parts[3])
+            mem_total = float(parts[4])
+        except (ValueError, TypeError):
+            continue
+        entries.append(
+            {
+                "index": idx,
+                "name": name,
+                "util_pct": util,
+                "mem_used_mb": mem_used,
+                "mem_total_mb": mem_total,
+            }
+        )
+    return entries
+
+
 def parse_remote_output(host: HostTarget, output: str) -> dict:
     """Parse the newline-delimited payload returned by REMOTE_STATUS_COMMAND."""
     lines = output.strip("\n").splitlines()
-    if len(lines) < 8:
-        raise ValueError(f"Incomplete response from {host.name}: expected 8 lines, got {len(lines)}")
+    if len(lines) < 14:
+        raise ValueError(f"Incomplete response from {host.name}: expected 14 lines, got {len(lines)}")
 
-    monitor, load1, load5, load15, cpu_count, mem_total, mem_avail, uptime = lines[:8]
+    (
+        monitor,
+        load1,
+        load5,
+        load15,
+        cpu_count,
+        mem_total,
+        mem_avail,
+        uptime,
+        gpu_info,
+        rx_bytes,
+        tx_bytes,
+        read_bytes,
+        write_bytes,
+        ts,
+        *_,
+    ) = lines
 
     def safe_float(text: str) -> float:
         try:
@@ -218,7 +290,9 @@ def parse_remote_output(host: HostTarget, output: str) -> dict:
     mem_avail_kb = safe_float(mem_avail)
     mem_used_kb = max(mem_total_kb - mem_avail_kb, 0.0)
     mem_used_pct = (mem_used_kb / mem_total_kb) * 100 if mem_total_kb else 0.0
-    usage_pct = max(cpu_pct, mem_used_pct)
+    gpus = parse_gpu_line(gpu_info)
+    max_gpu_util = max((g["util_pct"] for g in gpus), default=0.0)
+    usage_pct = max(max_gpu_util, cpu_pct, mem_used_pct)
 
     return {
         "host": host.name,
@@ -231,6 +305,12 @@ def parse_remote_output(host: HostTarget, output: str) -> dict:
         "cpu_pct": cpu_pct,
         "mem_pct": mem_used_pct,
         "usage_pct": usage_pct,
+        "gpus": gpus,
+        "rx_bytes": safe_float(rx_bytes),
+        "tx_bytes": safe_float(tx_bytes),
+        "read_bytes": safe_float(read_bytes),
+        "write_bytes": safe_float(write_bytes),
+        "timestamp": safe_float(ts),
     }
 
 
@@ -246,41 +326,91 @@ def fetch_host_status(host: HostTarget) -> dict:
     return result
 
 
+# Cache for rate calculations between polls.
+HOST_METRICS_CACHE: Dict[str, dict] = {}
+
+
+def compute_rates(host_key: str, stats: dict) -> dict:
+    """Compute per-second network and disk rates using cached previous samples."""
+    prev = HOST_METRICS_CACHE.get(host_key)
+    HOST_METRICS_CACHE[host_key] = {
+        "rx": stats["rx_bytes"],
+        "tx": stats["tx_bytes"],
+        "read": stats["read_bytes"],
+        "write": stats["write_bytes"],
+        "ts": stats["timestamp"] or time.time(),
+    }
+
+    if not prev:
+        return {
+            "net_display": "warming up",
+            "disk_display": "warming up",
+        }
+
+    dt = max((stats["timestamp"] or time.time()) - prev.get("ts", 0), 1e-6)
+    rx_rate = max(stats["rx_bytes"] - prev.get("rx", 0), 0.0) / dt
+    tx_rate = max(stats["tx_bytes"] - prev.get("tx", 0), 0.0) / dt
+    rd_rate = max(stats["read_bytes"] - prev.get("read", 0), 0.0) / dt
+    wr_rate = max(stats["write_bytes"] - prev.get("write", 0), 0.0) / dt
+
+    return {
+        "net_display": f"in {format_rate(rx_rate)} / out {format_rate(tx_rate)}",
+        "disk_display": f"r {format_rate(rd_rate)} / w {format_rate(wr_rate)}",
+    }
+
+
 def gather_all_statuses() -> Tuple[list[list[str]], str, str]:
     """Gradio callback to refresh all hosts and build display rows/visuals."""
     try:
         hosts = parse_env_file()
     except Exception as exc:  # broad catch to bubble config issues to UI
         message = f"Config error: {exc}"
-        empty_table = [[ "-", "-", "-", "-", "-", "-", "-", "-", message ]]
+        empty_table = [[ "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", message ]]
         return empty_table, "", message
 
     rows: list[list[str]] = []
-    visuals: list[dict] = []
+    gpu_visuals: list[dict] = []
     errors: list[str] = []
 
     for host in hosts:
         try:
             stats = fetch_host_status(host)
+            rates = compute_rates(host.name, stats)
+            gpu_summary = (
+                "; ".join(
+                    [
+                        f"{g['index']}: {g['util_pct']:.0f}% {g['mem_used_mb']/1024:.1f}/{g['mem_total_mb']/1024:.1f}GB"
+                        for g in stats["gpus"]
+                    ]
+                )
+                if stats["gpus"]
+                else "none"
+            )
             rows.append(
                 [
                     stats["pc"],
                     stats["host"],
                     stats["address"],
+                    gpu_summary,
                     stats["monitor"],
                     stats["load"],
                     str(stats["cpu_count"]),
                     stats["memory"],
+                    rates["disk_display"],
+                    rates["net_display"],
                     stats["uptime"],
                     "ok",
                 ]
             )
-            visuals.append(
-                {
-                    "label": f"{stats['pc']} ({stats['host']})",
-                    "pct": stats["usage_pct"],
-                }
-            )
+            for g in stats["gpus"]:
+                gpu_visuals.append(
+                    {
+                        "label": f"{stats['pc']}:{g['index']}",
+                        "detail": g["name"],
+                        "pct": g["util_pct"],
+                        "mem": f"{g['mem_used_mb']/1024:.1f}/{g['mem_total_mb']/1024:.1f} GB",
+                    }
+                )
         except Exception as exc:  # pragma: no cover - defensive for runtime errors
             msg = f"{host.name}: {exc}"
             rows.append(
@@ -293,14 +423,17 @@ def gather_all_statuses() -> Tuple[list[list[str]], str, str]:
                     "-",
                     "-",
                     "-",
+                    "-",
+                    "-",
+                    "-",
                     f"error: {exc}",
                 ]
             )
             errors.append(msg)
-            visuals.append({"label": f"{host.pc_label} ({host.name})", "pct": 0})
+            gpu_visuals.append({"label": f"{host.pc_label}", "detail": host.name, "pct": 0, "mem": ""})
 
     summary = "All hosts refreshed." if not errors else " | ".join(errors)
-    return rows, build_usage_html(visuals), summary
+    return rows, build_gpu_html(gpu_visuals), summary
 
 
 def color_for_pct(pct: float) -> str:
@@ -316,10 +449,10 @@ def color_for_pct(pct: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
-def build_usage_html(visuals: List[dict]) -> str:
-    """Create a simple HTML bar list colored red->green based on usage%."""
+def build_gpu_html(visuals: List[dict]) -> str:
+    """Create a GPU-centric HTML bar list colored red->green based on utilization%."""
     if not visuals:
-        return ""
+        return "<em>No GPU data yet.</em>"
 
     rows = []
     for item in visuals:
@@ -328,14 +461,18 @@ def build_usage_html(visuals: List[dict]) -> str:
         color = color_for_pct(pct_clamped)
         width = pct_clamped
         label = item.get("label", "")
+        detail = item.get("detail", "")
+        mem = item.get("mem", "")
         rows.append(
             f"""
-            <div style="display:flex;align-items:center;gap:10px;margin:4px 0;">
-              <div style="width:120px;font-weight:600;">{label}</div>
-              <div style="flex:1;background:#e8e8e8;border-radius:6px;overflow:hidden;height:12px;">
+            <div style="display:flex;align-items:center;gap:10px;margin:6px 0;">
+              <div style="width:120px;font-weight:700;">{label}</div>
+              <div style="flex:1;background:#e8e8e8;border-radius:6px;overflow:hidden;height:14px;">
                 <div style="width:{width}%;background:{color};height:100%;"></div>
               </div>
-              <div style="width:50px;text-align:right;font-family:monospace;">{pct:.0f}%</div>
+              <div style="width:60px;text-align:right;font-family:monospace;">{pct:.0f}%</div>
+              <div style="width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{detail}</div>
+              <div style="width:120px;text-align:right;">{mem}</div>
             </div>
             """
         )
@@ -359,18 +496,18 @@ def build_demo(refresh_seconds: float = REFRESH_SECONDS) -> gr.Blocks:
             row_count=(1, "dynamic"),
             interactive=False,
         )
-        usage_visual = gr.HTML()
+        gpu_visual = gr.HTML()
         summary = gr.Markdown()
 
-        refresh_button.click(fn=gather_all_statuses, outputs=[status_table, usage_visual, summary])
+        refresh_button.click(fn=gather_all_statuses, outputs=[status_table, gpu_visual, summary])
 
         # Initial load + optional auto-refresh.
-        demo.load(fn=gather_all_statuses, outputs=[status_table, usage_visual, summary])
+        demo.load(fn=gather_all_statuses, outputs=[status_table, gpu_visual, summary])
         if refresh_seconds > 0:
             # Older Gradio versions do not support `every=` on load, so fall back to Timer when present.
             try:
                 timer = gr.Timer(refresh_seconds, active=True)
-                timer.tick(fn=gather_all_statuses, outputs=[status_table, usage_visual, summary])
+                timer.tick(fn=gather_all_statuses, outputs=[status_table, gpu_visual, summary])
             except Exception:
                 pass
 

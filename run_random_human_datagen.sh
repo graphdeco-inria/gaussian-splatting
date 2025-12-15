@@ -57,10 +57,10 @@ abspath() {
 # Collect everything editable here so deployments only need to tweak this block.
 # -----------------------------------------------------------------------------
 # Storage toggles so the same runner can ship data to different targets.
-ENABLE_LOCAL_STORAGE=${ENABLE_LOCAL_STORAGE:-false}
+ENABLE_LOCAL_STORAGE=${ENABLE_LOCAL_STORAGE:-true}
 ENABLE_NAS_STORAGE=${ENABLE_NAS_STORAGE:-false}
-ENABLE_REMOTE_STORAGE=${ENABLE_REMOTE_STORAGE:-true}
-CLEAR_LOCAL_OUTPUT_DIR=${CLEAR_LOCAL_OUTPUT_DIR:-true}
+ENABLE_REMOTE_STORAGE=${ENABLE_REMOTE_STORAGE:-false}
+CLEAR_LOCAL_OUTPUT_DIR=${CLEAR_LOCAL_OUTPUT_DIR:-false}
 
 if ! storage_bool_true "$ENABLE_LOCAL_STORAGE" \
   && ! storage_bool_true "$ENABLE_NAS_STORAGE" \
@@ -78,7 +78,7 @@ fi
 
 # Core configuration for assignment planning + rendering. Most callers just tweak
 # DATA roots or seeds via environment variables.
-SEED=${SEED:-33}
+SEED=${SEED:-65}
 CONDA_ENV=${CONDA_ENV:-cuda121}
 ACTOR_ROOT=${ACTOR_ROOT:-./data/human_gs_source}
 BAN_LIST=${BAN_LIST:-${ACTOR_ROOT}/BanList.txt}
