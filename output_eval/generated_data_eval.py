@@ -4,9 +4,9 @@ import os
 import json
 import statistics
 import base64
+import random
 from typing import Any, List, TYPE_CHECKING
 import cv2
-import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 from dotenv import load_dotenv
@@ -72,7 +72,30 @@ _QWEN_DEVICE_CACHE = None
 DATA_ROOT = "../data/path_video_frames_random_humans_65k"
 
 MAX_FRAMES_PER_VIDEO = 12
+MAX_VIDEOS_PER_SCENE = -1  # -1 to keep all videos within each scene
+MAX_SCENES = -1  # -1 to evaluate every scene
+SCENE_PREFIX_FILTERS: List[str] = ["0004"]  # e.g. ["0001", "0008"] to only process specific scenes
 OVERALL_CUTOFF = 0
+RANDOM_SEED = None  # Set to an int to make sampling deterministic
+
+_MAX_VIDEOS_ENV = os.getenv("DATAEVAL_MAX_VIDEOS_PER_SCENE")
+if _MAX_VIDEOS_ENV is not None:
+    MAX_VIDEOS_PER_SCENE = int(_MAX_VIDEOS_ENV)
+
+_MAX_SCENES_ENV = os.getenv("DATAEVAL_MAX_SCENES")
+if _MAX_SCENES_ENV is not None:
+    MAX_SCENES = int(_MAX_SCENES_ENV)
+
+_SCENE_FILTER_ENV = os.getenv("DATAEVAL_SCENE_PREFIXES", "").strip()
+if _SCENE_FILTER_ENV:
+    SCENE_PREFIX_FILTERS = [prefix.strip() for prefix in _SCENE_FILTER_ENV.split(",") if prefix.strip()]
+
+_RANDOM_SEED_ENV = os.getenv("DATAEVAL_RANDOM_SEED")
+if _RANDOM_SEED_ENV:
+    RANDOM_SEED = int(_RANDOM_SEED_ENV)
+
+if RANDOM_SEED is not None:
+    random.seed(RANDOM_SEED)
 
 PROMPT_PATH = Path(__file__).with_name("eval_prompt.txt")
 
@@ -139,10 +162,10 @@ def sample_video_frames(video_path, max_frames=MAX_FRAMES_PER_VIDEO):
         cap.release()
         return []
 
-    if frame_count <= max_frames:
+    if not max_frames or max_frames <= 0 or frame_count <= max_frames:
         indices = list(range(frame_count))
     else:
-        indices = np.linspace(0, frame_count - 1, max_frames).astype(int)
+        indices = sorted(random.sample(range(frame_count), max_frames))
 
     frames = []
 
@@ -329,21 +352,37 @@ def iterate_data(curr_path):
     if not curr_path.is_dir():
         raise ValueError(f"Provided path is not a directory: {curr_path}")
 
-    for scene in curr_path.iterdir():
-        if not scene.is_dir():
-            continue
+    scene_dirs = sorted([scene for scene in curr_path.iterdir() if scene.is_dir()])
+    if SCENE_PREFIX_FILTERS:
+        scene_dirs = [
+            scene
+            for scene in scene_dirs
+            if any(scene.name.startswith(prefix) for prefix in SCENE_PREFIX_FILTERS)
+        ]
+    if MAX_SCENES >= 0:
+        scene_dirs = scene_dirs[:MAX_SCENES]
 
+    for scene in scene_dirs:
         scene_name = scene.name
         results.setdefault(scene_name, {})
 
-        video_files = list(scene.glob("*.mp4"))
+        video_files = sorted(scene.glob("*.mp4"))
         if not video_files:
             continue
+
+        if MAX_VIDEOS_PER_SCENE >= 0 and len(video_files) > MAX_VIDEOS_PER_SCENE:
+            video_files = sorted(random.sample(video_files, MAX_VIDEOS_PER_SCENE))
 
         for file in video_files:
             print(f"Evaluating {scene_name}/{file.name} ...")
 
             eval_result = evaluate_video(str(file))
+            print(
+                f"    -> Quality: {eval_result['quality']:.2f}, "
+                f"Realism: {eval_result['realism']:.2f}, "
+                f"Overall: {eval_result['overall']:.2f}, "
+                f"Pass: {eval_result['pass']}"
+            )
             path_id = file.stem
             results[scene_name][path_id] = eval_result
 
