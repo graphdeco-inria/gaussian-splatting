@@ -3,6 +3,7 @@ from solver.diagonal_estimator import restarted_hutchinson
 
 class SophiaOptimizer:
     def __init__(self, lr=1.0, betas=(0.9, 0.99), eps=1e-15, clip=False, 
+                 adam_beta2=0.999,
                  gamma=1.0,
                  diagonal_update_interval=10,
                  num_init_iter=20, 
@@ -28,7 +29,6 @@ class SophiaOptimizer:
     def reset(self):
         self.iter = 0
         self.m = 0
-        self.v = 0
         self.lr = self.lr_init
         self.diagonal_initialized = False
         self.D_iter = 0
@@ -38,14 +38,25 @@ class SophiaOptimizer:
     def update_lr(self, lr):
         self.lr = lr
 
+    def densify_and_prune(self, prune_mask):
+        if self.iter == 0:
+            return
+        self.m.densify_and_prune_(prune_mask)
+        self.D_smoothed.densify_and_prune_(prune_mask)
+        self.D_est.densify_and_prune_(prune_mask)
+
     def get_update(self, g, JTJv_func, Dhat_func, z_gen_func, S):
+        if self.diagonal_initialized:
+            self._handle_new_parameters(g)
         if self.iter % self.diagonal_update_interval == 0 or not self.diagonal_initialized:
             self.update_diagonal(JTJv_func, Dhat_func, z_gen_func, S)
+
 
         self.iter += 1
         bias_correction1 = 1 - self.betas[0] ** self.iter
 
         self.m = self.betas[0] * self.m + (1 - self.betas[0]) * g
+
         v = self.gamma * self.D_est
 
         m_hat = self.m / bias_correction1
@@ -57,18 +68,16 @@ class SophiaOptimizer:
 
         return s
 
-    def _handle_new_parameters(self, iteration, first_iter, g, D_est_smoothed, D_est, adam_v, beta2, D_denom_iter):
+    def _handle_new_parameters(self, g):
         g_vec = g.as_1d_tensor()
-        D_est_smoothed_vec = D_est_smoothed.as_1d_tensor()
-        new_params_mask = (D_est_smoothed_vec == 0.0) & (g_vec != 0.0)
+        D_smoothed_vec = self.D_smoothed.as_1d_tensor()
+        new_params_mask = (D_smoothed_vec == 0.0) & (g_vec != 0.0)
         if new_params_mask.any():
-            adam_v_vec = adam_v.as_1d_tensor()
-            D_est_smoothed_vec[new_params_mask] = g_vec[new_params_mask].abs()
-            D_est_smoothed.load_1d_tensor(D_est_smoothed_vec)
-            D_est_vec = D_est.as_1d_tensor()
-            D_est_vec[new_params_mask] = g_vec[new_params_mask].abs()
-            D_est.load_1d_tensor(D_est_vec)
-            print(f"New parameters detected at iteration {iteration}, initializing their D_est_smoothed values.")
+            beta2 = self.betas[1]
+            # print(f"New parameters detected, initializing their D_smoothed values.")
+            D_smoothed_vec[new_params_mask] = g_vec[new_params_mask].abs()
+            self.D_smoothed.load_1d_tensor(D_smoothed_vec)
+            self.D_est = self.D_smoothed / (1 - beta2 ** self.D_iter)
 
     def update_diagonal(self, JTJv_func, Dhat_func, z_gen_func, S):
         if not self.diagonal_initialized:

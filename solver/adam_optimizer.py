@@ -19,6 +19,12 @@ class AdamOptimizer:
     def update_lr(self, lr):
         self.lr = lr
 
+    def densify_and_prune(self, prune_mask):
+        if self.iter == 0:
+            return
+        self.m.densify_and_prune_(prune_mask)
+        self.v.densify_and_prune_(prune_mask)
+
     def get_update(self, g):
         self.iter += 1
         bias_correction1 = 1 - self.betas[0] ** self.iter

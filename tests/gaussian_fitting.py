@@ -43,6 +43,8 @@ from solver.adam_optimizer import AdamOptimizer
 from solver.sophia_optimizer import SophiaOptimizer
 from solver.KL_clip import clip_kl
 
+from utils.gif_renderer import GifRenderer
+
 from copy import deepcopy
 
 from matplotlib import pyplot as plt
@@ -83,40 +85,6 @@ def temp_seed(seed):
     finally:
         np.random.set_state(np_state)
         torch.random.set_rng_state(torch_state)
-
-def per_gaussian_clip_(s, abs_thresh):
-    P = s.xyz.shape[0]
-
-    xyz = s.xyz
-    features_dc = s.features_dc
-    features_rest = s.features_rest
-    scaling = s.scaling
-    rotation = s.rotation
-
-    xyz_max = xyz.abs().max(dim=1, keepdim=True)[0]
-    xyz_max[xyz_max < abs_thresh] = abs_thresh
-    s.xyz = (xyz / xyz_max * abs_thresh).view_as(s.xyz)
-
-    features_dc_max = features_dc.abs().max(dim=2, keepdim=True)[0]
-    features_dc_max[features_dc_max < abs_thresh] = abs_thresh
-    s.features_dc = (features_dc / features_dc_max * abs_thresh).view_as(s.features_dc)
-
-    features_rest_max = features_rest.abs().max(dim=2, keepdim=True)[0]
-    features_rest_max[features_rest_max < abs_thresh] = abs_thresh
-    s.features_rest = (features_rest / features_rest_max * abs_thresh).view_as(s.features_rest)
-
-    scaling_max = scaling.abs().max(dim=1, keepdim=True)[0]
-    scaling_max[scaling_max < abs_thresh] = abs_thresh
-    s.scaling = (scaling / scaling_max * abs_thresh).view_as(s.scaling)
-
-    rotation_max = rotation.abs().max(dim=1, keepdim=True)[0]
-    rotation_max[rotation_max < abs_thresh] = abs_thresh
-    s.rotation = (rotation / rotation_max * abs_thresh).view_as(s.rotation)
-
-    s.opacity.clip_(-abs_thresh, abs_thresh)
-
-    # safe_interact(local=locals(), banner="Per-gaussian clipping")
-    
 
 def init_invisible_gaussians(num_points, sh_degree, opt):
     gaussians = GaussianModel(sh_degree, opt.optimizer_type)
@@ -187,55 +155,6 @@ def build_camera(image_torch):
                     data_device="cuda",)
     return camera
 
-class GifRenderer:
-    def __init__(self, num_rows, num_cols, figsize=(10, 5)):
-        self.fig, self.axes = plt.subplots(num_rows, num_cols, figsize=figsize)
-        self.fig.subplots_adjust(hspace=0.6)
-        self.ims = [[None] * num_cols for _ in range(num_rows)]
-        self.images_series = [[None] * num_cols for _ in range(num_rows)]
-        self.max_frames = [[0] * num_cols for _ in range(num_rows)]
-        self.losses = [[None] * num_cols for _ in range(num_rows)]
-        self.titles = [[""] * num_cols for _ in range(num_rows)]
-
-    def add_gt(self, row, col, image_torch):
-        ax = self.axes[row, col]
-        im = ax.imshow(image_torch.permute(1, 2, 0).cpu().numpy(), animated=True)
-        ax.axis('off')
-        ax.set_title("Ground Truth")
-        self.ims[row][col] = im
-
-    def add_series(self, row, col, images_torch, losses, title=""):
-        ax = self.axes[row, col]
-        self.titles[row][col] = title
-        self.max_frames[row][col] = len(images_torch)
-        self.images_series[row][col] = [images_torch[i].permute(1, 2, 0).cpu().numpy() for i in range(len(images_torch))]
-        self.losses[row][col] = losses
-        im = ax.imshow(self.images_series[row][col][0], animated=True)
-        ax.axis('off')
-        ax.set_title(f"Iteration {0}, Loss: {losses[0]:.6e}")
-        self.ims[row][col] = im
-
-    def animate(self, save_path, interval=200):
-        def update(frame):
-            for row in range(len(self.ims)):
-                for col in range(len(self.ims[row])):
-                    im = self.ims[row][col]
-                    if im is not None and frame < self.max_frames[row][col]:
-                        im.set_array(self.images_series[row][col][frame])
-                        loss = self.losses[row][col][frame]
-                        title = self.titles[row][col]
-                        self.axes[row, col].set_title(f"{title}\nIteration {frame}, Loss: {loss:.3e}")
-            return [im for row in self.ims for im in row if im is not None]
-
-        ani = FuncAnimation(self.fig, update, frames=max([max(frames) for frames in self.max_frames]), 
-                            interval=interval, blit=True)
-        ani.save(save_path, writer='pillow')
-
-def init_gif(num_rows, num_cols, figsize=(10, 5)):
-    fig, axes = plt.subplots(num_rows, num_cols, figsize=figsize)
-    ims = []
-    return fig, axes, ims
-
 class ExponentialLRScheduler:
     def __init__(self, init_lr, final_lr, max_iter):
         self.init_lr = init_lr
@@ -257,7 +176,7 @@ def run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
                   gif_renderer, name=""):
     adam_optimizer = AdamOptimizer(lr=lr, betas=(0.9, 0.999), eps=1e-15, clip=False)
     sophia_optimizer = SophiaOptimizer(lr=lr, betas=(0.9, 0.99), eps=1e-15, clip=True,
-                                       diagonal_update_interval=2,)
+                                       diagonal_update_interval=5,)
 
     with torch.no_grad():
         image_gt_torch = render(viewpoint_camera=cameras[0], pc=gaussians_gt, pipe=pipe, bg_color=background)["render"]

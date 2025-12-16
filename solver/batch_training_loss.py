@@ -6,6 +6,7 @@ import time
 from solver.loss_image_state import BatchLossImageState
 from gaussian_renderer.batch_render import batch_render
 from utils.loss_utils import l1_loss, l1_loss_per_pixel, ssim, ssim_per_pixel
+from utils.general_utils import safe_interact
 
 def huber_loss(x, delta=0.1):
     x_abs = x.abs()
@@ -131,12 +132,16 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
         raise NotImplementedError("Ll1depth_pure_per_pixel is not implemented in this version.")
 
     else:
-        loss_image = torch.cat((Ll1_per_pixel, ssim_loss_per_pixel), dim=1)
+        pass
+        # loss_image = torch.cat((Ll1_per_pixel, ssim_loss_per_pixel), dim=1)
 
-    loss_image_state = BatchLossImageState(loss_image, sizes_list, has_depth)
+    loss_image = torch.cat((Ll1_per_pixel.flatten(), ssim_loss_per_pixel.flatten()))
+
+    if kwargs.get("debug_loss", False):
+        safe_interact(local=locals(), banner="Debug batch_training_loss")
 
     if return_stats:
-        return loss_image_state, batch_stats
+        return loss_image, batch_stats
     
-    return loss_image_state
+    return loss_image
 

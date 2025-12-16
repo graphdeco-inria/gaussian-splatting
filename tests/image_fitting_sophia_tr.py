@@ -30,13 +30,25 @@ import math
 from contextlib import contextmanager
 from PIL import Image
 
-from image_fitting_utils import prepare_output_and_logger, get_image_name
+from functools import partial
+from solver.gaussian_model_vector import GaussianModelVector
+from solver.training_loss import scalar_training_loss
+from solver.batch_training_loss import batch_training_loss
+from solver.training_loss_hessian import scalar_training_loss_hessian
+from solver.reference_training_loss import reference_training_loss
+from solver.conjugate_gradient import conjugate_gradient
+from solver.diagonal_estimator import restarted_squared_hutchinson, restarted_hutchinson
+from solver.solver_functions import construct_loss_func, construct_g_func, construct_JTJv_func, dot, saxpy, construct_Dhat_func
+from solver.adam_optimizer import AdamOptimizer
+from solver.sophia_optimizer import SophiaOptimizer
+from solver.KL_clip import clip_kl
+
+from utils.gif_renderer import GifRenderer
 
 from copy import deepcopy
 
 from matplotlib import pyplot as plt
-
-from utils.gif_renderer import GifRenderer
+import matplotlib.colors as colors
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -72,6 +84,40 @@ def temp_seed(seed):
     finally:
         np.random.set_state(np_state)
         torch.random.set_rng_state(torch_state)
+
+def per_gaussian_clip_(s, abs_thresh):
+    P = s.xyz.shape[0]
+
+    xyz = s.xyz
+    features_dc = s.features_dc
+    features_rest = s.features_rest
+    scaling = s.scaling
+    rotation = s.rotation
+
+    xyz_max = xyz.abs().max(dim=1, keepdim=True)[0]
+    xyz_max[xyz_max < abs_thresh] = abs_thresh
+    s.xyz = (xyz / xyz_max * abs_thresh).view_as(s.xyz)
+
+    features_dc_max = features_dc.abs().max(dim=2, keepdim=True)[0]
+    features_dc_max[features_dc_max < abs_thresh] = abs_thresh
+    s.features_dc = (features_dc / features_dc_max * abs_thresh).view_as(s.features_dc)
+
+    features_rest_max = features_rest.abs().max(dim=2, keepdim=True)[0]
+    features_rest_max[features_rest_max < abs_thresh] = abs_thresh
+    s.features_rest = (features_rest / features_rest_max * abs_thresh).view_as(s.features_rest)
+
+    scaling_max = scaling.abs().max(dim=1, keepdim=True)[0]
+    scaling_max[scaling_max < abs_thresh] = abs_thresh
+    s.scaling = (scaling / scaling_max * abs_thresh).view_as(s.scaling)
+
+    rotation_max = rotation.abs().max(dim=1, keepdim=True)[0]
+    rotation_max[rotation_max < abs_thresh] = abs_thresh
+    s.rotation = (rotation / rotation_max * abs_thresh).view_as(s.rotation)
+
+    s.opacity.clip_(-abs_thresh, abs_thresh)
+
+    # safe_interact(local=locals(), banner="Per-gaussian clipping")
+    
 
 def init_uniform_gaussians(num_points, sh_degree, opt):
     gaussians = GaussianModel(sh_degree, opt.optimizer_type)
@@ -129,8 +175,22 @@ def build_camera(image_path):
                     data_device="cuda",)
     return camera
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_checkpoint_dir, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, gif_interval):
-    tb_writer = prepare_output_and_logger(args)
+class ExponentialLRScheduler:
+    def __init__(self, init_lr, final_lr, max_iter):
+        self.init_lr = init_lr
+        self.final_lr = final_lr
+        self.max_iter = max_iter
+
+        # compute decay factor γ such that:
+        # final_lr = init_lr * γ^(max_iter)
+        self.gamma = (final_lr / init_lr) ** (1.0 / max_iter)
+
+    def get_lr(self, current_iter):
+        # Clamp to [0, max_iter]
+        current_iter = max(0, min(current_iter, self.max_iter))
+        return self.init_lr * (self.gamma ** current_iter)
+
+def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, image_path, num_points, gif_interval):
     
     cameras = [build_camera(image_path)]
 
@@ -139,20 +199,22 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
     train_test_exp = False
     white_background = False
     cameras_extent = 7.5
-    image_name = get_image_name(image_path)
-    model_path = save_checkpoint_dir
+    opt.model_path = ""
     ####### Some fixed parameters #########
 
-    if model_path != "":
-        os.makedirs(model_path, exist_ok=True)
-
     first_iter = 0
-    sh_degree = 3
+    sh_degree = 0
+    tb_writer = None
+    # tb_writer = prepare_output_and_logger(opt)
     gaussians = init_uniform_gaussians(num_points, sh_degree, opt)
 
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
+
+    xyz_lr = opt.xyz_lr_init
+    xyz_lr_scheduler = ExponentialLRScheduler(opt.xyz_lr_init, opt.xyz_lr_final, opt.xyz_lr_max_steps)
+    xyz_lr = xyz_lr_scheduler.get_lr(first_iter)
 
     bg_color = [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -169,10 +231,29 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
     ema_Ll1depth_for_log = 0.0
 
     print("before train")
-    training_report(None, first_iter + 1, 0, 0, l1_loss, 0, testing_iterations, cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
+    with torch.no_grad():
+        training_report(None, first_iter, 0, 0, l1_loss, 0, testing_iterations, cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
 
-    adam_losses = []
-    adam_images = []
+    S = GaussianModelVector(xyz=1.0, 
+                            features_dc=1.0,
+                            features_rest=1.0,
+                            scaling=1.0,
+                            rotation=1.0,
+                            opacity=1.0,
+                            exposure=1.0,
+                            gaussians=gaussians)
+    S = (1 / S).sqrt()
+
+    lr = GaussianModelVector(xyz=xyz_lr,  
+                             features_dc=opt.features_dc_lr, 
+                             features_rest=opt.features_rest_lr,
+                             scaling=opt.scaling_lr,
+                             rotation=opt.rotation_lr,
+                             opacity=opt.opacity_lr,
+                             exposure=opt.exposure_lr,
+                             gaussians=gaussians)
+
+    gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6), gif_interval=1)
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -196,12 +277,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
 
         gaussians.update_learning_rate(iteration)
 
-        # Every 1000 its we increase the levels of SH up to a maximum degree
-        if iteration % 100 == 0:
-            gaussians.oneupSHdegree()
-
-        # Pick the only Camera
-        viewpoint_cam = cameras[0]
+        viewpoint_cams = cameras
 
         # Render
         if (iteration - 1) == debug_from:
@@ -209,119 +285,200 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, save_che
 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
-        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
-
-        if viewpoint_cam.alpha_mask is not None:
-            alpha_mask = viewpoint_cam.alpha_mask.cuda()
-            image *= alpha_mask
-
-        # Loss
-        gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
-        if FUSED_SSIM_AVAILABLE:
-            ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+        pixel_sample_rate = 1.0
+        if pixel_sample_rate >= 1.0:
+            pixel_mask = None
         else:
-            ssim_value = ssim(image, gt_image)
+            B = len(viewpoint_cams)
+            H, W = viewpoint_cams[0].image_height, viewpoint_cams[0].image_width
+            pixel_mask = torch.rand((B, H, W), device="cuda") > pixel_sample_rate
 
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+        render_args = {"iteration": iteration,
+                       "opt": opt,
+                       "pipe": pipe,
+                       "bg": bg,
+                       "train_test_exp": train_test_exp,
+                       "depth_l1_weight": depth_l1_weight,
+                       "loss_type": opt.loss_type,
+                       "huber_delta": opt.huber_delta,
+                       "disable_ssim": opt.disable_ssim,
+                       "batch_size": 1,
+                       "pixel_mask": None,
+                       }
+        loss_func = construct_loss_func(**render_args)
+        g_func = construct_g_func(**render_args)
+        JTJv_func = construct_JTJv_func(**render_args)
+        Dhat_func = construct_Dhat_func(**render_args)
+        z_gen_func = partial(GaussianModelVector.rademacher_like, gaussians)
 
-        # Depth regularization
-        Ll1depth_pure = 0.0
-        if depth_l1_weight(iteration) > 0 and viewpoint_cam.depth_reliable:
-            invDepth = render_pkg["depth"]
-            mono_invdepth = viewpoint_cam.invdepthmap.cuda()
-            depth_mask = viewpoint_cam.depth_mask.cuda()
+        adam_optimizer = AdamOptimizer(lr=lr, betas=(opt.adam_beta1, opt.adam_beta2), eps=1e-15, clip=False)
+        sophia_optimizer = SophiaOptimizer(lr=lr, 
+                                           betas=(opt.adahessian_beta1, opt.adahessian_beta2),
+                                           eps=1e-15, clip=False,
+                                           gamma=opt.sophia_gamma,
+                                           diagonal_update_interval=opt.diagonal_update_interval,
+                                           num_init_iter=opt.diagonal_init_iter,
+                                           num_init_restart_iter=opt.diagonal_init_restart_iter,
+                                           num_update_iter=opt.diagonal_update_iter,
+                                           num_update_restart_iter=opt.diagonal_update_restart_iter
+                                           )
 
-            Ll1depth_pure = torch.abs((invDepth  - mono_invdepth) * depth_mask).mean()
-            Ll1depth = depth_l1_weight(iteration) * Ll1depth_pure 
-            loss += Ll1depth
-            Ll1depth = Ll1depth.item()
-        else:
-            Ll1depth = 0
+        sophia_optimizer.reset()
+        sophia_optimizer.set_clip(False)
 
-        loss.backward()
-        # print(f"in image fitting.py L1: {Ll1.item():.6f} SSIM: {ssim_value.item():.6f}, loss: {loss.item():.6f}, Depth L1: {Ll1depth:.6f}")
+        sophia_tr_losses = []
+        sophia_tr_images = []
 
-        iter_end.record()
-        torch.cuda.synchronize()
+        gaussians_sophia_tr = gaussians.clone()
 
-        # safe_interact(local=locals(), banner=f"Debug prompt at iteration {iteration}")
+        for iteration in range(first_iter, opt.iterations + 1):
+            JTJv_func1 = partial(JTJv_func, gaussians=gaussians_sophia_tr, viewpoint_cams=cameras, S=S, scale=1)
+            Dhat_func1 = partial(Dhat_func, gaussians=gaussians_sophia_tr, viewpoint_cams=cameras)
 
-        if iteration % gif_interval == 0:
-            adam_losses.append(loss.item())
-            adam_images.append(image.detach())
+            loss_sophia_tr, batch_stats = loss_func(gaussians=gaussians_sophia_tr, viewpoint_cams=cameras, return_stats=True)
+            image_sophia_tr = batch_stats[0]["images"][0]
+
+            if iteration % gif_interval == 0:
+                sophia_tr_losses.append(loss_sophia_tr.item())
+                sophia_tr_images.append(image_sophia_tr)
+            print(f"Iteration {iteration}, Sophia TR loss: {loss_sophia_tr.item():.10f}")
+
+            g = g_func(gaussians=gaussians_sophia_tr, viewpoint_cams=cameras)
+
+            s_sophia_tr = sophia_optimizer.get_update(g, JTJv_func1, Dhat_func1, z_gen_func, S)
+            s_sophia_tr_old = s_sophia_tr.clone()
+
+            s_sophia_tr = clip_kl(gaussians_sophia_tr, s_sophia_tr, opt.kl_threshold,
+                                  lr.features_dc, lr.features_rest, lr.opacity)
+
+            gaussians_sophia_tr.update_step(s_sophia_tr)
+
+        adam_losses = []
+        adam_images = []
+
+        gaussians_adam = gaussians.clone()
+        for iteration in range(first_iter, opt.iterations + 1):
+            loss_adam, batch_stats = loss_func(gaussians=gaussians_adam, 
+                                               viewpoint_cams=viewpoint_cams, 
+                                               return_stats=True)
+            image_adam = batch_stats[0]["images"][0]
+
+            if iteration % gif_interval == 0:
+                adam_losses.append(loss_adam.item())
+                adam_images.append(image_adam)
+            print(f"Iteration {iteration}, Adam loss: {loss_adam.item():.10f}")
+
+            g = g_func(gaussians=gaussians_adam, viewpoint_cams=viewpoint_cams)
+            s_adam = adam_optimizer.get_update(g)
+
+            gaussians_adam.update_step(s_adam)
+
+        adam_tr_losses = []
+        adam_tr_images = []
+
+        gaussians_adam_tr = gaussians.clone()
+        for iteration in range(first_iter, opt.iterations + 1):
+            loss_adam_tr, batch_stats = loss_func(gaussians=gaussians_adam_tr, 
+                                               viewpoint_cams=viewpoint_cams, 
+                                               return_stats=True)
+            image_adam_tr = batch_stats[0]["images"][0]
+
+            if iteration % gif_interval == 0:
+                adam_tr_losses.append(loss_adam_tr.item())
+                adam_tr_images.append(image_adam_tr)
+            print(f"Iteration {iteration}, Adam TR loss: {loss_adam_tr.item():.10f}")
+
+            g = g_func(gaussians=gaussians_adam_tr, viewpoint_cams=viewpoint_cams)
+            s_adam_tr = adam_optimizer.get_update(g)
+            s_adam_tr = clip_kl(gaussians_adam_tr, s_adam_tr, opt.kl_threshold,
+                             lr.features_dc, lr.features_rest, lr.opacity)
+
+            gaussians_adam_tr.update_step(s_adam_tr)
+
+        # sophia_optimizer.reset()
+        # sophia_optimizer.set_clip(True)
+
+        # sophia_losses = []
+        # sophia_images = []
+
+        # gaussians_sophia = gaussians.clone()
+
+        # for iteration in range(first_iter, opt.iterations + 1):
+        #     JTJv_func1 = partial(JTJv_func, gaussians=gaussians_sophia, viewpoint_cams=cameras, S=S, scale=1)
+        #     Dhat_func1 = partial(Dhat_func, gaussians=gaussians_sophia, viewpoint_cams=cameras)
+
+        #     loss_sophia, batch_stats = loss_func(gaussians=gaussians_sophia, viewpoint_cams=cameras, return_stats=True)
+        #     image_sophia = batch_stats[0]["images"][0]
+
+        #     if iteration % gif_interval == 0:
+        #         sophia_losses.append(loss_sophia.item())
+        #         sophia_images.append(image_sophia)
+        #     print(f"Iteration {iteration}, Sophia loss: {loss_sophia.item():.10f}")
+
+        #     g = g_func(gaussians=gaussians_sophia, viewpoint_cams=cameras)
+
+        #     s_sophia = sophia_optimizer.get_update(g, JTJv_func1, Dhat_func1, z_gen_func, S)
+
+        #     gaussians_sophia.update_step(s_sophia)
+
+
+        gif_renderer.add_gt(0, 0, viewpoint_cams[0].original_image)
+        gif_renderer.add_series(0, 1, adam_images, adam_losses, title="Adam")
+        gif_renderer.add_series(1, 0, adam_tr_images, adam_tr_losses, title="Adam TR")
+        # gif_renderer.add_series(1, 0, sophia_images, sophia_losses, title="Sophia")
+        gif_renderer.add_series(1, 1, sophia_tr_images, sophia_tr_losses, title="Sophia TR (Ours)")
+
+        gif_renderer.animate(f"image_fitting.gif", interval=500)
+        print(f"Save image_fitting.gif")
+
+        safe_interact(local=locals(), banner="fitting done")
+
+        exit()
+
+        if opt.use_adam: # or iteration > 900:
+            print("Using ADAM step")
+            s_sophia = s_adam
 
         with torch.no_grad():
+            gaussians.update_step(s_sophia)
 
-            # loss_ref = reference_training_loss(iteration, opt, viewpoint_cam, gaussians, pipe, bg, train_test_exp=train_test_exp, depth_l1_weight=depth_l1_weight, pixel_mask=None)
+            loss = 0.0
+            Ll1 = 0.0
 
-            # if tb_writer:
-            #     tb_writer.add_scalar('total_loss_ref', loss_ref.item(), iteration)
+            if iteration % opt.eval_interval == 0:
+                loss = loss_func(gaussians=gaussians, viewpoint_cams=viewpoint_cams, regularize=False)
+                prev_loss = loss_func(gaussians=gaussians_copy, viewpoint_cams=viewpoint_cams, regularize=False)
+                print("[ITER {}] Training loss: {}".format(iteration, loss.item()), " prev loss: ", prev_loss.item())
+                    
+                loss_full = batch_training_loss(gaussians=gaussians, viewpoint_cams=viewpoint_cams, regularize=True, debug_regularize=False, **render_args)
 
-            # Progress bar
-            ema_loss_for_log = 0.4 * loss + 0.6 * ema_loss_for_log
-            ema_Ll1depth_for_log = 0.4 * Ll1depth + 0.6 * ema_Ll1depth_for_log
+                print("after loss computation")
 
-            if iteration % 10 == 0:
-                progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
-                progress_bar.update(10)
-            if iteration == opt.iterations:
-                progress_bar.close()
-
-            # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, cameras, gaussians, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp)
-
-            # Densification
-            if iteration < opt.densify_until_iter:
-                # Keep track of max radii in image-space for pruning
-                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
-                # Disabling positional gradient based densification
-                gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
-
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, cameras_extent, size_threshold, radii)
-                    # safe_interact(local=locals(), banner=f"After densification at iteration {iteration} prompt")
-                
-                if iteration % opt.opacity_reset_interval == 0 or (white_background and iteration == opt.densify_from_iter):
-                    gaussians.reset_opacity()
-
-            # gaussians_old = deepcopy(gaussians)
-
-            # safe_interact(local=locals(), banner="Debug prompt before optimizer step")
+        safe_interact(local=locals(), banner="Computed loss vector")
 
 
-            # Optimizer step
-            if iteration < opt.iterations:
-                gaussians.exposure_optimizer.step()
-                gaussians.exposure_optimizer.zero_grad(set_to_none = True)
-                if use_sparse_adam:
-                    visible = radii > 0
-                    gaussians.optimizer.step(visible, radii.shape[0])
-                    gaussians.optimizer.zero_grad(set_to_none = True)
-                else:
-                    gaussians.optimizer.step()
-                    gaussians.optimizer.zero_grad(set_to_none = True)
 
-            # s = GaussianModelState.from_gaussians(gaussians) - GaussianModelState.from_gaussians(gaussians_old)
+def prepare_output_and_logger(args):    
+    if not args.model_path:
+        if os.getenv('OAR_JOB_ID'):
+            unique_str=os.getenv('OAR_JOB_ID')
+        else:
+            unique_str = str(uuid.uuid4())
+        args.model_path = os.path.join("./output/", unique_str[0:10])
+        
+    # Set up output folder
+    print("Output folder: {}".format(args.model_path))
+    os.makedirs(args.model_path, exist_ok = True)
+    with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
+        cfg_log_f.write(str(Namespace(**vars(args))))
 
-            # safe_interact(local=locals(), banner="Debug prompt after training step")
-            # plot_loss_vs_step_size(iteration, l1_loss, cameras, gaussians, gaussians_old, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, s)
-
-            if (iteration in checkpoint_iterations):
-                print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                print("Model path: {}".format(model_path + "/chkpnt" + str(iteration) + ".pth"))
-                torch.save((gaussians.capture(), iteration), model_path + "/chkpnt" + str(iteration) + ".pth")
-                import code; code.interact(local=locals(), banner="Debug prompt after saving")
-            # safe_interact(local=locals(), banner="After iteration prompt")
-
-    gif_renderer = GifRenderer(num_rows=1, num_cols=2, figsize=(10, 6), gif_interval=1)
-    gif_renderer.add_gt(0, 0, viewpoint_cam.original_image)
-    gif_renderer.add_series(0, 1, adam_images, adam_losses, title="Adam")
-    gif_renderer.animate(f"figures/image_fitting_adam.gif", interval=500)
-    print(f"save figures/image_fitting_adam.gif")
+    # Create Tensorboard writer
+    tb_writer = None
+    if TENSORBOARD_FOUND:
+        tb_writer = SummaryWriter(args.model_path)
+    else:
+        print("Tensorboard not available: not logging progress")
+    return tb_writer
 
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, cameras, gaussians, renderFunc, renderArgs, train_test_exp):
     if tb_writer:
@@ -331,8 +488,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
 
     # Report test and samples of training set
 
-    if iteration in testing_iterations or iteration % 100 == 0 or iteration == 1001:
-        print(gaussians._xyz.shape)
+    if iteration in testing_iterations or iteration % 1 == 0:
         torch.cuda.empty_cache()
         num_val_images = 30
         val_stride = max(1, len(cameras) // num_val_images)
@@ -365,7 +521,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
 
         if tb_writer:
-            # tb_writer.add_histogram("scene/opacity_histogram", gaussians.get_opacity, iteration)
+            tb_writer.add_histogram("scene/opacity_histogram", gaussians.get_opacity, iteration)
             tb_writer.add_scalar('total_points', gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
 
@@ -448,17 +604,13 @@ if __name__ == "__main__":
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument('--disable_viewer', action='store_true', default=False)
-    parser.add_argument("--save_checkpoint_dir", type=str, default="")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--num_points", type=int, default=2_000)
     parser.add_argument("--image_path", type=str, default="")
-    parser.add_argument("--gif_interval", type=int, default=1000)
+    parser.add_argument("--gif_interval", type=int, default=1)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
-
-    if args.checkpoint_iterations != []:
-        assert args.save_checkpoint_dir != "", "Please provide a directory to save checkpoints."
     
     print("Optimizing " + args.model_path)
 
@@ -469,18 +621,16 @@ if __name__ == "__main__":
     if not args.disable_viewer:
         network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args),
-             op.extract(args), 
+    training(op.extract(args), 
              pp.extract(args), 
              args.test_iterations, 
              args.save_iterations, 
-             args.save_checkpoint_dir,
              args.checkpoint_iterations, 
              args.start_checkpoint, 
              args.debug_from, 
              args.image_path, 
              args.num_points,
-             args.gif_interval)
+             args.gif_interval,)
 
     # All done
     print("\nTraining complete.")

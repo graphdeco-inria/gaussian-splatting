@@ -83,3 +83,4 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
             pass
 
         torch.cuda.empty_cache()
+

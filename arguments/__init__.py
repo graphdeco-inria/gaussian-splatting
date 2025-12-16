@@ -105,7 +105,9 @@ class OptimizationParams(ParamGroup):
 
         self.loss_type = "huber"
         self.huber_delta = 1e-1
-        self.disable_ssim = True
+        self.disable_ssim = False
+
+        self.naive_densification = False
 
         self.linesearch_alpha = 1e-0
         self.linesearch_alpha_min = 1e-2
@@ -149,7 +151,7 @@ class OptimizationParams(ParamGroup):
         self.use_adam = False
 
         self.adahessian_beta1 = 0.9
-        self.adahessian_beta2 = 0.999
+        self.adahessian_beta2 = 0.99
         self.adam_beta1 = 0.9
         self.adam_beta2 = 0.999
 
@@ -186,7 +188,7 @@ class OptimizationParams(ParamGroup):
         # self.exposure_lr = 1.0
 
         # self.lr_scale = 10.0
-        self.lr_scale = 10.0
+        self.lr_scale = 1.0
         self.xyz_lr_init = 1.6e-4 * scale_const * self.lr_scale
         self.xyz_lr_final = 1.6e-6 * scale_const * self.lr_scale
         self.xyz_lr_decay = 0.2 # 0.996
@@ -214,6 +216,13 @@ class OptimizationParams(ParamGroup):
         self.scaling_reg_weight = 5e-3
         self.scaling_reg_thresh = 5
         self.debug_loss = False
+
+        self.kl_threshold = 0.1
+        self.diagonal_init_iter = 20
+        self.diagonal_init_restart_iter = 3
+        self.diagonal_update_iter = 2
+        self.diagonal_update_restart_iter = 1
+        self.diagonal_update_interval = 5
 
         super().__init__(parser, "Optimization Parameters")
 

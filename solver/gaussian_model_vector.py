@@ -204,6 +204,49 @@ class GaussianModelVector:
         return cls(xyz, features_dc, features_rest, scaling, rotation, opacity, exposure,
                    gaussians=gaussians)
 
+    def densify_and_prune_(self, prune_mask):
+        valid_mask = ~prune_mask
+        num_valid_points = valid_mask.sum().item()
+        num_old_points = self.xyz_shape[0]
+        valid_old_mask = valid_mask[:num_old_points]
+        num_valid_old_points = valid_old_mask.sum().item()
+        self.xyz_shape = (num_valid_points, ) + self.xyz_shape[1:]
+        if self.tensor_xyz:
+            new_xyz = torch.zeros(self.xyz_shape, device=self.xyz.device, dtype=self.xyz.dtype)
+            new_xyz[:num_valid_old_points] = self.xyz[valid_old_mask]
+            self.xyz = new_xyz
+
+        self.features_dc_shape = (num_valid_points, ) + self.features_dc_shape[1:]
+        if self.tensor_features_dc:
+            new_features_dc = torch.zeros(self.features_dc_shape, device=self.features_dc.device, dtype=self.features_dc.dtype)
+            new_features_dc[:num_valid_old_points] = self.features_dc[valid_old_mask]
+            self.features_dc = new_features_dc
+
+        self.features_rest_shape = (num_valid_points, ) + self.features_rest_shape[1:]
+        if self.tensor_features_rest:
+            new_features_rest = torch.zeros(self.features_rest_shape, device=self.features_rest.device, dtype=self.features_rest.dtype)
+            new_features_rest[:num_valid_old_points] = self.features_rest[valid_old_mask]
+            self.features_rest = new_features_rest
+
+        self.scaling_shape = (num_valid_points, ) + self.scaling_shape[1:]
+        if self.tensor_scaling:
+            new_scaling = torch.zeros(self.scaling_shape, device=self.scaling.device, dtype=self.scaling.dtype)
+            new_scaling[:num_valid_old_points] = self.scaling[valid_old_mask]
+            self.scaling = new_scaling
+
+        self.rotation_shape = (num_valid_points, ) + self.rotation_shape[1:]
+        if self.tensor_rotation:
+            new_rotation = torch.zeros(self.rotation_shape, device=self.rotation.device, dtype=self.rotation.dtype)
+            new_rotation[:num_valid_old_points] = self.rotation[valid_old_mask]
+            self.rotation = new_rotation
+
+        self.opacity_shape = (num_valid_points, ) + self.opacity_shape[1:]
+        if self.tensor_opacity:
+            new_opacity = torch.zeros(self.opacity_shape, device=self.opacity.device, dtype=self.opacity.dtype)
+            new_opacity[:num_valid_old_points] = self.opacity[valid_old_mask]
+            self.opacity = new_opacity
+
+
     def clone(self):
         return GaussianModelVector(
             self.xyz.clone() if self.tensor_xyz else self.xyz,
