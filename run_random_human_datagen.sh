@@ -101,25 +101,25 @@ fi
 
 # Core configuration for assignment planning + rendering. Most callers just tweak
 # DATA roots or seeds via environment variables.
-SEED=${SEED:-65}
-SEED=${SEED:-65}
+SEED=${SEED:-2}
 CONDA_ENV=${CONDA_ENV:-cuda121}
 ACTOR_ROOT=${ACTOR_ROOT:-./data/human_gs_source}
 BAN_LIST=${BAN_LIST:-${ACTOR_ROOT}/BanList.txt}
-ASSIGNMENTS_OUT=${ASSIGNMENTS_OUT:-./data/actor_assignments_w_ban_65k.json}
+ASSIGNMENTS_OUT=${ASSIGNMENTS_OUT:-./data/actor_assignments_w_ban_65k_2.json}
+PARALLEL_REPORT_DIR=${PARALLEL_REPORT_DIR:-./parallel_render_report_65k_2.json}
 SCENES_DIR=${SCENES_DIR:-./data/scenes}
 TASKS_DIR=${TASKS_DIR:-./data/selected_65k}
-OUTPUT_DIR=${OUTPUT_DIR:-./data/path_video_frames_random_humans_65k}
-OFFLOAD_NAS_DIR=${OFFLOAD_NAS_DIR:-/mnt/nas/jiankundong/random_human_dataset_w_ban_65k}
+OUTPUT_DIR=${OUTPUT_DIR:-./data/65k_key1}
+OFFLOAD_NAS_DIR=${OFFLOAD_NAS_DIR:-/mnt/nas/jiankundong/random_human_dataset_w_ban_65k_2}
 OFFLOAD_MIN_FREE_GB=${OFFLOAD_MIN_FREE_GB:-0.5}
 PROGRESS_JSON=${PROGRESS_JSON:-./analysis/random_human_progress.json}
 PER_JOB_METRICS_DIR=${PER_JOB_METRICS_DIR:-./analysis/random_human_metrics}
-REMOTE_STORAGE_ROOT=${REMOTE_STORAGE_ROOT:-${REMOTE_OUTPUT_DIR:-/mnt/DATA/navdp_data_65k}}
+REMOTE_STORAGE_ROOT=${REMOTE_STORAGE_ROOT:-${REMOTE_OUTPUT_DIR:-/mnt/DATA/navdp_data_65k_2}}
 REMOTE_SSH_TARGET=${REMOTE_SSH_TARGET:-lenovo@192.168.151.40}
 LOCAL_OUTPUT_BASENAME="$(basename "$OUTPUT_DIR")"
 REMOTE_TARGET_DIR="${REMOTE_STORAGE_ROOT%/}/${LOCAL_OUTPUT_BASENAME}"
 REMOTE_SYNC_INTERVAL_SECS=${REMOTE_SYNC_INTERVAL_SECS:-120}
-WORKERS=${WORKERS:-12}
+WORKERS=${WORKERS:-10}
 MINIMAL_FRAMES=${MINIMAL_FRAMES:-38}
 # vram reserve function
 RESERVE_VRAM_GB=${RESERVE_VRAM_GB:-0}
@@ -623,6 +623,7 @@ parallel_cmd=(
   --output-dir "${OUTPUT_DIR}"
   --progress-json "${PROGRESS_JSON}"
   --per-job-metrics-dir "${PER_JOB_METRICS_DIR}"
+  --report-out "${PARALLEL_REPORT_DIR}"
 )
 # Thread the resume log into the renderer so it can skip completed scene/actor
 # pairs. Remaining CLI snippets (overwrite/offload/etc.) are appended below.
