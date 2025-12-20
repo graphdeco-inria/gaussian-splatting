@@ -35,34 +35,38 @@ def Dhat(gaussians, viewpoint_cams, scale=1.0, **render_kwargs):
 
 def loss(gaussians, viewpoint_cams, scale=1.0, **render_kwargs):
     return_stats = render_kwargs.get("return_stats", False)
-    if return_stats:
-        with torch.no_grad():
-            l = 0.0
-            stats = []
-            for vc in viewpoint_cams:
+    with torch.no_grad():
+        l = 0.0
+        stats = []
+        for vc in viewpoint_cams:
+            if return_stats:
                 li, stats_i = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs)
-                l += 0.5 * (li.norm() ** 2)
                 stats.append(stats_i)
-                # l += batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
-            return l * scale, stats
-    else:
-        with torch.no_grad():
-            l = 0.0
-            for vc in viewpoint_cams:
+            else:
                 li = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs)
-                l += 0.5 * (li.norm() ** 2)
-                # l += batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
-            return l * scale
+            l += 0.5 * (li.norm() ** 2)
+
+    if return_stats:
+        return l * scale, stats
+
+    return l * scale
     
 
 def g(gaussians, viewpoint_cams, scale=1.0, return_loss=False, **render_kwargs):
     gaussians.zero_grad()
 
+    return_stats = render_kwargs.get("return_stats", False)
+
     with torch.enable_grad():
         l = 0.0
+        stats = []
         for vc in viewpoint_cams:
-            li = 0.5 * (batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).norm() ** 2)
-            # li = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs).loss_scalar
+            if return_stats:
+                l_vec_i, stats_i = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs)
+                stats.append(stats_i)
+            else:
+                l_vec_i = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs)
+            li = 0.5 * (l_vec_i.norm() ** 2)
             li *= scale
 
             l += li.item()
@@ -70,7 +74,10 @@ def g(gaussians, viewpoint_cams, scale=1.0, return_loss=False, **render_kwargs):
 
     grad = GaussianModelVector.from_gaussians_grad(gaussians)
 
-    if return_loss:
+    if return_stats:
+        return l, grad, stats
+
+    elif return_loss:
         return l, grad
 
     return grad

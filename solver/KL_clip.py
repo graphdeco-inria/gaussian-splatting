@@ -55,6 +55,7 @@ def clip_kl(gaussians, update, kl_threshold, features_dc_lr, features_rest_lr, o
         updated_quat
     )
 
+    covar.diagonal(dim1=1, dim2=2).add_(1e-15)  # Numerical stability
     covar_delta = torch.linalg.solve(covar, updated_covar)
     # covar_delta = inverse_covar @ updated_covar
     traces = torch.diagonal(covar_delta, dim1=1, dim2=2).sum(dim=-1, keepdim=True) - 3
