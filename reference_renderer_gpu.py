@@ -1422,7 +1422,7 @@ def forward_direction_beta(points: Sequence[np.ndarray], idx: int, window: int =
 
 
 def build_look_at(eye: np.ndarray, target: np.ndarray, up: np.ndarray) -> np.ndarray:
-    forward = eye - target
+    forward = -eye + target
     forward_norm = np.linalg.norm(forward)
     if forward_norm < EPS:
         raise ValueError("Camera target too close to position; cannot build view matrix.")
@@ -1785,7 +1785,7 @@ def render_path_frames(
                                 forward[2] = 0.0
                         prev_forward = forward.copy()
 
-                        target_xy = position[:2] - forward[:2] * look_ahead
+                        target_xy = position[:2] + forward[:2] * look_ahead
                         target_z = position[2] - look_down
                         target_z = max(target_z, floor_z + 0.05)
                         target = np.array([target_xy[0], target_xy[1], target_z], dtype=np.float32)
