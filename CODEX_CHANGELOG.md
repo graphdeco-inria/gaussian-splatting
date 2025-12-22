@@ -47,6 +47,12 @@ omitted because the repo will move; follow the bullet order instead.
   - Convenience wrapper that activates `cuda121` and launches
     `parallel_render_paths.py` against `./data/actor_assignments.json` with the
     recommended worker count, minimal-frame filter, and NAS offload arguments.
+- Shared rendering helpers
+  - Added `utils/render_utils.py` for camera math (look-at/perspective), occupancy
+    metadata loading, pixel↔world transforms, and raster_world loaders.
+  - Refactored `render_label_paths.py`, `render_first_frame.py`, and
+    `reference_renderer_gpu.py` to import these helpers so math/sign conventions
+    and raster-to-world alignment stay in sync across scripts.
 
 ## Usage Reference
 
