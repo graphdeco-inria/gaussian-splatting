@@ -136,15 +136,17 @@ class GaussianModelVector:
                        torch.zeros_like(other._opacity),
                        torch.zeros_like(other._exposure),)
         elif isinstance(other, GaussianModelVector):
-            xyz = torch.zeros_like(other.xyz) if not other.scalar_xyz else 0.0
-            features_dc = torch.zeros_like(other.features_dc) if not other.scalar_features_dc else 0.0
-            features_rest = torch.zeros_like(other.features_rest) if not other.scalar_features_rest else 0.0
-            scaling = torch.zeros_like(other.scaling) if not other.scalar_scaling else 0.0
-            rotation = torch.zeros_like(other.rotation) if not other.scalar_rotation else 0.0
-            opacity = torch.zeros_like(other.opacity) if not other.scalar_opacity else 0.0
-            exposure = torch.zeros_like(other.exposure) if not other.scalar_exposure else 0.0
+            xyz = torch.zeros_like(other.xyz) if other.tensor_xyz else 0.0
+            features_dc = torch.zeros_like(other.features_dc) if other.tensor_features_dc else 0.0
+            features_rest = torch.zeros_like(other.features_rest) if other.tensor_features_rest else 0.0
+            scaling = torch.zeros_like(other.scaling) if other.tensor_scaling else 0.0
+            rotation = torch.zeros_like(other.rotation) if other.tensor_rotation else 0.0
+            opacity = torch.zeros_like(other.opacity) if other.tensor_opacity else 0.0
+            exposure = torch.zeros_like(other.exposure) if other.tensor_exposure else 0.0
             return cls(xyz, features_dc, features_rest, scaling, rotation, opacity, exposure,
-                       gaussians_model_vector=other)
+                       gaussian_model_vector=other)
+        else:
+            raise TypeError(f"Unsupported type for zeros_like: {type(other)}")
 
     @classmethod
     def ones_like(cls, other):
@@ -158,15 +160,17 @@ class GaussianModelVector:
                        torch.ones_like(other._opacity),
                        torch.ones_like(other._exposure),)
         elif isinstance(other, GaussianModelVector):
-            xyz = torch.ones_like(other.xyz) if not other.scalar_xyz else 1.0
-            features_dc = torch.ones_like(other.features_dc) if not other.scalar_features_dc else 1.0
-            features_rest = torch.ones_like(other.features_rest) if not other.scalar_features_rest else 1.0
-            scaling = torch.ones_like(other.scaling) if not other.scalar_scaling else 1.0
-            rotation = torch.ones_like(other.rotation) if not other.scalar_rotation else 1.0
-            opacity = torch.ones_like(other.opacity) if not other.scalar_opacity else 1.0
-            exposure = torch.ones_like(other.exposure) if not other.scalar_exposure else 1.0
-            return cls(xyz, features_dc, features_rest, scaling, opacity, exposure,
-                       gaussians_model_vector=other)
+            xyz = torch.ones_like(other.xyz) if other.tensor_xyz else 1.0
+            features_dc = torch.ones_like(other.features_dc) if other.tensor_features_dc else 1.0
+            features_rest = torch.ones_like(other.features_rest) if other.tensor_features_rest else 1.0
+            scaling = torch.ones_like(other.scaling) if other.tensor_scaling else 1.0
+            rotation = torch.ones_like(other.rotation) if other.tensor_rotation else 1.0
+            opacity = torch.ones_like(other.opacity) if other.tensor_opacity else 1.0
+            exposure = torch.ones_like(other.exposure) if other.tensor_exposure else 1.0
+            return cls(xyz, features_dc, features_rest, scaling, rotation, opacity, exposure,
+                       gaussian_model_vector=other)
+        else:
+            raise TypeError(f"Unsupported type for ones_like: {type(other)}")
 
     @classmethod
     def rademacher_like(cls, other):
@@ -494,6 +498,8 @@ class GaussianModelVector:
                 self.exposure * other.exposure,
                 gaussian_model_vector=self
             )
+        else:
+            raise TypeError(f"Unsupported type for multiplication: {type(other)}")
 
     def __rmul__(self, other):
         return self.__mul__(other)
