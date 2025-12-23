@@ -151,7 +151,7 @@ class OptimizationParams(ParamGroup):
         self.use_adam = False
 
         self.adahessian_beta1 = 0.9
-        self.adahessian_beta2 = 0.99
+        self.adahessian_beta2 = 0.999
         self.adam_beta1 = 0.9
         self.adam_beta2 = 0.999
 
@@ -223,6 +223,8 @@ class OptimizationParams(ParamGroup):
         self.diagonal_update_iter = 2
         self.diagonal_update_restart_iter = 1
         self.diagonal_update_interval = 5
+
+        self.eval_interval = 1000
 
         super().__init__(parser, "Optimization Parameters")
 
