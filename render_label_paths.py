@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import shutil
 import threading, queue
+import hashlib
 
 import json
 import math
@@ -51,6 +52,12 @@ from utils.render_utils import (
     load_raster_world_points,
     sample_points,
     world_to_pixel,
+)
+from utils.npc_density import (
+    CameraWedge,
+    NPCDensityConfig,
+    load_free_space_mask,
+    plan_npc_positions,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -840,6 +847,60 @@ def _draw_text_lines(img: np.ndarray, lines: list[str], origin: tuple[int, int] 
             y += 6
     # Mirror the PATHS (not the image) if requested
 
+def _meters_to_px(meta: dict, meters: float) -> int:
+    """Convert meters to occupancy pixel units (rounded)."""
+    if meters <= 0.0:
+        return 0
+    return int(round(meters / float(meta["scale"])))
+
+def _rotate_xy(vec: np.ndarray, angle_rad: float) -> np.ndarray:
+    c, s = math.cos(angle_rad), math.sin(angle_rad)
+    x, y = float(vec[0]), float(vec[1])
+    return np.array([c * x - s * y, s * x + c * y], dtype=np.float32)
+
+def _draw_circle_outline(img: np.ndarray, center: tuple[int, int], radius: int, color: tuple[int, int, int]) -> None:
+    """Approximate a circle outline by drawing two filled discs."""
+    if radius <= 0:
+        return
+    h, w = img.shape[:2]
+    u, v = center
+    if not (0 <= u < w and 0 <= v < h):
+        return
+    base_color = tuple(int(c) for c in img[v, u, :])
+    _draw_disk(img, center, radius, color)
+    inner = max(0, radius - 1)
+    if inner > 0:
+        # Erase interior by drawing black; background assumed dark-ish occupancy mask
+        _draw_disk(img, center, inner, base_color)
+
+def _draw_wedge(
+    img: np.ndarray,
+    meta: dict,
+    origin_xy: np.ndarray,
+    forward_xy: np.ndarray,
+    fov_deg: float,
+    r_min: float,
+    r_max: float,
+    color: tuple[int, int, int] = (255, 165, 0),
+) -> None:
+    """Draw wedge bounds (ground-plane FOV slice) and optional inner radius."""
+    if r_max <= 0.0:
+        return
+    fov_rad = math.radians(fov_deg)
+    left_dir = _rotate_xy(forward_xy, -0.5 * fov_rad)
+    right_dir = _rotate_xy(forward_xy, 0.5 * fov_rad)
+    left_pt = origin_xy + left_dir * r_max
+    right_pt = origin_xy + right_dir * r_max
+    origin_px = world_to_pixel(meta, origin_xy)
+    left_px = world_to_pixel(meta, left_pt)
+    right_px = world_to_pixel(meta, right_pt)
+    _draw_polyline(img, [origin_px, left_px], color, thickness=1, dotted=False)
+    _draw_polyline(img, [origin_px, right_px], color, thickness=1, dotted=False)
+    _draw_polyline(img, [left_px, right_px], color, thickness=1, dotted=True, dot_gap=4)
+    if r_min > 0.0 and r_min < r_max:
+        radius_px = _meters_to_px(meta, r_min)
+        _draw_circle_outline(img, origin_px, radius_px, color)
+
 def save_bev_debug_image(
     *,
     scene_id: str,
@@ -924,6 +985,157 @@ def save_bev_debug_image(
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     imageio.imwrite(out_path, base)
+
+def save_npc_bev_debug_image(
+    *,
+    scene_id: str,
+    label_id: str,
+    frame_idx: int,
+    meta: dict,
+    occ_image: np.ndarray,
+    path_xy: list[np.ndarray],
+    camera_xy: np.ndarray,
+    forward_xy: np.ndarray,
+    npc_positions: list[np.ndarray],
+    config: NPCDensityConfig,
+    fov_deg: float,
+    wedge_max_range: float,
+    achieved_coverage: float,
+    requested_count: int,
+    out_path: Path,
+) -> None:
+    """Draw an NPC placement debug frame (camera FOV wedge + NPC discs) on occupancy."""
+
+    base = occ_image.copy()
+    h, w = base.shape[:2]
+
+    path_px = [world_to_pixel(meta, xy) for xy in path_xy]
+    cam_px = world_to_pixel(meta, camera_xy)
+    npc_px = [world_to_pixel(meta, xy) for xy in npc_positions]
+
+    # Paths
+    if path_px:
+        _draw_polyline(base, path_px, (255, 0, 255), thickness=1, dotted=False)
+        _draw_disk(base, path_px[0], 4, (255, 255, 0))
+        _draw_disk(base, path_px[-1], 4, (255, 0, 0))
+
+    # Camera marker and wedge
+    _draw_disk(base, cam_px, 4, (0, 191, 255))  # camera center
+    _draw_wedge(
+        base,
+        meta=meta,
+        origin_xy=camera_xy,
+        forward_xy=forward_xy,
+        fov_deg=fov_deg,
+        r_min=config.min_distance_from_camera,
+        r_max=wedge_max_range,
+        color=(255, 165, 0),
+    )
+
+    # NPC discs
+    npc_radius_px = max(1, _meters_to_px(meta, config.clearance_radius))
+    for xy_px in npc_px:
+        _draw_disk(base, xy_px, npc_radius_px, (0, 255, 0))
+        _draw_disk(base, xy_px, max(1, npc_radius_px // 3), (0, 128, 0))
+
+    lines = [
+        f"Scene: {scene_id}",
+        f"Label: {label_id}",
+        f"Frame: {frame_idx}",
+        f"NPCs: {len(npc_positions)}/{requested_count} (coverage {achieved_coverage:.2f})",
+        f"Clearance: {config.clearance_radius:.2f} m",
+        f"Min dist: {config.min_distance_from_camera:.2f} m | Max: {wedge_max_range:.2f} m",
+        f"FOV: {fov_deg:.1f} deg",
+    ]
+
+    _draw_text_lines(base, lines, origin=(8, 8))
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    imageio.imwrite(out_path, base)
+
+def generate_npc_bev_debug_for_path(
+    *,
+    scene_id: str,
+    label_id: str,
+    path_xy: list[np.ndarray],
+    meta: dict,
+    occ_image: np.ndarray,
+    free_mask: np.ndarray,
+    config: NPCDensityConfig,
+    fov_deg: float,
+    seed_base: int,
+    output_root: Path,
+    stabilize: bool,
+    forward_fn,
+    goal_xy: np.ndarray | None = None,
+    npc_max_range: float | None = None,
+) -> dict:
+    """Generate per-frame NPC BEV debug images without rendering RGB/depth."""
+
+    direction_window = STABILIZE_WINDOW if stabilize else 1
+    positions = [np.array([xy[0], xy[1], 0.0], dtype=np.float32) for xy in path_xy]
+    goal_xy = goal_xy if goal_xy is not None else (path_xy[-1] if path_xy else None)
+    out_dir = output_root / scene_id / label_id / "__npc_bev_debug"
+
+    wedge_max_range = npc_max_range if npc_max_range is not None else config.max_distance_from_camera
+    if wedge_max_range is None:
+        wedge_max_range = 5.0
+
+    frames_done = 0
+    total_shortfall = 0
+    for frame_idx, cam_pos in enumerate(positions):
+        forward = forward_fn(positions, frame_idx, window=direction_window)
+        forward_xy = forward[:2]
+        norm = float(np.linalg.norm(forward_xy))
+        if norm < EPS:
+            forward_xy = np.array([0.0, 1.0], dtype=np.float32)
+        else:
+            forward_xy = (forward_xy / norm).astype(np.float32)
+
+        wedge = CameraWedge(
+            origin_xy=cam_pos[:2],
+            forward_xy=forward_xy,
+            fov_deg=fov_deg,
+            max_range=wedge_max_range,
+            min_range=config.min_distance_from_camera,
+        )
+        seed = _npc_frame_seed(seed_base, scene_id, label_id, frame_idx)
+        rng = np.random.default_rng(seed)
+        placement = plan_npc_positions(
+            wedge=wedge,
+            free_mask=free_mask,
+            meta=meta,
+            rng=rng,
+            config=config,
+            goal_xy=goal_xy,
+        )
+
+        out_path = out_dir / f"npc_bev_{frame_idx:04d}.png"
+        save_npc_bev_debug_image(
+            scene_id=scene_id,
+            label_id=label_id,
+            frame_idx=frame_idx,
+            meta=meta,
+            occ_image=occ_image,
+            path_xy=path_xy,
+            camera_xy=cam_pos[:2],
+            forward_xy=forward_xy,
+            npc_positions=placement.positions_xy,
+            config=config,
+            fov_deg=fov_deg,
+            wedge_max_range=wedge_max_range,
+            achieved_coverage=placement.achieved_coverage,
+            requested_count=placement.requested_count,
+            out_path=out_path,
+        )
+        frames_done += 1
+        total_shortfall += placement.shortfall
+
+    return {
+        "frames": frames_done,
+        "shortfall": total_shortfall,
+        "output_dir": out_dir,
+    }
 ##############################################################################################
 
 def _serialize_camera(camera: MiniCam | OrthoMiniCam, *, orthographic: bool) -> dict:
@@ -1013,6 +1225,10 @@ def _save_depth_and_camera(
 def _rotate_180_xy(xy: np.ndarray) -> np.ndarray:
     """Rotate 2D points by 180 degrees around origin."""
     return np.flipud(np.fliplr(xy))
+
+def _npc_frame_seed(base_seed: int, scene_id: str, label_id: str, frame_idx: int) -> int:
+    payload = f"{base_seed}:{scene_id}:{label_id}:{frame_idx}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], byteorder="little")
 def build_navdp_mask_ply(
     *,
     scene_id: str,
@@ -3425,6 +3641,78 @@ def parse_args() -> ArgumentParser:
         default=False,
         help="Combine all paths from a scene into a single NavDP PLY instead of one per path.",
     )
+    parser.add_argument(
+        "--npc-bev-debug",
+        action="store_true",
+        default=False,
+        help="Generate NPC placement BEV debug images alongside rendering.",
+    )
+    parser.add_argument(
+        "--npc-bev-debug-only",
+        action="store_true",
+        default=False,
+        help="Only generate NPC placement BEV debug images (skip rendering).",
+    )
+    parser.add_argument(
+        "--npc-bev-output-dir",
+        type=Path,
+        default=None,
+        help="Output root for NPC BEV debug images (defaults to --output-dir).",
+    )
+    parser.add_argument(
+        "--npc-density-coverage",
+        type=float,
+        default=None,
+        help="Target NPC area coverage fraction (0..1) within the camera wedge.",
+    )
+    parser.add_argument(
+        "--npc-max-count",
+        type=int,
+        default=None,
+        help="Hard cap on NPCs per frame (applied after coverage target).",
+    )
+    parser.add_argument(
+        "--npc-clearance",
+        type=float,
+        default=0.30,
+        help="NPC collision radius in meters (default: 0.30).",
+    )
+    parser.add_argument(
+        "--npc-min-distance",
+        type=float,
+        default=1.0,
+        help="Minimum radial distance from the camera when placing NPCs (default: 1.0 m).",
+    )
+    parser.add_argument(
+        "--npc-max-range",
+        type=float,
+        default=5.0,
+        help="Maximum radial distance from the camera when placing NPCs (default: 5.0 m).",
+    )
+    parser.add_argument(
+        "--npc-allow-blocking",
+        action=BooleanOptionalAction,
+        default=False,
+        help="Allow NPCs to block the camera->goal line of sight (default: off).",
+    )
+    parser.add_argument(
+        "--npc-free-threshold",
+        type=int,
+        default=128,
+        help="Occupancy pixel threshold treated as free space (default: 128).",
+    )
+    parser.add_argument(
+        "--npc-max-resamples",
+        type=int,
+        default=50,
+        help="Maximum resampling attempts per NPC placement (default: 50).",
+    )
+    parser.add_argument(
+        "--npc-seed",
+        type=int,
+        default=12345,
+        help="Base seed for NPC placement determinism.",
+    )
 
     parser.set_defaults(actor_loop=True)
     return parser
@@ -3495,6 +3783,20 @@ def main() -> None:
     navdp_manager = NavdpPlyCoordinator(per_scene=bool(args.navdp_ply_per_scene))
     metrics_enabled = bool(args.metrics_json)
     collected_metrics: list[dict] = []
+    npc_bev_enabled = bool(args.npc_bev_debug or args.npc_bev_debug_only)
+    npc_bev_only = bool(args.npc_bev_debug_only)
+    npc_bev_output_root: Path = args.npc_bev_output_dir if args.npc_bev_output_dir is not None else args.output_dir
+    npc_density_config = NPCDensityConfig(
+        clearance_radius=float(args.npc_clearance),
+        min_distance_from_camera=float(args.npc_min_distance),
+        max_distance_from_camera=float(args.npc_max_range) if args.npc_max_range is not None and float(args.npc_max_range) > 0 else None,
+        target_coverage=float(args.npc_density_coverage) if args.npc_density_coverage is not None else None,
+        max_npcs=int(args.npc_max_count) if args.npc_max_count is not None and int(args.npc_max_count) > 0 else None,
+        allow_blocking=bool(args.npc_allow_blocking),
+        max_resamples=max(1, int(args.npc_max_resamples)),
+        free_pixel_min=int(args.npc_free_threshold),
+    )
+    npc_forward_fn = get_forward_fn(args)
 
     if args.actor_seq_dir is not None:
         actor_options = ActorOptions(
@@ -3619,6 +3921,17 @@ def main() -> None:
                 )
                 continue
             processed_scenes += 1
+            npc_free_mask = None
+            npc_occ_image = None
+            if npc_bev_enabled:
+                try:
+                    npc_free_mask, _ = load_free_space_mask(dataset_dir, threshold=int(args.npc_free_threshold))
+                    occ_img = imageio.imread(dataset_dir / "occupancy.png")
+                    npc_occ_image = _ensure_rgb(np.array(occ_img))
+                except Exception as exc:  # pylint: disable=broad-except
+                    print(f"  [WARN] NPC BEV debug disabled for {scene_id}: {exc}", flush=True)
+                    npc_free_mask = None
+                    npc_occ_image = None
 
             if debug_enabled:
                 if label_dir == scene_task_root:
@@ -3698,6 +4011,30 @@ def main() -> None:
                     f"    [{label_idx:03d}/{total_labels:03d}/{total_paths_found:03d}] -> {json_path.stem}",
                     flush=True,
                 )
+                if npc_bev_enabled and npc_free_mask is not None and npc_occ_image is not None:
+                    npc_summary = generate_npc_bev_debug_for_path(
+                        scene_id=scene_id,
+                        label_id=json_path.stem,
+                        path_xy=prepared.path_xy,
+                        meta=meta,
+                        occ_image=npc_occ_image,
+                        free_mask=npc_free_mask,
+                        config=npc_density_config,
+                        fov_deg=float(args.fov_deg),
+                        seed_base=int(args.npc_seed),
+                        output_root=npc_bev_output_root,
+                        stabilize=stabilize_enabled,
+                        forward_fn=npc_forward_fn,
+                        goal_xy=prepared.path_xy[-1] if prepared.path_xy else None,
+                        npc_max_range=float(args.npc_max_range) if args.npc_max_range is not None else None,
+                    )
+                    if verbose_enabled:
+                        print(
+                            f"[VERBOSE] NPC BEV debug ({npc_summary['frames']} frames, shortfall {npc_summary['shortfall']}) -> {npc_summary['output_dir']}",
+                            flush=True,
+                        )
+                if npc_bev_only:
+                    continue
                 try:
                     summary = render_path_frames(
                         scene_id=scene_id,
@@ -3774,18 +4111,19 @@ def main() -> None:
                     log_file.write("\n")
                     log_file.flush()
 
-            try:
-                navdp_manager.finalize_scene(
-                    scene_id=scene_id,
-                    meta=meta,
-                    gaussians=gaussians,
-                    output_dir=args.output_dir,
-                )
-            except Exception as exc:  # pylint: disable=broad-except
-                print(
-                    f"      WARNING: Failed to finalize NavDP PLYs for {scene_id}: {exc}",
-                    flush=True,
-                )
+            if not npc_bev_only and navdp_manager is not None:
+                try:
+                    navdp_manager.finalize_scene(
+                        scene_id=scene_id,
+                        meta=meta,
+                        gaussians=gaussians,
+                        output_dir=args.output_dir,
+                    )
+                except Exception as exc:  # pylint: disable=broad-except
+                    print(
+                        f"      WARNING: Failed to finalize NavDP PLYs for {scene_id}: {exc}",
+                        flush=True,
+                    )
 
             print(f"  Finished scene {scene_id}\n", flush=True)
             if nas_offload_dir is not None:
