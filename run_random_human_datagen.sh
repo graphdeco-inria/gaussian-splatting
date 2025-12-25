@@ -26,7 +26,7 @@ show_usage_and_exit() {
 # consumes the following logfile argument so the remainder of the script can lean
 # on env vars only.
 RESUME_MODE=false
-RESUME_LOG_PATH="./65k.log"
+RESUME_LOG_PATH="./33w_npc1.log"
 if [ $# -gt 0 ]; then
   if [ "$1" = "RESUME" ]; then
     RESUME_MODE=true
@@ -101,27 +101,27 @@ fi
 
 # Core configuration for assignment planning + rendering. Most callers just tweak
 # DATA roots or seeds via environment variables.
-SEED=${SEED:-2}
+SEED=${SEED:-1}
 CONDA_ENV=${CONDA_ENV:-cuda121}
 ACTOR_ROOT=${ACTOR_ROOT:-./data/human_gs_source}
 BAN_LIST=${BAN_LIST:-${ACTOR_ROOT}/BanList.txt}
-ASSIGNMENTS_OUT=${ASSIGNMENTS_OUT:-./data/actor_assignments_w_ban_65k_2.json}
-PARALLEL_REPORT_DIR=${PARALLEL_REPORT_DIR:-./parallel_render_report_65k_2.json}
+ASSIGNMENTS_OUT=${ASSIGNMENTS_OUT:-./data/actor_assignments_w_ban_33w_1_npc.json}
+PARALLEL_REPORT_DIR=${PARALLEL_REPORT_DIR:-./parallel_render_report_33w_1_npc.json}
 SCENES_DIR=${SCENES_DIR:-./data/scenes}
-TASKS_DIR=${TASKS_DIR:-./data/selected_65k}
-OUTPUT_DIR=${OUTPUT_DIR:-./data/65k_key1}
-OFFLOAD_NAS_DIR=${OFFLOAD_NAS_DIR:-/mnt/nas/jiankundong/random_human_dataset_w_ban_65k_2}
+TASKS_DIR=${TASKS_DIR:-./data/selected_33w}
+OUTPUT_DIR=${OUTPUT_DIR:-./data1/33w_npc_key1}
+OFFLOAD_NAS_DIR=${OFFLOAD_NAS_DIR:-/mnt/nas/jiankundong/random_human_dataset_w_ban_33w_1}
 OFFLOAD_MIN_FREE_GB=${OFFLOAD_MIN_FREE_GB:-0.5}
 PROGRESS_JSON=${PROGRESS_JSON:-./analysis/random_human_progress.json}
 PER_JOB_METRICS_DIR=${PER_JOB_METRICS_DIR:-./analysis/random_human_metrics}
-REMOTE_STORAGE_ROOT=${REMOTE_STORAGE_ROOT:-${REMOTE_OUTPUT_DIR:-/mnt/DATA/navdp_data_65k_2}}
+REMOTE_STORAGE_ROOT=${REMOTE_STORAGE_ROOT:-${REMOTE_OUTPUT_DIR:-/mnt/DATA/navdp_data_33w_1}}
 REMOTE_SSH_TARGET=${REMOTE_SSH_TARGET:-lenovo@192.168.151.40}
 LOCAL_OUTPUT_BASENAME="$(basename "$OUTPUT_DIR")"
 REMOTE_TARGET_DIR="${REMOTE_STORAGE_ROOT%/}/${LOCAL_OUTPUT_BASENAME}"
 REMOTE_SYNC_INTERVAL_SECS=${REMOTE_SYNC_INTERVAL_SECS:-120}
 # Optional NPC placement/debug (applies to FPV or following data). Leave values empty to skip.
-NPC_ENABLE=${NPC_ENABLE:-false}                            # true/false to append NPC args
-NPC_DENSITY_COVERAGE=${NPC_DENSITY_COVERAGE:-0.2}          # e.g., 0.2 angular coverage
+NPC_ENABLE=${NPC_ENABLE:-true}                            # true/false to append NPC args
+NPC_DENSITY_COVERAGE=${NPC_DENSITY_COVERAGE:-0.3}          # e.g., 0.2 angular coverage
 NPC_COUNT=${NPC_COUNT:-8}                                  # desired NPC count per frame
 NPC_PRIORITY=${NPC_PRIORITY:-coverage}                     # coverage|count
 NPC_MAX_RANGE=${NPC_MAX_RANGE:-10}                         # meters, radial cap
@@ -130,7 +130,7 @@ NPC_FREE_WHITE=${NPC_FREE_WHITE:-true}                     # true => free is whi
 NPC_DENSITY_MODE=${NPC_DENSITY_MODE:-angular}              # angular|area
 NPC_ZONE_RATIO=${NPC_ZONE_RATIO:-1:2:1}                    # near:mid:far ratio (applied when count>=12)
 NPC_EXTRA_FLAGS=${NPC_EXTRA_FLAGS:-}                       # any extra passthrough (e.g., --npc-bev-debug)
-WORKERS=${WORKERS:-10}
+WORKERS=${WORKERS:-36}
 MINIMAL_FRAMES=${MINIMAL_FRAMES:-38}
 # vram reserve function
 RESERVE_VRAM_GB=${RESERVE_VRAM_GB:-0}
