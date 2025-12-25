@@ -1528,9 +1528,22 @@ def list_actor_frame_paths(options: ActorOptions) -> list[Path]:
             path
             for path in options.sequence_dir.glob("*.ply")
             if path.is_file()
-        ]
+    ]
 
     return sorted(initial, key=natural_sort_key)
+
+
+def _first_actor_subdir(root: Path) -> Path | None:
+    """Pick the first child directory under root that contains at least one PLY."""
+
+    if root is None or not root.is_dir():
+        return None
+    for child in sorted(root.iterdir()):
+        if not child.is_dir():
+            continue
+        if any(child.glob("*.ply")):
+            return child
+    return None
 
 
 def load_gaussian_ply(path: Path) -> ply_utils.GaussianPly:
@@ -1973,6 +1986,27 @@ class CombinedGaussianModel:
 
 
 
+def _concat_actor_frames(frames: Sequence[ActorRenderFrame]) -> ActorRenderFrame:
+    """Concatenate multiple ActorRenderFrame entries into a single batch."""
+
+    if not frames:
+        raise ValueError("No actor frames provided for concatenation.")
+    xyz = torch.cat([f.xyz for f in frames], dim=0)
+    features_dc = torch.cat([f.features_dc for f in frames], dim=0)
+    features_rest = torch.cat([f.features_rest for f in frames], dim=0)
+    opacity = torch.cat([f.opacity for f in frames], dim=0)
+    scaling = torch.cat([f.scaling for f in frames], dim=0)
+    rotation = torch.cat([f.rotation for f in frames], dim=0)
+    return ActorRenderFrame(
+        xyz=xyz,
+        features_dc=features_dc,
+        features_rest=features_rest,
+        opacity=opacity,
+        scaling=scaling,
+        rotation=rotation,
+    )
+
+
 
 
 
@@ -2210,6 +2244,15 @@ def render_actor_follow_sequence(
     sh_degree: int,
     gpu_only: bool,
     metrics: PathMetricRecorder | None = None,
+    npc_enabled: bool = False,
+    npc_config: NPCDensityConfig | None = None,
+    npc_free_mask: np.ndarray | None = None,
+    npc_meta: dict | None = None,
+    npc_seed_base: int = 0,
+    npc_wedge_max_range: float | None = None,
+    npc_forward_fn=None,
+    npc_goal: np.ndarray | None = None,
+    npc_actor_runtime: ActorRuntime | None = None,
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """Render combined scene+actor frames using either CPU or GPU composition."""
 
@@ -2231,6 +2274,23 @@ def render_actor_follow_sequence(
     anim_step = (options.fps / float(DEFAULT_VIDEO_FPS)) * cycle_mod
     anim_cursor = 0.0
     num_actor_frames = len(sequence.frames)
+
+    npc_active = (
+        npc_enabled
+        and npc_config is not None
+        and npc_free_mask is not None
+        and npc_meta is not None
+        and npc_actor_runtime is not None
+    )
+    npc_sequence = npc_actor_runtime.sequence if npc_active else None
+    npc_options = npc_actor_runtime.options if npc_active else None
+    npc_ground_z = floor_z + (npc_options.foot_offset if npc_options is not None else 0.0)
+    npc_cycle_mod = max(1, int(getattr(npc_options, "animation_cycle_mod", 1))) if npc_options is not None else 1
+    npc_anim_step = (
+        (npc_options.fps / float(DEFAULT_VIDEO_FPS)) * npc_cycle_mod if npc_options is not None else 0.0
+    )
+    npc_num_frames = len(npc_sequence.frames) if npc_sequence is not None else 0
+    npc_shortfall_total = 0
 
     frame_plans: list[ActorFramePlan] = []
     camera_positions: list[np.ndarray] = []
@@ -2329,45 +2389,8 @@ def render_actor_follow_sequence(
         combined_actor_size: int | None = None
 
         for idx, plan in enumerate(frame_plans):
-            # Transform actor for this frame
-            base_frame = sequence.frames[plan.base_frame_index]
-            actor_data = apply_transform_to_frame(base_frame, sequence, plan.transform)
-
-            # Dump debug PLY if requested
-            if dump_enabled and (dump_max is None or dump_count < dump_max) and (idx % dump_stride == 0):
-                actor_vertices = _build_actor_debug_vertices(actor_data, sequence)
-                entries = []
-                if scene_debug_vertices is not None and scene_debug_vertices.size > 0:
-                    entries.append(scene_debug_vertices)
-                entries.append(actor_vertices)
-                debug_vertices = entries[0] if len(entries) == 1 else np.concatenate(entries, axis=0)
-                dump_path = dump.directory / f"{frame_prefix}_{idx:04d}.ply"
-                _write_debug_ply(dump_path, debug_vertices)
-                dump_count += 1
-
-            if dump and dump.dump_only:
-                continue
-
-            # Convert actor to GPU tensors
-            actor_render = actor_data_to_tensors(
-                actor_data,
-                sequence,
-                device,
-                verbose=verbose,
-                target_rest_dim=scene_rest_dim,
-            )
-
-            # Combine scene + actor
-            current_actor_size = int(actor_render.xyz.shape[0])
-            if combined_model is None or combined_actor_size != current_actor_size:
-                combined_model = CombinedGaussianModel(gaussians, actor_render)
-                combined_actor_size = current_actor_size
-            else:
-                combined_model.update_actor(actor_render)
-
-            # Build camera
             camera_position = camera_positions[idx]
-            forward = forward_direction(camera_positions, idx, window=direction_window)
+            forward = npc_forward_fn(camera_positions, idx, window=direction_window) if npc_forward_fn else forward_direction(camera_positions, idx, window=direction_window)
             if np.linalg.norm(forward[:2]) < EPS:
                 forward = np.array([0.0, 1.0, 0.0], dtype=np.float32)
             if stabilize and prev_forward is not None:
@@ -2377,6 +2400,105 @@ def render_actor_follow_sequence(
                     forward = (blended / blended_norm).astype(np.float32)
                     forward[2] = 0.0
             prev_forward = forward.copy()
+
+            # Transform actor for this frame
+            base_frame = sequence.frames[plan.base_frame_index]
+            actor_data = apply_transform_to_frame(base_frame, sequence, plan.transform)
+
+            npc_actor_frames: list[ActorRenderFrame] = []
+            npc_debug_vertices: list[np.ndarray] = []
+            if npc_active and npc_num_frames > 0 and npc_wedge_max_range is not None:
+                wedge_forward = forward[:2]
+                norm_fwd = float(np.linalg.norm(wedge_forward))
+                if norm_fwd < EPS:
+                    wedge_forward = np.array([0.0, 1.0], dtype=np.float32)
+                else:
+                    wedge_forward = (wedge_forward / norm_fwd).astype(np.float32)
+                wedge = CameraWedge(
+                    origin_xy=camera_position[:2],
+                    forward_xy=wedge_forward,
+                    fov_deg=fov_deg,
+                    max_range=float(npc_wedge_max_range),
+                    min_range=npc_config.min_distance_from_camera,
+                )
+                npc_seed = _npc_frame_seed(npc_seed_base, scene_id, label_id, idx)
+                rng = np.random.default_rng(npc_seed)
+                placement = plan_npc_positions(
+                    wedge=wedge,
+                    free_mask=npc_free_mask,
+                    meta=npc_meta,
+                    rng=rng,
+                    config=npc_config,
+                    goal_xy=npc_goal,
+                    exclude_discs=[(plan.actor_pos_xy, npc_config.clearance_radius)],
+                )
+                npc_shortfall_total += placement.shortfall
+                if verbose and placement.shortfall > 0:
+                    print(
+                        f"[VERBOSE] NPC shortfall frame {idx}: {placement.shortfall} (requested {placement.requested_count})",
+                        flush=True,
+                    )
+                orient_rng = np.random.default_rng(npc_seed + 1)
+                for npc_i, npc_xy in enumerate(placement.positions_xy):
+                    yaw = float(orient_rng.uniform(-math.pi, math.pi))
+                    rotation_np = rotation_matrix_z_np(yaw)
+                    translation_vec = np.array([npc_xy[0], npc_xy[1], npc_ground_z], dtype=np.float64)
+                    transform = build_transform_matrix(rotation_np, translation_vec)
+                    if npc_options.loop:
+                        npc_anim_idx = int((idx * npc_anim_step + npc_i) % npc_num_frames)
+                    else:
+                        npc_anim_idx = min(int(idx * npc_anim_step + npc_i), max(npc_num_frames - 1, 0))
+                    base_npc_frame = npc_sequence.frames[npc_anim_idx]
+                    npc_data = apply_transform_to_frame(base_npc_frame, npc_sequence, transform)
+                    if dump_enabled and (dump_max is None or dump_count < dump_max) and (idx % dump_stride == 0):
+                        npc_debug_vertices.append(_build_actor_debug_vertices(npc_data, npc_sequence))
+                    npc_actor_frames.append(
+                        actor_data_to_tensors(
+                            npc_data,
+                            npc_sequence,
+                            device,
+                            verbose=False,
+                            target_rest_dim=scene_rest_dim,
+                        )
+                    )
+
+            # Dump debug PLY if requested
+            if dump_enabled and (dump_max is None or dump_count < dump_max) and (idx % dump_stride == 0):
+                actor_vertices = _build_actor_debug_vertices(actor_data, sequence)
+                entries = []
+                if scene_debug_vertices is not None and scene_debug_vertices.size > 0:
+                    entries.append(scene_debug_vertices)
+                entries.append(actor_vertices)
+                if npc_debug_vertices:
+                    entries.extend(npc_debug_vertices)
+                debug_vertices = entries[0] if len(entries) == 1 else np.concatenate(entries, axis=0)
+                dump_path = dump.directory / f"{frame_prefix}_{idx:04d}.ply"
+                _write_debug_ply(dump_path, debug_vertices)
+                dump_count += 1
+
+            if dump and dump.dump_only:
+                continue
+
+            # Convert actor + NPCs to GPU tensors
+            actor_render = actor_data_to_tensors(
+                actor_data,
+                sequence,
+                device,
+                verbose=verbose,
+                target_rest_dim=scene_rest_dim,
+            )
+            actor_renders = [actor_render]
+            if npc_actor_frames:
+                actor_renders.extend(npc_actor_frames)
+            merged_render = _concat_actor_frames(actor_renders) if len(actor_renders) > 1 else actor_render
+
+            # Combine scene + actor(s)
+            current_actor_size = int(merged_render.xyz.shape[0])
+            if combined_model is None or combined_actor_size != current_actor_size:
+                combined_model = CombinedGaussianModel(gaussians, merged_render)
+                combined_actor_size = current_actor_size
+            else:
+                combined_model.update_actor(merged_render)
 
             target_xy = camera_position[:2] + forward[:2] * look_ahead
             target_z = camera_position[2] - look_down
@@ -2402,9 +2524,9 @@ def render_actor_follow_sequence(
                 print(f"[DEBUG] Scene features_dc shape: {gaussians.get_features_dc.shape}")
                 print(f"[DEBUG] Scene features_rest shape: {gaussians.get_features_rest.shape}")
                 
-                print(f"[DEBUG] Actor gaussians: {actor_render.xyz.shape[0]}")
-                print(f"[DEBUG] Actor features_dc shape: {actor_render.features_dc.shape}")
-                print(f"[DEBUG] Actor features_rest shape: {actor_render.features_rest.shape}")
+                print(f"[DEBUG] Actor gaussians: {merged_render.xyz.shape[0]}")
+                print(f"[DEBUG] Actor features_dc shape: {merged_render.features_dc.shape}")
+                print(f"[DEBUG] Actor features_rest shape: {merged_render.features_rest.shape}")
                 
                 print(f"[DEBUG] Combined model max_sh_degree: {combined_model.max_sh_degree}, active: {combined_model.active_sh_degree}")
                 print(f"[DEBUG] Combined features_dc shape: {combined_model.get_features_dc.shape}")
@@ -2474,6 +2596,11 @@ def render_actor_follow_sequence(
                 f"[VERBOSE] Scene {scene_id} / {label_id}: actor rendering complete ({frame_counter} frames).",
                 flush=True,
             )
+        if npc_active and verbose and npc_shortfall_total > 0:
+            print(
+                f"[VERBOSE] Scene {scene_id} / {label_id}: NPC placement shortfall total {npc_shortfall_total}.",
+                flush=True,
+            )
 
         return camera_xy_seq, actor_xy_seq
 
@@ -2493,32 +2620,8 @@ def render_actor_follow_sequence(
     frame_gaussians = GaussianModel(sh_degree=sh_degree)
 
     for idx, plan in enumerate(frame_plans):
-        base_frame = sequence.frames[plan.base_frame_index]
-        actor_data = apply_transform_to_frame(base_frame, sequence, plan.transform)
-
-        if dump_enabled and (dump_max is None or dump_count < dump_max) and (idx % dump_stride == 0):
-            actor_vertices = _build_actor_debug_vertices(actor_data, sequence)
-            entries: list[np.ndarray] = []
-            if scene_debug_vertices is not None and scene_debug_vertices.size > 0:
-                entries.append(scene_debug_vertices)
-            entries.append(actor_vertices)
-            debug_vertices = entries[0] if len(entries) == 1 else np.concatenate(entries, axis=0)
-            dump_path = dump.directory / f"{frame_prefix}_{idx:04d}.ply"
-            _write_debug_ply(dump_path, debug_vertices)
-            dump_count += 1
-
-        if dump and dump.dump_only:
-            continue
-
-        actor_aligned = ply_utils.align_dtype(actor_data, scene_dtype)
-        combined_vertices = ply_utils.concat_vertices(scene_subset, actor_aligned)
-        scene_template.write(combined_vertices, combined_tmp_path)
-
-        frame_gaussians.load_ply(str(combined_tmp_path))
-
         camera_position = camera_positions[idx]
-
-        forward = forward_direction(camera_positions, idx, window=direction_window)
+        forward = npc_forward_fn(camera_positions, idx, window=direction_window) if npc_forward_fn else forward_direction(camera_positions, idx, window=direction_window)
         if np.linalg.norm(forward[:2]) < EPS:
             forward = np.array([0.0, 1.0, 0.0], dtype=np.float32)
         if stabilize and prev_forward is not None:
@@ -2528,6 +2631,76 @@ def render_actor_follow_sequence(
                 forward = (blended / blended_norm).astype(np.float32)
                 forward[2] = 0.0
         prev_forward = forward.copy()
+
+        base_frame = sequence.frames[plan.base_frame_index]
+        actor_data = apply_transform_to_frame(base_frame, sequence, plan.transform)
+
+        npc_vertex_entries: list[np.ndarray] = []
+        npc_debug_vertices: list[np.ndarray] = []
+        if npc_active and npc_num_frames > 0 and npc_wedge_max_range is not None:
+            wedge_forward = forward[:2]
+            norm_fwd = float(np.linalg.norm(wedge_forward))
+            if norm_fwd < EPS:
+                wedge_forward = np.array([0.0, 1.0], dtype=np.float32)
+            else:
+                wedge_forward = (wedge_forward / norm_fwd).astype(np.float32)
+            wedge = CameraWedge(
+                origin_xy=camera_position[:2],
+                forward_xy=wedge_forward,
+                fov_deg=fov_deg,
+                max_range=float(npc_wedge_max_range),
+                min_range=npc_config.min_distance_from_camera,
+            )
+            npc_seed = _npc_frame_seed(npc_seed_base, scene_id, label_id, idx)
+            rng = np.random.default_rng(npc_seed)
+            placement = plan_npc_positions(
+                wedge=wedge,
+                free_mask=npc_free_mask,
+                meta=npc_meta,
+                rng=rng,
+                config=npc_config,
+                goal_xy=npc_goal,
+                exclude_discs=[(plan.actor_pos_xy, npc_config.clearance_radius)],
+            )
+            npc_shortfall_total += placement.shortfall
+            orient_rng = np.random.default_rng(npc_seed + 1)
+            for npc_i, npc_xy in enumerate(placement.positions_xy):
+                yaw = float(orient_rng.uniform(-math.pi, math.pi))
+                rotation_np = rotation_matrix_z_np(yaw)
+                translation_vec = np.array([npc_xy[0], npc_xy[1], npc_ground_z], dtype=np.float64)
+                transform = build_transform_matrix(rotation_np, translation_vec)
+                if npc_options.loop:
+                    npc_anim_idx = int((idx * npc_anim_step + npc_i) % npc_num_frames)
+                else:
+                    npc_anim_idx = min(int(idx * npc_anim_step + npc_i), max(npc_num_frames - 1, 0))
+                base_npc_frame = npc_sequence.frames[npc_anim_idx]
+                npc_data = apply_transform_to_frame(base_npc_frame, npc_sequence, transform)
+                npc_vertex_entries.append(ply_utils.align_dtype(npc_data, scene_dtype))
+                if dump_enabled and (dump_max is None or dump_count < dump_max) and (idx % dump_stride == 0):
+                    npc_debug_vertices.append(_build_actor_debug_vertices(npc_data, npc_sequence))
+
+        if dump_enabled and (dump_max is None or dump_count < dump_max) and (idx % dump_stride == 0):
+            actor_vertices = _build_actor_debug_vertices(actor_data, sequence)
+            entries: list[np.ndarray] = []
+            if scene_debug_vertices is not None and scene_debug_vertices.size > 0:
+                entries.append(scene_debug_vertices)
+            entries.append(actor_vertices)
+            if npc_debug_vertices:
+                entries.extend(npc_debug_vertices)
+            debug_vertices = entries[0] if len(entries) == 1 else np.concatenate(entries, axis=0)
+            dump_path = dump.directory / f"{frame_prefix}_{idx:04d}.ply"
+            _write_debug_ply(dump_path, debug_vertices)
+            dump_count += 1
+
+        if dump and dump.dump_only:
+            continue
+
+        actor_aligned = ply_utils.align_dtype(actor_data, scene_dtype)
+        entries_for_concat = [scene_subset, actor_aligned] + npc_vertex_entries
+        combined_vertices = ply_utils.concat_vertices(*entries_for_concat)
+        scene_template.write(combined_vertices, combined_tmp_path)
+
+        frame_gaussians.load_ply(str(combined_tmp_path))
 
         target_xy = camera_position[:2] + forward[:2] * look_ahead
         target_z = camera_position[2] - look_down
@@ -2591,6 +2764,11 @@ def render_actor_follow_sequence(
     if verbose:
         print(
             f"[VERBOSE] Scene {scene_id} / {label_id}: actor rendering complete ({frame_counter} frames).",
+            flush=True,
+        )
+    if npc_active and verbose and npc_shortfall_total > 0:
+        print(
+            f"[VERBOSE] Scene {scene_id} / {label_id}: NPC placement shortfall total {npc_shortfall_total}.",
             flush=True,
         )
 
@@ -2967,6 +3145,15 @@ def render_path_frames(
     job_slot: int | None = None,
     job_actor_id: str | None = None,
     job_name: str | None = None,
+    npc_render: bool = False,
+    npc_config: NPCDensityConfig | None = None,
+    npc_free_mask: np.ndarray | None = None,
+    npc_meta: dict | None = None,
+    npc_seed_base: int = 0,
+    npc_max_range: float | None = None,
+    npc_forward_fn=None,
+    npc_goal_xy: np.ndarray | None = None,
+    npc_actor_runtime: ActorRuntime | None = None,
 ) -> dict | None:
     """Render frames for a single raster_world trajectory."""
 
@@ -3001,6 +3188,23 @@ def render_path_frames(
     positions = [
         np.array([xy[0], xy[1], camera_z], dtype=np.float32) for xy in path_xy
     ]
+    npc_enabled = (
+        npc_render
+        and npc_config is not None
+        and npc_free_mask is not None
+        and npc_meta is not None
+        and npc_actor_runtime is not None
+    )
+    npc_goal = npc_goal_xy if npc_goal_xy is not None else (path_xy[-1] if path_xy else None)
+    npc_wedge_max_range = None
+    npc_forward_fn = npc_forward_fn if npc_forward_fn is not None else forward_direction
+    if npc_enabled:
+        npc_wedge_max_range = (
+            npc_max_range
+            if npc_max_range is not None
+            else (npc_config.max_distance_from_camera if npc_config.max_distance_from_camera is not None else 5.0)
+        )
+        npc_wedge_max_range = float(npc_wedge_max_range)
 
     scene_vertices: np.ndarray | None = None
     scene_dtype: np.dtype | None = None
@@ -3183,6 +3387,15 @@ def render_path_frames(
                         sh_degree=gaussians.max_sh_degree,
                         gpu_only=gpu_only,
                         metrics=metrics_recorder,
+                        npc_enabled=npc_enabled,
+                        npc_config=npc_config,
+                        npc_free_mask=npc_free_mask,
+                        npc_meta=npc_meta,
+                        npc_seed_base=npc_seed_base,
+                        npc_wedge_max_range=npc_wedge_max_range,
+                        npc_forward_fn=npc_forward_fn,
+                        npc_goal=npc_goal,
+                        npc_actor_runtime=npc_actor_runtime,
                     )
                     frames_rendered = len(cam_seq)
                 if render_bev:
@@ -3762,6 +3975,18 @@ def parse_args() -> ArgumentParser:
         help="Only generate NPC placement BEV debug images (skip rendering).",
     )
     parser.add_argument(
+        "--npc-render",
+        action="store_true",
+        default=False,
+        help="Render NPCs into RGB/depth using the density planner (not just BEV overlays).",
+    )
+    parser.add_argument(
+        "--npc-actor-dir",
+        type=Path,
+        default=None,
+        help="Optional actor sequence directory for NPCs (defaults to --actor-seq-dir or first child of --npc-actor-root).",
+    )
+    parser.add_argument(
         "--npc-bev-output-dir",
         type=Path,
         default=None,
@@ -3926,7 +4151,9 @@ def main() -> None:
     save_rgb_frames = bool(args.rgb_frames)
     save_depth_maps = bool(args.save_depth_maps)
     save_follow_metadata = bool(args.save_follow_metadata)
+    npc_render_enabled = bool(args.npc_render)
     actor_runtime: ActorRuntime | None = None
+    npc_actor_runtime: ActorRuntime | None = None
     gpu_only_enabled = bool(args.gpu_only)
     actor_dump_root = args.actor_dump_ply_dir
     actor_dump_stride = max(1, int(args.actor_dump_stride))
@@ -4011,6 +4238,53 @@ def main() -> None:
                 f"[VERBOSE] Actor sequence ready: {len(actor_sequence.frames)} frames from {args.actor_seq_dir}.",
                 flush=True,
             )
+
+    if npc_render_enabled:
+        npc_actor_dir: Path | None = args.npc_actor_dir
+        if npc_actor_dir is None:
+            npc_actor_dir = args.actor_seq_dir or _first_actor_subdir(args.npc_actor_root)
+        if npc_actor_dir is None:
+            print(
+                "[WARN] NPC rendering requested but no actor sequence found (set --npc-actor-dir or --actor-seq-dir); disabling NPCs.",
+                flush=True,
+            )
+            npc_render_enabled = False
+        elif actor_runtime is not None and npc_actor_dir.resolve() == actor_runtime.options.sequence_dir.resolve():
+            npc_actor_runtime = actor_runtime
+            if verbose_enabled:
+                print(
+                    f"[VERBOSE] NPC rendering will reuse actor sequence: {npc_actor_dir}",
+                    flush=True,
+                )
+        else:
+            npc_actor_options = ActorOptions(
+                sequence_dir=npc_actor_dir,
+                pattern=args.actor_pattern,
+                height=float(args.actor_height),
+                follow_distance=float(args.follow_distance),
+                buffer_distance=float(args.follow_buffer),
+                speed=float(args.actor_speed),
+                fps=float(args.actor_fps),
+                loop=bool(args.actor_loop),
+                foot_offset=float(args.actor_foot_offset),
+                animation_cycle_mod=int(args.animation_cycle_mod),
+            )
+            if npc_actor_options.fps <= 0.0:
+                raise ValueError("NPC actor FPS must be positive.")
+            if npc_actor_options.speed <= 0.0:
+                raise ValueError("NPC actor walking speed must be positive.")
+            if npc_actor_options.buffer_distance > npc_actor_options.follow_distance:
+                raise ValueError("NPC follow buffer must be less than or equal to follow distance.")
+            npc_actor_sequence = load_actor_sequence(
+                npc_actor_options,
+                debug=debug_enabled,
+            )
+            npc_actor_runtime = ActorRuntime(options=npc_actor_options, sequence=npc_actor_sequence)
+            if verbose_enabled:
+                print(
+                    f"[VERBOSE] NPC actor sequence ready: {len(npc_actor_sequence.frames)} frames from {npc_actor_dir}.",
+                    flush=True,
+                )
 
     if args.scene:
         scene_ids = list(dict.fromkeys(args.scene))
@@ -4101,18 +4375,19 @@ def main() -> None:
             processed_scenes += 1
             npc_free_mask = None
             npc_occ_image = None
-            if npc_bev_enabled:
+            if npc_bev_enabled or npc_render_enabled:
                 try:
                     npc_free_mask, _ = load_free_space_mask(
                         dataset_dir,
                         threshold=int(args.npc_free_threshold),
                         free_is_white=bool(args.npc_free_white),
                     )
-                    occ_img = imageio.imread(dataset_dir / "occupancy.png")
-                    npc_occ_image = _ensure_rgb(np.array(occ_img))
-                    print(f"  [NPC-BEV] Free-space mask ready (threshold={args.npc_free_threshold}).", flush=True)
+                    if npc_bev_enabled:
+                        occ_img = imageio.imread(dataset_dir / "occupancy.png")
+                        npc_occ_image = _ensure_rgb(np.array(occ_img))
+                    print(f"  [NPC] Free-space mask ready (threshold={args.npc_free_threshold}).", flush=True)
                 except Exception as exc:  # pylint: disable=broad-except
-                    print(f"  [WARN] NPC BEV debug disabled for {scene_id}: {exc}", flush=True)
+                    print(f"  [WARN] NPC features disabled for {scene_id}: {exc}", flush=True)
                     npc_free_mask = None
                     npc_occ_image = None
 
@@ -4276,6 +4551,15 @@ def main() -> None:
                         job_slot=args.job_slot,
                         job_actor_id=args.job_actor_id,
                         job_name=args.job_name,
+                        npc_render=npc_render_enabled,
+                        npc_config=npc_density_config,
+                        npc_free_mask=npc_free_mask,
+                        npc_meta=meta,
+                        npc_seed_base=int(args.npc_seed),
+                        npc_max_range=float(args.npc_max_range) if args.npc_max_range is not None else None,
+                        npc_forward_fn=npc_forward_fn,
+                        npc_goal_xy=prepared.path_xy[-1] if prepared.path_xy else None,
+                        npc_actor_runtime=npc_actor_runtime,
                     )
                     if summary is not None:
                         collected_metrics.append(summary)
