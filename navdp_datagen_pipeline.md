@@ -7,6 +7,7 @@ This document explains the end-to-end flow in `navdp_datagen`: how we take navig
 - **Paths**: label-path JSONs under `data/selected_*` or `data/task_outputs_*` (e.g., `data/task_outputs_10w_4/<scene>/label_paths/*.json`). Each contains `raster_world`, `start/goal`, and instructions from the upstream path-generation repo.
 - **Actors**: Animated human PLY frame sequences. Collected under a root (e.g., `/media/.../actors/<actor_id>/*.ply`).
 - **Render outputs**: By default, `data/path_video_frames_10w_4/<scene>/...` (RGB/depth frames, MP4, BEV, follow-path metadata).
+- **Optional NPCs**: NPC placement/BEV debug via `render_label_paths.py` flags (e.g., `--npc-bev-debug`, `--npc-density-coverage 0.2 --npc-count 8 --npc-density-mode angular --npc-free-threshold 250 --npc-auto-clearance`). Can be applied to FPV or following data; BEV-only planning uses `--npc-bev-debug-only`.
 
 ## High-Level Stages
 1) **Pre-run analysis (optional)** – understand path coverage/overlap before rendering.

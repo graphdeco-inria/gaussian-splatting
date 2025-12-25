@@ -119,6 +119,17 @@ REMOTE_SSH_TARGET=${REMOTE_SSH_TARGET:-lenovo@192.168.151.40}
 LOCAL_OUTPUT_BASENAME="$(basename "$OUTPUT_DIR")"
 REMOTE_TARGET_DIR="${REMOTE_STORAGE_ROOT%/}/${LOCAL_OUTPUT_BASENAME}"
 REMOTE_SYNC_INTERVAL_SECS=${REMOTE_SYNC_INTERVAL_SECS:-120}
+# Optional NPC placement/debug (applies to FPV or following data). Leave values empty to skip.
+NPC_ENABLE=${NPC_ENABLE:-false}                            # true/false to append NPC args
+NPC_DENSITY_COVERAGE=${NPC_DENSITY_COVERAGE:-0.2}          # e.g., 0.2 angular coverage
+NPC_COUNT=${NPC_COUNT:-8}                                  # desired NPC count per frame
+NPC_PRIORITY=${NPC_PRIORITY:-coverage}                     # coverage|count
+NPC_MAX_RANGE=${NPC_MAX_RANGE:-10}                         # meters, radial cap
+NPC_FREE_THRESHOLD=${NPC_FREE_THRESHOLD:-250}              # occupancy threshold
+NPC_FREE_WHITE=${NPC_FREE_WHITE:-true}                     # true => free is white >= threshold
+NPC_DENSITY_MODE=${NPC_DENSITY_MODE:-angular}              # angular|area
+NPC_ZONE_RATIO=${NPC_ZONE_RATIO:-1:2:1}                    # near:mid:far ratio (applied when count>=12)
+NPC_EXTRA_FLAGS=${NPC_EXTRA_FLAGS:-}                       # any extra passthrough (e.g., --npc-bev-debug)
 WORKERS=${WORKERS:-10}
 MINIMAL_FRAMES=${MINIMAL_FRAMES:-38}
 # vram reserve function
@@ -159,6 +170,35 @@ else
   render_extra_args+=' --no-save-follow-metadata'
 fi
 render_extra_snippets=("$render_extra_args")
+# Optional NPC placement / BEV debug flags
+if storage_bool_true "$NPC_ENABLE"; then
+  npc_args=(
+    "--npc-density-mode ${NPC_DENSITY_MODE}"
+    "--npc-priority ${NPC_PRIORITY}"
+    "--npc-zone-ratio ${NPC_ZONE_RATIO}"
+    "--npc-free-threshold ${NPC_FREE_THRESHOLD}"
+  )
+  if storage_bool_true "$NPC_FREE_WHITE"; then
+    npc_args+=("--npc-free-white")
+  else
+    npc_args+=("--no-npc-free-white")
+  fi
+  if [ -n "${NPC_DENSITY_COVERAGE:-}" ]; then
+    npc_args+=("--npc-density-coverage ${NPC_DENSITY_COVERAGE}")
+  fi
+  if [ -n "${NPC_COUNT:-}" ]; then
+    npc_args+=("--npc-count ${NPC_COUNT}")
+  fi
+  if [ -n "${NPC_MAX_RANGE:-}" ]; then
+    npc_args+=("--npc-max-range ${NPC_MAX_RANGE}")
+  fi
+  # Auto-clearance from HumanGS sources; keep on by default when NPC_ENABLE is true.
+  npc_args+=("--npc-auto-clearance" "--npc-actor-root ${ACTOR_ROOT}")
+  if [ -n "${NPC_EXTRA_FLAGS:-}" ]; then
+    npc_args+=(${NPC_EXTRA_FLAGS})
+  fi
+  render_extra_snippets+=("${npc_args[*]}")
+fi
 if ! [[ "$RESERVE_VRAM_GB" =~ ^[0-9]+$ ]]; then
   echo "[VRAM] ERROR: RESERVE_VRAM_GB must be an integer value (received '$RESERVE_VRAM_GB')." >&2
   exit 1

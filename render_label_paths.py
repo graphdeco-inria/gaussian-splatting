@@ -1110,6 +1110,7 @@ def generate_npc_bev_debug_for_path(
     npc_max_range: float | None = None,
     mirror_bev_x: bool = True,
     mirror_bev_y: bool = True,
+    exclude_discs: list[tuple[np.ndarray, float]] | None = None,
 ) -> dict:
     """Generate per-frame NPC BEV debug images without rendering RGB/depth."""
 
@@ -1150,6 +1151,7 @@ def generate_npc_bev_debug_for_path(
             rng=rng,
             config=config,
             goal_xy=goal_xy,
+            exclude_discs=exclude_discs,
         )
 
         out_path = out_dir / f"npc_bev_{frame_idx:04d}.png"

@@ -239,13 +239,15 @@ def plan_npc_positions(
     rng: np.random.Generator,
     config: NPCDensityConfig,
     goal_xy: np.ndarray | None = None,
+    exclude_discs: Sequence[tuple[np.ndarray, float]] | None = None,
 ) -> NPCPlacementResult:
     """
     Sample NPC positions inside the camera wedge with disc clearance.
 
     The sampler targets a coverage fraction (if provided) and falls back to max_npcs as a cap.
     It rejects candidates that collide with obstacles/other NPCs, fall outside the mask, or
-    block the camera->goal segment when blocking is disabled.
+    block the camera->goal segment when blocking is disabled. Optional exclude_discs are treated
+    as occupied (collide but do not contribute to coverage).
     """
     forward_xy = _normalize(wedge.forward_xy)
     fov_rad = math.radians(wedge.fov_deg)
@@ -334,6 +336,11 @@ def plan_npc_positions(
                 float(np.linalg.norm(candidate - placed)) < 2.0 * config.clearance_radius - EPS
                 for placed in placements
             )
+            if not too_close and exclude_discs:
+                for center, radius in exclude_discs:
+                    if float(np.linalg.norm(candidate - center)) < (radius + config.clearance_radius - EPS):
+                        too_close = True
+                        break
             if too_close:
                 rejected_clearance += 1
                 continue

@@ -24,6 +24,9 @@ Tracking plan and decisions for this branch.
 - Feasibility: some camera poses may have zero free space or insufficient room for the requested density; degrade gracefully (log shortfall) instead of forcing overlap.
 - Efficiency idea: precompute candidate points per camera frustum slice and reuse across frames to reduce sampling cost; density can then be enforced by selecting a subset per frame.
 - Logging: record chosen density inputs (area target or count), resulting coverage, and any resampling attempts.
+- Following data: exclude the followed person’s space from NPC placement but do not count that person toward coverage.
+- Free-space: by default treat near-white occupancy as free (`--npc-free-white --npc-free-threshold 250`); toggle polarity if your occupancy encodes free as dark.
+- Clearance: can auto-compute clearance radius from HumanGS sources (`--npc-auto-clearance --npc-actor-root ./data/human_gs_source`).
 
 ## Progress
 - Added `utils/npc_density.py` with an occupancy-based wedge sampler: 30 cm disc clearance, coverage-driven target count + max cap, min-distance band (1 m default), and a goal-blocking filter with an allow-blocking toggle. Outputs attempted/rejected counts and achieved coverage to inform logging.
