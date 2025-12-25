@@ -3,8 +3,15 @@
 
 """Render walkthrough frames for raster_world trajectories.
 
-Debug NPC BEV-only example:
-  python render_label_paths.py --npc-bev-debug-only --tasks-dir data/selected_65k --scene 0001_839920 --npc-density-coverage 0.6 --npc-count 8 --npc-priority coverage --npc-density-mode angular --npc-zone-ratio 1:2:1 --npc-max-range 5 --npc-seed 12345 --output-dir ./tmp/npc_debug
+Debug NPC BEV-only (unmirrored, strict free-space, auto clearance):
+$ python render_label_paths.py --npc-bev-debug-only \
+    --tasks-dir data/selected_65k --scene 0001_839920 \
+    --npc-density-coverage 0.2 --npc-count 8 --npc-priority coverage \
+    --npc-density-mode angular --npc-zone-ratio 1:2:1 \
+    --npc-max-range 10 --npc-free-threshold 250 --npc-free-white \
+    --npc-auto-clearance --npc-actor-root ./data/human_gs_source --npc-radius-samples 80 \
+    --no-mirror-translation --no-bev-mirror-x --no-bev-mirror-y \
+    --npc-seed 12345 --output-dir /tmp/npc_debug
 
 Formal render example (with NPC BEV overlays alongside full renders):
   python render_label_paths.py --tasks-dir data/task_outputs_10w_4 --scene 0001_839920 --actor-seq-dir ./data/human_gs_source/<actor_id> --npc-bev-debug --npc-density-coverage 0.2 --npc-count 4 --npc-priority coverage --npc-density-mode angular --npc-zone-ratio 1:2:1 --npc-max-range 5 --npc-seed 12345 --output-dir ./data/path_video_frames_10w_4
