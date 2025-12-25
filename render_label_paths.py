@@ -4,15 +4,10 @@
 """Render walkthrough frames for raster_world trajectories.
 
 Debug NPC BEV-only example:
-  python render_label_paths.py --npc-bev-debug-only --tasks-dir data/selected_65k --scene 0001_839920 \\
-    --npc-density-coverage 0.2 --npc-count 4 --npc-priority coverage --npc-density-mode angular \\
-    --npc-zone-ratio 1:2:1 --npc-max-range 5 --npc-seed 12345 --output-dir /tmp/npc_debug
+  python render_label_paths.py --npc-bev-debug-only --tasks-dir data/selected_65k --scene 0001_839920 --npc-density-coverage 0.6 --npc-count 8 --npc-priority coverage --npc-density-mode angular --npc-zone-ratio 1:2:1 --npc-max-range 5 --npc-seed 12345 --output-dir ./tmp/npc_debug
 
 Formal render example (with NPC BEV overlays alongside full renders):
-  python render_label_paths.py --tasks-dir data/task_outputs_10w_4 --scene 0001_839920 \\
-    --actor-seq-dir ./data/human_gs_source/<actor_id> --npc-bev-debug \\
-    --npc-density-coverage 0.2 --npc-count 4 --npc-priority coverage --npc-density-mode angular \\
-    --npc-zone-ratio 1:2:1 --npc-max-range 5 --npc-seed 12345 --output-dir ./data/path_video_frames_10w_4
+  python render_label_paths.py --tasks-dir data/task_outputs_10w_4 --scene 0001_839920 --actor-seq-dir ./data/human_gs_source/<actor_id> --npc-bev-debug --npc-density-coverage 0.2 --npc-count 4 --npc-priority coverage --npc-density-mode angular --npc-zone-ratio 1:2:1 --npc-max-range 5 --npc-seed 12345 --output-dir ./data/path_video_frames_10w_4
 
 This utility pairs scene reconstructions under ``data/scenes`` with task
 descriptions in ``data/task_outputs_10w``. For each label-path JSON that
@@ -784,7 +779,25 @@ def _ensure_rgb(img: np.ndarray) -> np.ndarray:
         return img[..., :3]
     return img
 
-def _draw_disk(img: np.ndarray, uv: tuple[int, int], r: int, color: tuple[int, int, int]) -> None:
+def _blend_pixel(img: np.ndarray, u: int, v: int, color: tuple[int, int, int], alpha: float | None) -> None:
+    """Blend a pixel with optional alpha; defaults to overwrite when alpha is None/1."""
+    if alpha is None or alpha >= 1.0:
+        img[v, u, :] = color
+        return
+    if alpha <= 0.0:
+        return
+    orig = img[v, u, :].astype(np.float32)
+    target = np.array(color, dtype=np.float32)
+    blended = orig * (1.0 - alpha) + target * alpha
+    img[v, u, :] = blended.astype(img.dtype)
+
+def _draw_disk(
+    img: np.ndarray,
+    uv: tuple[int, int],
+    r: int,
+    color: tuple[int, int, int],
+    alpha: float | None = None,
+) -> None:
     h, w = img.shape[:2]
     u0, v0 = uv
     umin = max(0, u0 - r)
@@ -797,9 +810,17 @@ def _draw_disk(img: np.ndarray, uv: tuple[int, int], r: int, color: tuple[int, i
         for u in range(umin, umax + 1):
             du = u - u0
             if du * du + dv * dv <= rr:
-                img[v, u, :] = color
+                _blend_pixel(img, u, v, color, alpha)
 
-def _draw_polyline(img: np.ndarray, pts: list[tuple[int, int]], color: tuple[int, int, int], thickness: int = 1, dotted = False, dot_gap =6) -> None:
+def _draw_polyline(
+    img: np.ndarray,
+    pts: list[tuple[int, int]],
+    color: tuple[int, int, int],
+    thickness: int = 1,
+    dotted: bool = False,
+    dot_gap: int = 6,
+    alpha: float | None = None,
+) -> None:
     """
     Very lightweight line rasterization: sample along each segment with max(|dx|,|dy|)+1 points.
     """
@@ -809,13 +830,13 @@ def _draw_polyline(img: np.ndarray, pts: list[tuple[int, int]], color: tuple[int
 
     def put(u, v):
         if 0 <= v < h and 0 <= u < w:
-            img[v, u, :] = color
+            _blend_pixel(img, u, v, color, alpha)
             if thickness > 1:
                 for dv in range(-thickness + 1, thickness):
                     for du in range(-thickness + 1, thickness):
                         vv, uu = v + dv, u + du
                         if 0 <= vv < h and 0 <= uu < w:
-                            img[vv, uu, :] = color
+                            _blend_pixel(img, uu, vv, color, alpha)
 
     for seg_idx, ((u0, v0), (u1, v1)) in enumerate(zip(pts[:-1], pts[1:])):
         du = u1 - u0
@@ -876,7 +897,13 @@ def _rotate_xy(vec: np.ndarray, angle_rad: float) -> np.ndarray:
     x, y = float(vec[0]), float(vec[1])
     return np.array([c * x - s * y, s * x + c * y], dtype=np.float32)
 
-def _draw_circle_outline(img: np.ndarray, center: tuple[int, int], radius: int, color: tuple[int, int, int]) -> None:
+def _draw_circle_outline(
+    img: np.ndarray,
+    center: tuple[int, int],
+    radius: int,
+    color: tuple[int, int, int],
+    alpha: float | None = None,
+) -> None:
     """Approximate a circle outline by drawing two filled discs."""
     if radius <= 0:
         return
@@ -885,11 +912,11 @@ def _draw_circle_outline(img: np.ndarray, center: tuple[int, int], radius: int, 
     if not (0 <= u < w and 0 <= v < h):
         return
     base_color = tuple(int(c) for c in img[v, u, :])
-    _draw_disk(img, center, radius, color)
+    _draw_disk(img, center, radius, color, alpha)
     inner = max(0, radius - 1)
     if inner > 0:
-        # Erase interior by drawing black; background assumed dark-ish occupancy mask
-        _draw_disk(img, center, inner, base_color)
+        # Restore interior so the center marker remains visible
+        _draw_disk(img, center, inner, base_color, None)
 
 def _draw_wedge(
     img: np.ndarray,
@@ -902,6 +929,7 @@ def _draw_wedge(
     color: tuple[int, int, int] = (255, 165, 0),
     mirror_x: bool = True,
     mirror_y: bool = True,
+    alpha: float | None = None,
 ) -> None:
     """Draw wedge bounds (ground-plane FOV slice) and optional inner radius."""
     if r_max <= 0.0:
@@ -919,12 +947,12 @@ def _draw_wedge(
     origin_px = _mirror_uv(origin_px, w, h, mirror_x, mirror_y)
     left_px = _mirror_uv(left_px, w, h, mirror_x, mirror_y)
     right_px = _mirror_uv(right_px, w, h, mirror_x, mirror_y)
-    _draw_polyline(img, [origin_px, left_px], color, thickness=1, dotted=False)
-    _draw_polyline(img, [origin_px, right_px], color, thickness=1, dotted=False)
-    _draw_polyline(img, [left_px, right_px], color, thickness=1, dotted=True, dot_gap=4)
+    _draw_polyline(img, [origin_px, left_px], color, thickness=1, dotted=False, alpha=alpha)
+    _draw_polyline(img, [origin_px, right_px], color, thickness=1, dotted=False, alpha=alpha)
+    _draw_polyline(img, [left_px, right_px], color, thickness=1, dotted=True, dot_gap=4, alpha=alpha)
     if r_min > 0.0 and r_min < r_max:
         radius_px = _meters_to_px(meta, r_min)
-        _draw_circle_outline(img, origin_px, radius_px, color)
+        _draw_circle_outline(img, origin_px, radius_px, color, alpha)
 
 def save_bev_debug_image(
     *,
@@ -1064,6 +1092,7 @@ def save_npc_bev_debug_image(
         color=(255, 165, 0),
         mirror_x=mirror_bev_x,
         mirror_y=mirror_bev_y,
+        alpha=0.5,
     )
 
     # NPC discs
