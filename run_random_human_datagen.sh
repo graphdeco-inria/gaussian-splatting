@@ -173,6 +173,7 @@ render_extra_snippets=("$render_extra_args")
 # Optional NPC placement / BEV debug flags
 if storage_bool_true "$NPC_ENABLE"; then
   npc_args=(
+    "--npc-render"
     "--npc-density-mode ${NPC_DENSITY_MODE}"
     "--npc-priority ${NPC_PRIORITY}"
     "--npc-zone-ratio ${NPC_ZONE_RATIO}"
