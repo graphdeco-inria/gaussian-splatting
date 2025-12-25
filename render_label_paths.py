@@ -3,6 +3,17 @@
 
 """Render walkthrough frames for raster_world trajectories.
 
+Debug NPC BEV-only example:
+  python render_label_paths.py --npc-bev-debug-only --tasks-dir data/selected_65k --scene 0001_839920 \\
+    --npc-density-coverage 0.2 --npc-count 4 --npc-priority coverage --npc-density-mode angular \\
+    --npc-zone-ratio 1:2:1 --npc-max-range 5 --npc-seed 12345 --output-dir /tmp/npc_debug
+
+Formal render example (with NPC BEV overlays alongside full renders):
+  python render_label_paths.py --tasks-dir data/task_outputs_10w_4 --scene 0001_839920 \\
+    --actor-seq-dir ./data/human_gs_source/<actor_id> --npc-bev-debug \\
+    --npc-density-coverage 0.2 --npc-count 4 --npc-priority coverage --npc-density-mode angular \\
+    --npc-zone-ratio 1:2:1 --npc-max-range 5 --npc-seed 12345 --output-dir ./data/path_video_frames_10w_4
+
 This utility pairs scene reconstructions under ``data/scenes`` with task
 descriptions in ``data/task_outputs_10w``. For each label-path JSON that
 contains a ``raster_world`` polyline, the script places a perspective camera on
@@ -16,6 +27,7 @@ import os
 import shutil
 import threading, queue
 import hashlib
+import glob
 
 import json
 import math
@@ -847,6 +859,12 @@ def _draw_text_lines(img: np.ndarray, lines: list[str], origin: tuple[int, int] 
             y += 6
     # Mirror the PATHS (not the image) if requested
 
+def _mirror_uv(uv: tuple[int, int], w: int, h: int, mirror_x: bool, mirror_y: bool) -> tuple[int, int]:
+    u, v = uv
+    uu = (w - 1 - u) if mirror_x else u
+    vv = (h - 1 - v) if mirror_y else v
+    return uu, vv
+
 def _meters_to_px(meta: dict, meters: float) -> int:
     """Convert meters to occupancy pixel units (rounded)."""
     if meters <= 0.0:
@@ -882,6 +900,8 @@ def _draw_wedge(
     r_min: float,
     r_max: float,
     color: tuple[int, int, int] = (255, 165, 0),
+    mirror_x: bool = True,
+    mirror_y: bool = True,
 ) -> None:
     """Draw wedge bounds (ground-plane FOV slice) and optional inner radius."""
     if r_max <= 0.0:
@@ -894,6 +914,11 @@ def _draw_wedge(
     origin_px = world_to_pixel(meta, origin_xy)
     left_px = world_to_pixel(meta, left_pt)
     right_px = world_to_pixel(meta, right_pt)
+    h = int((meta["top"] - meta["bottom"]) / meta["scale"])
+    w = int((meta["right"] - meta["left"]) / meta["scale"])
+    origin_px = _mirror_uv(origin_px, w, h, mirror_x, mirror_y)
+    left_px = _mirror_uv(left_px, w, h, mirror_x, mirror_y)
+    right_px = _mirror_uv(right_px, w, h, mirror_x, mirror_y)
     _draw_polyline(img, [origin_px, left_px], color, thickness=1, dotted=False)
     _draw_polyline(img, [origin_px, right_px], color, thickness=1, dotted=False)
     _draw_polyline(img, [left_px, right_px], color, thickness=1, dotted=True, dot_gap=4)
@@ -1002,16 +1027,23 @@ def save_npc_bev_debug_image(
     wedge_max_range: float,
     achieved_coverage: float,
     requested_count: int,
+    shortfall: int,
+    target_coverage: float | None,
+    mirror_bev_x: bool,
+    mirror_bev_y: bool,
     out_path: Path,
 ) -> None:
     """Draw an NPC placement debug frame (camera FOV wedge + NPC discs) on occupancy."""
 
-    base = occ_image.copy()
-    h, w = base.shape[:2]
+    occ_rgb = occ_image.copy()
+    h, w = occ_rgb.shape[:2]
+    pad_w = 240
+    base = np.zeros((h, w + pad_w, 3), dtype=np.uint8)
+    base[:, :w, :] = occ_rgb
 
-    path_px = [world_to_pixel(meta, xy) for xy in path_xy]
-    cam_px = world_to_pixel(meta, camera_xy)
-    npc_px = [world_to_pixel(meta, xy) for xy in npc_positions]
+    path_px = [_mirror_uv(world_to_pixel(meta, xy), w, h, mirror_bev_x, mirror_bev_y) for xy in path_xy]
+    cam_px = _mirror_uv(world_to_pixel(meta, camera_xy), w, h, mirror_bev_x, mirror_bev_y)
+    npc_px = [_mirror_uv(world_to_pixel(meta, xy), w, h, mirror_bev_x, mirror_bev_y) for xy in npc_positions]
 
     # Paths
     if path_px:
@@ -1030,6 +1062,8 @@ def save_npc_bev_debug_image(
         r_min=config.min_distance_from_camera,
         r_max=wedge_max_range,
         color=(255, 165, 0),
+        mirror_x=mirror_bev_x,
+        mirror_y=mirror_bev_y,
     )
 
     # NPC discs
@@ -1042,13 +1076,18 @@ def save_npc_bev_debug_image(
         f"Scene: {scene_id}",
         f"Label: {label_id}",
         f"Frame: {frame_idx}",
-        f"NPCs: {len(npc_positions)}/{requested_count} (coverage {achieved_coverage:.2f})",
+        f"Coverage: {achieved_coverage:.2f}"
+        + (f"/{target_coverage:.2f}" if target_coverage is not None else "")
+        + f" ({config.coverage_mode})",
+        f"NPCs: {len(npc_positions)}/{requested_count} (shortfall {shortfall})",
+        f"Priority: {config.priority} | desired={config.desired_count or '-'} | max={config.max_npcs or '-'}",
+        f"Zones (near:mid:far): {config.zone_weights[0]:.1f}:{config.zone_weights[1]:.1f}:{config.zone_weights[2]:.1f}",
         f"Clearance: {config.clearance_radius:.2f} m",
-        f"Min dist: {config.min_distance_from_camera:.2f} m | Max: {wedge_max_range:.2f} m",
+        f"Range: {config.min_distance_from_camera:.2f}-{wedge_max_range:.2f} m",
         f"FOV: {fov_deg:.1f} deg",
     ]
 
-    _draw_text_lines(base, lines, origin=(8, 8))
+    _draw_text_lines(base, lines, origin=(w + 12, 8))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     imageio.imwrite(out_path, base)
@@ -1069,6 +1108,8 @@ def generate_npc_bev_debug_for_path(
     forward_fn,
     goal_xy: np.ndarray | None = None,
     npc_max_range: float | None = None,
+    mirror_bev_x: bool = True,
+    mirror_bev_y: bool = True,
 ) -> dict:
     """Generate per-frame NPC BEV debug images without rendering RGB/depth."""
 
@@ -1083,6 +1124,7 @@ def generate_npc_bev_debug_for_path(
 
     frames_done = 0
     total_shortfall = 0
+    coverages: list[float] = []
     for frame_idx, cam_pos in enumerate(positions):
         forward = forward_fn(positions, frame_idx, window=direction_window)
         forward_xy = forward[:2]
@@ -1126,15 +1168,27 @@ def generate_npc_bev_debug_for_path(
             wedge_max_range=wedge_max_range,
             achieved_coverage=placement.achieved_coverage,
             requested_count=placement.requested_count,
+            shortfall=placement.shortfall,
+            target_coverage=config.target_coverage,
+            mirror_bev_x=mirror_bev_x,
+            mirror_bev_y=mirror_bev_y,
             out_path=out_path,
         )
         frames_done += 1
         total_shortfall += placement.shortfall
+        coverages.append(float(placement.achieved_coverage))
+
+    coverage_min = min(coverages) if coverages else 0.0
+    coverage_max = max(coverages) if coverages else 0.0
+    coverage_mean = float(sum(coverages) / len(coverages)) if coverages else 0.0
 
     return {
         "frames": frames_done,
         "shortfall": total_shortfall,
         "output_dir": out_dir,
+        "coverage_min": coverage_min,
+        "coverage_max": coverage_max,
+        "coverage_mean": coverage_mean,
     }
 ##############################################################################################
 
@@ -1229,6 +1283,58 @@ def _rotate_180_xy(xy: np.ndarray) -> np.ndarray:
 def _npc_frame_seed(base_seed: int, scene_id: str, label_id: str, frame_idx: int) -> int:
     payload = f"{base_seed}:{scene_id}:{label_id}:{frame_idx}".encode("utf-8")
     return int.from_bytes(hashlib.sha256(payload).digest()[:8], byteorder="little")
+
+def _compute_ply_radius(ply_path: Path) -> float:
+    """Estimate avatar radius from a PLY frame using 95th percentile of XY distances from median center."""
+    ply = ply_utils.GaussianPly.read(ply_path)
+    x = np.asarray(ply.data["x"], dtype=np.float64)
+    y = np.asarray(ply.data["y"], dtype=np.float64)
+    if x.size == 0 or y.size == 0:
+        return 0.0
+    xy = np.stack((x, y), axis=1)
+    center = np.median(xy, axis=0)
+    dists = np.linalg.norm(xy - center[None, :], axis=1)
+    return float(np.percentile(dists, 95))
+
+def _compute_default_npc_clearance(actor_root: Path, sample_limit: int = 80) -> float:
+    """Derive a default NPC clearance radius from HumanGS sources (trimmed mean of radii)."""
+    if not actor_root.is_dir():
+        raise FileNotFoundError(f"Actor source root not found: {actor_root}")
+    radii: list[float] = []
+    actor_dirs = sorted(p for p in actor_root.iterdir() if p.is_dir())
+    for idx, actor_dir in enumerate(actor_dirs):
+        if idx >= sample_limit:
+            break
+        ply_files = sorted(glob.glob(str(actor_dir / "*.ply")))
+        if not ply_files:
+            continue
+        try:
+            r = _compute_ply_radius(Path(ply_files[0]))
+            if r > 0.0 and math.isfinite(r):
+                radii.append(r)
+        except Exception:
+            continue
+    if not radii:
+        raise RuntimeError(f"No valid PLY frames found under {actor_root}")
+    radii_sorted = sorted(radii)
+    n = len(radii_sorted)
+    drop = max(0, int(n * 0.125))
+    trimmed = radii_sorted[drop : n - drop] if n - 2 * drop > 0 else radii_sorted
+    return float(sum(trimmed) / len(trimmed))
+
+def _parse_zone_ratio(text: str) -> tuple[float, float, float]:
+    parts = text.split(":")
+    if len(parts) != 3:
+        raise ValueError(f"Expected near:mid:far ratio like 1:2:1, got '{text}'")
+    vals = []
+    for part in parts:
+        try:
+            vals.append(float(part))
+        except Exception as exc:  # pylint: disable=broad-except
+            raise ValueError(f"Invalid zone ratio component '{part}' in '{text}'") from exc
+    if all(v <= 0.0 for v in vals):
+        return (1.0, 1.0, 1.0)
+    return tuple(vals)  # type: ignore[return-value]
 def build_navdp_mask_ply(
     *,
     scene_id: str,
@@ -3672,6 +3778,32 @@ def parse_args() -> ArgumentParser:
         help="Hard cap on NPCs per frame (applied after coverage target).",
     )
     parser.add_argument(
+        "--npc-count",
+        type=int,
+        default=None,
+        help="Desired NPC count per frame (soft unless npc-priority=count).",
+    )
+    parser.add_argument(
+        "--npc-priority",
+        type=str,
+        choices=["coverage", "count"],
+        default="coverage",
+        help="Treat coverage or count as the hard requirement (coverage still acts as a cap).",
+    )
+    parser.add_argument(
+        "--npc-density-mode",
+        type=str,
+        choices=["area", "angular"],
+        default="angular",
+        help="Coverage metric: 'area' uses wedge area; 'angular' uses FOV angular span (default: angular).",
+    )
+    parser.add_argument(
+        "--npc-zone-ratio",
+        type=str,
+        default="1:2:1",
+        help="Near:mid:far ratio for distributing NPCs radially (default: 1.0:2.0:1.0; applied when target count >= 12).",
+    )
+    parser.add_argument(
         "--npc-clearance",
         type=float,
         default=0.30,
@@ -3698,8 +3830,32 @@ def parse_args() -> ArgumentParser:
     parser.add_argument(
         "--npc-free-threshold",
         type=int,
-        default=128,
-        help="Occupancy pixel threshold treated as free space (default: 128).",
+        default=250,
+        help="Occupancy pixel threshold treated as free space (default: 250 => near-white only).",
+    )
+    parser.add_argument(
+        "--npc-free-white",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Interpret free space as white pixels >= threshold (default: on). Disable to treat dark pixels <= threshold as free.",
+    )
+    parser.add_argument(
+        "--npc-auto-clearance",
+        action=BooleanOptionalAction,
+        default=False,
+        help="Derive NPC clearance from HumanGS sources (trimmed mean radius) and override the default clearance if larger.",
+    )
+    parser.add_argument(
+        "--npc-actor-root",
+        type=Path,
+        default=BASE_DIR / "data" / "human_gs_source",
+        help="Root directory of HumanGS actor sources for auto clearance computation.",
+    )
+    parser.add_argument(
+        "--npc-radius-samples",
+        type=int,
+        default=80,
+        help="Maximum number of actors to sample when auto-computing clearance (default: 80).",
     )
     parser.add_argument(
         "--npc-max-resamples",
@@ -3786,6 +3942,10 @@ def main() -> None:
     npc_bev_enabled = bool(args.npc_bev_debug or args.npc_bev_debug_only)
     npc_bev_only = bool(args.npc_bev_debug_only)
     npc_bev_output_root: Path = args.npc_bev_output_dir if args.npc_bev_output_dir is not None else args.output_dir
+    try:
+        zone_ratio = _parse_zone_ratio(str(args.npc_zone_ratio))
+    except ValueError as exc:
+        raise SystemExit(f"Invalid --npc-zone-ratio: {exc}") from exc
     npc_density_config = NPCDensityConfig(
         clearance_radius=float(args.npc_clearance),
         min_distance_from_camera=float(args.npc_min_distance),
@@ -3795,7 +3955,23 @@ def main() -> None:
         allow_blocking=bool(args.npc_allow_blocking),
         max_resamples=max(1, int(args.npc_max_resamples)),
         free_pixel_min=int(args.npc_free_threshold),
+        free_is_white=bool(args.npc_free_white),
+        coverage_mode=str(args.npc_density_mode),
+        desired_count=int(args.npc_count) if args.npc_count is not None and int(args.npc_count) > 0 else None,
+        priority=str(args.npc_priority),
+        zone_weights=zone_ratio,
     )
+    if args.npc_auto_clearance:
+        try:
+            auto_radius = _compute_default_npc_clearance(
+                actor_root=args.npc_actor_root,
+                sample_limit=max(1, int(args.npc_radius_samples)),
+            )
+            if auto_radius > npc_density_config.clearance_radius:
+                npc_density_config.clearance_radius = auto_radius
+            print(f"  [NPC] Auto clearance radius: {auto_radius:.3f} m (using HumanGS sources)", flush=True)
+        except Exception as exc:  # pylint: disable=broad-except
+            print(f"  [WARN] Failed to auto-compute NPC clearance; using {npc_density_config.clearance_radius:.3f} m. Reason: {exc}", flush=True)
     npc_forward_fn = get_forward_fn(args)
 
     if args.actor_seq_dir is not None:
@@ -3925,9 +4101,14 @@ def main() -> None:
             npc_occ_image = None
             if npc_bev_enabled:
                 try:
-                    npc_free_mask, _ = load_free_space_mask(dataset_dir, threshold=int(args.npc_free_threshold))
+                    npc_free_mask, _ = load_free_space_mask(
+                        dataset_dir,
+                        threshold=int(args.npc_free_threshold),
+                        free_is_white=bool(args.npc_free_white),
+                    )
                     occ_img = imageio.imread(dataset_dir / "occupancy.png")
                     npc_occ_image = _ensure_rgb(np.array(occ_img))
+                    print(f"  [NPC-BEV] Free-space mask ready (threshold={args.npc_free_threshold}).", flush=True)
                 except Exception as exc:  # pylint: disable=broad-except
                     print(f"  [WARN] NPC BEV debug disabled for {scene_id}: {exc}", flush=True)
                     npc_free_mask = None
@@ -3951,7 +4132,7 @@ def main() -> None:
                     device,
                 )
 
-            json_files = sorted(label_dir.glob("*.json"))
+            json_files = sorted(p for p in label_dir.glob("*.json") if not p.name.endswith("_detailed.json"))
             if label_filter:
                 json_files = [path for path in json_files if path.stem in label_filter]
             if not json_files:
@@ -4027,10 +4208,19 @@ def main() -> None:
                         forward_fn=npc_forward_fn,
                         goal_xy=prepared.path_xy[-1] if prepared.path_xy else None,
                         npc_max_range=float(args.npc_max_range) if args.npc_max_range is not None else None,
+                        mirror_bev_x=args.bev_mirror_x,
+                        mirror_bev_y=args.bev_mirror_y,
                     )
                     if verbose_enabled:
                         print(
                             f"[VERBOSE] NPC BEV debug ({npc_summary['frames']} frames, shortfall {npc_summary['shortfall']}) -> {npc_summary['output_dir']}",
+                            flush=True,
+                        )
+                    else:
+                        print(
+                            f"      [NPC-BEV] {json_path.stem}: wrote {npc_summary['frames']} frame(s) -> {npc_summary['output_dir']} "
+                            f"(shortfall {npc_summary['shortfall']}, coverage mean/min/max "
+                            f"{npc_summary['coverage_mean']:.2f}/{npc_summary['coverage_min']:.2f}/{npc_summary['coverage_max']:.2f})",
                             flush=True,
                         )
                 if npc_bev_only:

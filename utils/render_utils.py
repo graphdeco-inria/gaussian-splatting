@@ -194,6 +194,8 @@ def load_raster_world_points(
         payload = json.load(fh)
 
     path_payload = payload.get("path", {})
+    if not isinstance(path_payload, dict):
+        raise ValueError(f"Expected 'path' object in {json_path}, got {type(path_payload).__name__}")
     raster_world = path_payload.get("raster_world")
     raster_pixel = path_payload.get("raster_pixel")
     if not raster_world or not raster_pixel:

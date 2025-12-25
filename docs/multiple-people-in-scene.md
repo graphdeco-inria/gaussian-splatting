@@ -28,6 +28,7 @@ Tracking plan and decisions for this branch.
 ## Progress
 - Added `utils/npc_density.py` with an occupancy-based wedge sampler: 30 cm disc clearance, coverage-driven target count + max cap, min-distance band (1 m default), and a goal-blocking filter with an allow-blocking toggle. Outputs attempted/rejected counts and achieved coverage to inform logging.
 - Added BEV debug-only NPC planner: CLI flags to sample NPC positions per frame without rendering and emit occupancy-based BEV overlays (camera + FOV wedge + NPC clearance discs) into per-path folders. Uses the same seeded sampler and density knobs.
+- Added an angular coverage mode (default) so NPCs nearer the camera count more toward density; CLI `--npc-density-mode {angular,area}`. Added desired NPC count + priority flag (coverage vs count) and near:mid:far ratios (default 1.0:2.0:1.0, applied when >=12 NPCs) for distributing placements without exceeding the coverage cap.
 
 ## Next steps for the feature
 - [x] Define the free-space query used for placement (occupancy map vs. navmesh) and expose a function for clearance checks. (Occupancy mask -> free-space boolean, circular footprint clearance in `utils/npc_density.py`.)
