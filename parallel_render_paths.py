@@ -43,6 +43,8 @@ from render_label_paths import (  # type: ignore
     PathSampler,
 )
 
+FPV_ACTOR_ID = "fpv"
+
 
 @dataclass
 class AssignmentEntry:
@@ -223,14 +225,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--assignment-manifest",
         type=Path,
-        required=True,
-        help="JSON manifest produced by random_actor_assignments.py.",
+        default=None,
+        help="JSON manifest produced by random_actor_assignments.py (required unless --fpv-only).",
     )
     parser.add_argument(
         "--render-script",
         type=Path,
         default=Path(__file__).with_name("render_label_paths.py"),
         help="Path to the render_label_paths.py script (default: alongside this file).",
+    )
+    parser.add_argument(
+        "--fpv-only",
+        action="store_true",
+        help="Skip actor manifests and render FPV-only paths (scene-level parallelism).",
+    )
+    parser.add_argument(
+        "--fpv-follow-distance",
+        type=float,
+        default=0.0,
+        help="Follow distance used for FPV-only jobs and frame estimates (default: 0.0).",
     )
     parser.add_argument(
         "--scenes-dir",
@@ -461,6 +474,101 @@ def gather_label_tasks(
     return tasks, skipped
 
 
+def gather_fpv_tasks(
+    *,
+    scenes_dir: Path,
+    tasks_dir: Path,
+    stride: int,
+    swap_xy: bool,
+    mirror_translation: bool,
+    minimal_frames: int | None,
+    follow_distance: float,
+) -> tuple[list[LabelTask], list[dict]]:
+    cache_meta: dict[str, dict] = {}
+    tasks: list[LabelTask] = []
+    skipped: list[dict] = []
+
+    def get_meta(scene_id: str) -> dict | None:
+        if scene_id not in cache_meta:
+            dataset_dir = scenes_dir / scene_id
+            if not dataset_dir.is_dir():
+                cache_meta[scene_id] = None
+            else:
+                try:
+                    cache_meta[scene_id] = load_occupancy_metadata(dataset_dir)
+                except Exception:
+                    cache_meta[scene_id] = None
+        return cache_meta[scene_id]
+
+    for scene_dir in sorted([p for p in tasks_dir.iterdir() if p.is_dir()]):
+        scene_id = scene_dir.name
+        label_dir = resolve_label_directory(scene_dir)
+        meta = get_meta(scene_id)
+        if meta is None or label_dir is None:
+            skipped.append(
+                {
+                    "scene": scene_id,
+                    "label": "*",
+                    "reason": "missing_meta_or_labels",
+                }
+            )
+            continue
+        for json_path in sorted(label_dir.glob("*.json")):
+            label_id = json_path.stem
+            try:
+                prepared = prepare_path_data(
+                    json_path=json_path,
+                    meta=meta,
+                    stride=max(1, stride),
+                    mirror_translation=mirror_translation,
+                    swap_xy=swap_xy,
+                )
+                path_length = float(PathSampler(prepared.path_xy).total_length) if len(prepared.path_xy) >= 2 else 0.0
+                estimated_frames = estimate_actor_frame_count(
+                    prepared.path_xy,
+                    follow_distance=follow_distance,
+                )
+            except Exception as exc:  # pylint: disable=broad-except
+                skipped.append({"scene": scene_id, "label": label_id, "reason": f"prepare_failed: {exc}"})
+                continue
+
+            if minimal_frames is not None and estimated_frames < minimal_frames:
+                skipped.append(
+                    {
+                        "scene": scene_id,
+                        "label": label_id,
+                        "reason": f"below_min_frames({estimated_frames}<{minimal_frames})",
+                    }
+                )
+                continue
+
+            assignment = AssignmentEntry(
+                scene=scene_id,
+                label=label_id,
+                actor_id=FPV_ACTOR_ID,
+                actor_dir=Path("."),
+                actor_pattern="",
+                actor_height=0.0,
+                actor_speed=0.0,
+                actor_fps=0.0,
+                follow_distance=follow_distance,
+                follow_buffer=0.0,
+                actor_foot_offset=0.0,
+                animation_cycle_mod=1,
+                actor_loop=False,
+            )
+            tasks.append(
+                LabelTask(
+                    assignment=assignment,
+                    json_path=json_path,
+                    path_length=path_length,
+                    estimated_frames=estimated_frames,
+                )
+            )
+
+    return tasks, skipped
+
+
 def build_job_plans(tasks: Sequence[LabelTask]) -> list[JobPlan]:
     grouped: dict[tuple[str, str], list[str]] = defaultdict(list)
     assignment_lookup: dict[tuple[str, str], AssignmentEntry] = {}
@@ -542,6 +650,8 @@ def make_command(
     output_dir: Path,
     error_log: Path,
     extra_args: list[str],
+    fpv_only: bool,
+    fpv_follow_distance: float,
 ) -> list[str]:
     cmd = [
         sys.executable,
@@ -555,36 +665,51 @@ def make_command(
     ]
     for label in plan.labels:
         cmd.extend(["--label-id", label])
-    cmd.extend(
-        [
-            "--actor-seq-dir",
-            str(plan.assignment.actor_dir),
-            "--actor-pattern",
-            plan.assignment.actor_pattern or DEFAULT_ACTOR_PATTERN,
-            "--actor-height",
-            f"{plan.assignment.actor_height:.6f}",
-            "--actor-speed",
-            f"{plan.assignment.actor_speed:.6f}",
-            "--actor-fps",
-            f"{plan.assignment.actor_fps:.6f}",
-            "--follow-distance",
-            f"{plan.assignment.follow_distance:.6f}",
-            "--follow-buffer",
-            f"{plan.assignment.follow_buffer:.6f}",
-            "--actor-foot-offset",
-            f"{plan.assignment.actor_foot_offset:.6f}",
-            "--animation-cycle-mod",
-            str(plan.assignment.animation_cycle_mod),
-            "--output-dir",
-            str(output_dir),
-            "--error-log",
-            str(error_log),
-            "--stride",
-            str(stride),
-        ]
-    )
-    if not plan.assignment.actor_loop:
-        cmd.append("--actor-no-loop")
+    if fpv_only:
+        cmd.extend(
+            [
+                "--follow-distance",
+                f"{fpv_follow_distance:.6f}",
+                "--hide-actor",
+                "--output-dir",
+                str(output_dir),
+                "--error-log",
+                str(error_log),
+                "--stride",
+                str(stride),
+            ]
+        )
+    else:
+        cmd.extend(
+            [
+                "--actor-seq-dir",
+                str(plan.assignment.actor_dir),
+                "--actor-pattern",
+                plan.assignment.actor_pattern or DEFAULT_ACTOR_PATTERN,
+                "--actor-height",
+                f"{plan.assignment.actor_height:.6f}",
+                "--actor-speed",
+                f"{plan.assignment.actor_speed:.6f}",
+                "--actor-fps",
+                f"{plan.assignment.actor_fps:.6f}",
+                "--follow-distance",
+                f"{plan.assignment.follow_distance:.6f}",
+                "--follow-buffer",
+                f"{plan.assignment.follow_buffer:.6f}",
+                "--actor-foot-offset",
+                f"{plan.assignment.actor_foot_offset:.6f}",
+                "--animation-cycle-mod",
+                str(plan.assignment.animation_cycle_mod),
+                "--output-dir",
+                str(output_dir),
+                "--error-log",
+                str(error_log),
+                "--stride",
+                str(stride),
+            ]
+        )
+        if not plan.assignment.actor_loop:
+            cmd.append("--actor-no-loop")
     if swap_xy:
         cmd.append("--swap-xy")
     if not mirror_translation:
@@ -679,23 +804,43 @@ def run_job(
 
 def main() -> None:
     args = parse_args()
-    actor_map, assignments, manifest = load_manifest(args.assignment_manifest)
-    if not assignments:
-        raise SystemExit("Assignment manifest does not contain any label-path pairings.")
+    if args.fpv_only:
+        actor_map = {}
+        assignments = []
+        manifest: dict[str, Any] = {}
+        if args.assignment_manifest is not None:
+            print("[WARN] Ignoring --assignment-manifest because --fpv-only is set.", flush=True)
+    else:
+        if args.assignment_manifest is None:
+            raise SystemExit("--assignment-manifest is required unless --fpv-only is set.")
+        actor_map, assignments, manifest = load_manifest(args.assignment_manifest)
+        if not assignments:
+            raise SystemExit("Assignment manifest does not contain any label-path pairings.")
 
     extra_args: list[str] = []
     for snippet in args.render_extra_args:
         extra_args.extend(shlex.split(snippet))
 
-    tasks, skipped = gather_label_tasks(
-        assignments,
-        scenes_dir=args.scenes_dir,
-        tasks_dir=args.tasks_dir,
-        stride=args.stride,
-        swap_xy=args.swap_xy,
-        mirror_translation=args.mirror_translation,
-        minimal_frames=args.minimal_frames,
-    )
+    if args.fpv_only:
+        tasks, skipped = gather_fpv_tasks(
+            scenes_dir=args.scenes_dir,
+            tasks_dir=args.tasks_dir,
+            stride=args.stride,
+            swap_xy=args.swap_xy,
+            mirror_translation=args.mirror_translation,
+            minimal_frames=args.minimal_frames,
+            follow_distance=args.fpv_follow_distance,
+        )
+    else:
+        tasks, skipped = gather_label_tasks(
+            assignments,
+            scenes_dir=args.scenes_dir,
+            tasks_dir=args.tasks_dir,
+            stride=args.stride,
+            swap_xy=args.swap_xy,
+            mirror_translation=args.mirror_translation,
+            minimal_frames=args.minimal_frames,
+        )
     tasks = filter_tasks_by_scene_shard(tasks, args.scene_shard_index, args.scene_shard_count)
     if not tasks:
         print("[WARN] No label paths satisfied the current filters.", flush=True)
@@ -746,6 +891,8 @@ def main() -> None:
                 output_dir=args.output_dir,
                 error_log=args.error_log,
                 extra_args=extra_args,
+                fpv_only=args.fpv_only,
+                fpv_follow_distance=args.fpv_follow_distance,
             )
             job_name = f"{idx:04d}_{plan.scene}_{plan.actor_id}"
             job_slot = ((idx - 1) % max_workers) + 1
@@ -774,11 +921,13 @@ def main() -> None:
                     stride=args.stride,
                     swap_xy=args.swap_xy,
                     mirror_translation=args.mirror_translation,
-                    minimal_frames=args.minimal_frames,
-                    output_dir=args.output_dir,
-                    error_log=args.error_log,
-                    extra_args=extra_args,
-                )
+                minimal_frames=args.minimal_frames,
+                output_dir=args.output_dir,
+                error_log=args.error_log,
+                extra_args=extra_args,
+                fpv_only=args.fpv_only,
+                fpv_follow_distance=args.fpv_follow_distance,
+            )
                 job_name = f"{idx:04d}_{plan.scene}_{plan.actor_id}"
                 job_slot = ((idx - 1) % max_workers) + 1
                 cmd.extend(["--job-slot", str(job_slot), "--job-name", job_name, "--job-actor-id", plan.actor_id])
@@ -814,8 +963,10 @@ def main() -> None:
 
     report = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "assignment_manifest": str(args.assignment_manifest.resolve()),
-        "seed": manifest.get("seed"),
+        "assignment_manifest": str(args.assignment_manifest.resolve()) if args.assignment_manifest else None,
+        "seed": manifest.get("seed") if manifest else None,
+        "fpv_only": args.fpv_only,
+        "fpv_follow_distance": args.fpv_follow_distance,
         "jobs": results,
         "skipped_labels": skipped,
         "total_jobs": len(plans),
