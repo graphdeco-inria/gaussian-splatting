@@ -3993,10 +3993,16 @@ def parse_args() -> ArgumentParser:
         help="Mirror BEV paths across the Y axis (v -> H-1-v) before drawing (default: on)."
     )
     parser.add_argument(
+        "--navdp-mask-ply",
+        action="store_true",
+        default=False,
+        help="Enable NavDP occupancy-masked PLY exports (default: off).",
+    )
+    parser.add_argument(
         "--navdp-ply-per-scene",
         action="store_true",
         default=False,
-        help="Combine all paths from a scene into a single NavDP PLY instead of one per path.",
+        help="Combine all paths from a scene into a single NavDP PLY instead of one per path (requires --navdp-mask-ply).",
     )
     parser.add_argument(
         "--npc-bev-debug",
@@ -4201,7 +4207,13 @@ def main() -> None:
         if args.minimal_frames is not None and int(args.minimal_frames) > 0
         else None
     )
-    navdp_manager = NavdpPlyCoordinator(per_scene=bool(args.navdp_ply_per_scene))
+    navdp_manager = (
+        NavdpPlyCoordinator(per_scene=bool(args.navdp_ply_per_scene))
+        if args.navdp_mask_ply
+        else None
+    )
+    if args.navdp_ply_per_scene and navdp_manager is None:
+        print("  [WARN] --navdp-ply-per-scene ignored without --navdp-mask-ply.", flush=True)
     metrics_enabled = bool(args.metrics_json)
     collected_metrics: list[dict] = []
     npc_bev_enabled = bool(args.npc_bev_debug or args.npc_bev_debug_only)
