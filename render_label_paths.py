@@ -1279,6 +1279,27 @@ def _serialize_camera(camera: MiniCam | OrthoMiniCam, *, orthographic: bool) -> 
     }
 
 
+# Depth encoding options: bit depth -> (step meters, max distance meters).
+# 16-bit: 1 mm steps to 65.535 m; 12-bit: 1 mm steps to 4.095 m;
+# 10-bit: 2 mm steps to 2.046 m; 8-bit: 4 cm steps to 10.2 m.
+DEPTH_ENCODING_SPECS = {
+    16: {"step_m": 0.001, "max_m": 0.001 * ((1 << 16) - 1)},
+    12: {"step_m": 0.001, "max_m": 0.001 * ((1 << 12) - 1)},
+    10: {"step_m": 0.002, "max_m": 0.002 * ((1 << 10) - 1)},
+    8: {"step_m": 0.04, "max_m": 0.04 * ((1 << 8) - 1)},
+}
+
+
+def _quantize_depth(depth_m: np.ndarray, *, bit_depth: int) -> np.ndarray:
+    spec = DEPTH_ENCODING_SPECS[bit_depth]
+    step_m = spec["step_m"]
+    max_m = spec["max_m"]
+    depth_clipped = np.clip(depth_m, 0.0, max_m)
+    quantized = np.rint(depth_clipped / step_m)
+    dtype = np.uint8 if bit_depth <= 8 else np.uint16
+    return quantized.astype(dtype)
+
+
 def _save_depth_and_camera(
     *,
     frames_dir: Path,
@@ -1287,10 +1308,11 @@ def _save_depth_and_camera(
     img_pkg: dict,
     camera: MiniCam | OrthoMiniCam,
     orthographic: bool,
+    depth_bit_depth: int,
     metrics: PathMetricRecorder | None = None,
 ) -> None:
     """
-    Persist depth (npy + 16-bit PNG) and camera metadata for one frame.
+    Persist depth (PNG, quantized by bit depth) and camera metadata for one frame.
     """
     depth_tensor = img_pkg.get("depth")
     if depth_tensor is None:
@@ -1306,9 +1328,9 @@ def _save_depth_and_camera(
         rotate_k = 1 if orthographic else 2
         depth_rot = np.rot90(depth, k=rotate_k)
 
-        depth_mm = np.clip(depth_rot * 1000.0, 0.0, 65535.0).astype(np.uint16)
+        depth_quant = _quantize_depth(depth_rot, bit_depth=depth_bit_depth)
         depth_png_path = frames_dir / f"{frame_prefix}_{frame_idx:04d}_depth.png"
-        imageio.imwrite(depth_png_path, depth_mm)
+        imageio.imwrite(depth_png_path, depth_quant)
 
         cam_json = _serialize_camera(camera, orthographic=orthographic)
         cam_json_path = frames_dir / f"{frame_prefix}_{frame_idx:04d}_camera.json"
@@ -2069,6 +2091,7 @@ def render_actor_camera_only_sequence(
     video: bool,
     save_rgb_frames: bool,
     save_depth_maps: bool,
+    depth_bit_depth: int,
     frames_dir: Path,
     frame_prefix: str,
     debug: bool,
@@ -2209,6 +2232,7 @@ def render_actor_camera_only_sequence(
                     img_pkg=img_pkg,
                     camera=camera,
                     orthographic=False,
+                    depth_bit_depth=depth_bit_depth,
                     metrics=metrics,
                 )
             except Exception as e:
@@ -2267,6 +2291,7 @@ def render_actor_follow_sequence(
     video: bool,
     save_rgb_frames: bool,
     save_depth_maps: bool,
+    depth_bit_depth: int,
     frames_dir: Path,
     frame_prefix: str,
     debug: bool,
@@ -2595,6 +2620,7 @@ def render_actor_follow_sequence(
                         img_pkg=img_pkg,
                         camera=camera,
                         orthographic=False,
+                        depth_bit_depth=depth_bit_depth,
                         metrics=metrics,
                     )
                 except Exception as e:
@@ -2783,6 +2809,7 @@ def render_actor_follow_sequence(
                     img_pkg=img_pkg,
                     camera=camera,
                     orthographic=False,
+                    depth_bit_depth=depth_bit_depth,
                     metrics=metrics,
                 )
             except Exception as e:
@@ -3168,6 +3195,7 @@ def render_path_frames(
     mirror_bev_y = False,
     save_rgb_frames: bool = False,
     save_depth_maps: bool = True,
+    depth_bit_depth: int = 16,
     save_follow_metadata: bool = True,
     actor_dump_root: Path | None = None,
     actor_dump_stride: int = 30,
@@ -3378,6 +3406,7 @@ def render_path_frames(
                         video=effective_video,
                         save_rgb_frames=save_rgb_frames,
                         save_depth_maps=save_depth_maps,
+                        depth_bit_depth=depth_bit_depth,
                         frames_dir=frames_dir,
                         frame_prefix="frame",
                         debug=debug,
@@ -3410,6 +3439,7 @@ def render_path_frames(
                         video=effective_video,
                         save_rgb_frames=save_rgb_frames,
                         save_depth_maps=save_depth_maps,
+                        depth_bit_depth=depth_bit_depth,
                         frames_dir=frames_dir,
                         frame_prefix="frame",
                         debug=debug,
@@ -3561,6 +3591,7 @@ def render_path_frames(
                                 img_pkg=img_pkg,
                                 camera=camera,
                                 orthographic=orthographic,
+                                depth_bit_depth=depth_bit_depth,
                                 metrics=metrics_recorder,
                             )
                         except Exception as e:
@@ -3812,6 +3843,16 @@ def parse_args() -> ArgumentParser:
         action=BooleanOptionalAction,
         default=True,
         help="Persist per-frame depth PNGs and camera metadata (default: on).",
+    )
+    parser.add_argument(
+        "--depth-bit-depth",
+        type=int,
+        choices=sorted(DEPTH_ENCODING_SPECS.keys()),
+        default=16,
+        help=(
+            "Depth PNG quantization: 16-bit=1mm to 65.535m, 12-bit=1mm to 4.095m, "
+            "10-bit=2mm to 2.046m, 8-bit=4cm to 10.2m."
+        ),
     )
     parser.add_argument(
         "--save-follow-metadata",
@@ -4192,6 +4233,7 @@ def main() -> None:
     video_enabled = bool(args.video)
     save_rgb_frames = bool(args.rgb_frames)
     save_depth_maps = bool(args.save_depth_maps)
+    depth_bit_depth = int(args.depth_bit_depth)
     save_follow_metadata = bool(args.save_follow_metadata)
     npc_render_enabled = bool(args.npc_render)
     actor_runtime: ActorRuntime | None = None
@@ -4577,6 +4619,7 @@ def main() -> None:
                         video=video_enabled,
                         save_rgb_frames=save_rgb_frames,
                         save_depth_maps=save_depth_maps,
+                        depth_bit_depth=depth_bit_depth,
                         save_follow_metadata=save_follow_metadata,
                         debug=debug_enabled,
                         mirror_translation=not args.no_mirror_translation,

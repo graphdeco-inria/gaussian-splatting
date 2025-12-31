@@ -264,20 +264,27 @@ def process_scene(
             else:
                 actions.append("move" if ahead else "stop")
 
+        action_codes = {
+            "stop": 0,
+            "move": 1,
+            "turn left": 2,
+            "turn right": 3,
+        }
+
         for i, frame in enumerate(frames):
             next_actions = []
             for j in range(1, max_next + 1):
                 if i + j < len(actions):
-                    next_actions.append(actions[i + j])
+                    next_actions.append(action_codes[actions[i + j]])
                 else:
-                    next_actions.append("stop")
+                    next_actions.append(action_codes["stop"])
 
             per_frame.append(
                 {
                     "frame": frame["frame"],
                     "world": frame["world"],
                     "pixel": frame["pixel"],
-                    "curr_action": actions[i],
+                    "curr_action": action_codes[actions[i]],
                     "next_actions": next_actions,
                 }
             )
@@ -406,7 +413,12 @@ def main() -> int:
 
     max_next = max(0, int(args.max_next))
 
-    scene_dirs = [p for p in sorted(dataset_root.iterdir()) if p.is_dir()]
+    skip_scene_names = {"plots", ".mplconfig"}
+    scene_dirs = [
+        p
+        for p in sorted(dataset_root.iterdir())
+        if p.is_dir() and p.name not in skip_scene_names
+    ]
     if not scene_dirs:
         raise RuntimeError(f"No scene directories found under {dataset_root}")
 
