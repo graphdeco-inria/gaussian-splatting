@@ -122,12 +122,16 @@ ACTOR_ROOT=${ACTOR_ROOT:-./data/human_gs_source}
 
 RESERVE_VRAM_GB=${RESERVE_VRAM_GB:-0}
 RESERVE_VRAM_HEADROOM_GB=${RESERVE_VRAM_HEADROOM_GB:-1}
+RETRY_CUDA_OOM=${RETRY_CUDA_OOM:-true}
+CUDA_OOM_RETRY_DELAY=${CUDA_OOM_RETRY_DELAY:-10}
+CUDA_OOM_MAX_RETRIES=${CUDA_OOM_MAX_RETRIES:-20}
 
 # To enable per-path BEV debug images, run: ENABLE_BEV_IMAGES=true ./run_random_fpv_datagen.sh
 ENABLE_BEV_IMAGES=${ENABLE_BEV_IMAGES:-false}
 ENABLE_VIDEO_OUTPUT=${ENABLE_VIDEO_OUTPUT:-true}
 ENABLE_RGB_FRAMES=${ENABLE_RGB_FRAMES:-false}
 ENABLE_DEPTH_OUTPUT=${ENABLE_DEPTH_OUTPUT:-false}
+ENABLE_CAMERA_METADATA=${ENABLE_CAMERA_METADATA:-true}
 ENABLE_FOLLOW_METADATA=${ENABLE_FOLLOW_METADATA:-false}
 VERBOSE=${VERBOSE:-true}
 
@@ -151,6 +155,11 @@ if storage_bool_true "$ENABLE_DEPTH_OUTPUT"; then
   render_extra_args+=' --save-depth-maps'
 else
   render_extra_args+=' --no-save-depth-maps'
+fi
+if storage_bool_true "$ENABLE_CAMERA_METADATA"; then
+  render_extra_args+=' --save-camera-metadata'
+else
+  render_extra_args+=' --no-save-camera-metadata'
 fi
 if storage_bool_true "$ENABLE_FOLLOW_METADATA"; then
   render_extra_args+=' --save-follow-metadata'
@@ -601,7 +610,14 @@ parallel_cmd=(
   --progress-json "${PROGRESS_JSON}"
   --per-job-metrics-dir "${PER_JOB_METRICS_DIR}"
   --report-out "${PARALLEL_REPORT_DIR}"
+  --cuda-oom-retry-delay "${CUDA_OOM_RETRY_DELAY}"
+  --cuda-oom-max-retries "${CUDA_OOM_MAX_RETRIES}"
 )
+if storage_bool_true "$RETRY_CUDA_OOM"; then
+  parallel_cmd+=(--retry-cuda-oom)
+else
+  parallel_cmd+=(--no-retry-cuda-oom)
+fi
 if [ -n "$RESUME_LOG_ABS" ]; then
   parallel_cmd+=(--skip-completed-log "$RESUME_LOG_ABS")
 fi

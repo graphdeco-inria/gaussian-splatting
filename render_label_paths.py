@@ -1300,20 +1300,17 @@ def _quantize_depth(depth_m: np.ndarray, *, bit_depth: int) -> np.ndarray:
     return quantized.astype(dtype)
 
 
-def _save_depth_and_camera(
+def _save_depth_map(
     *,
     frames_dir: Path,
     frame_prefix: str,
     frame_idx: int,
     img_pkg: dict,
-    camera: MiniCam | OrthoMiniCam,
     orthographic: bool,
     depth_bit_depth: int,
     metrics: PathMetricRecorder | None = None,
 ) -> None:
-    """
-    Persist depth (PNG, quantized by bit depth) and camera metadata for one frame.
-    """
+    """Persist depth (PNG, quantized by bit depth) for one frame."""
     depth_tensor = img_pkg.get("depth")
     if depth_tensor is None:
         return
@@ -1332,9 +1329,19 @@ def _save_depth_and_camera(
         depth_png_path = frames_dir / f"{frame_prefix}_{frame_idx:04d}_depth.png"
         imageio.imwrite(depth_png_path, depth_quant)
 
-        cam_json = _serialize_camera(camera, orthographic=orthographic)
-        cam_json_path = frames_dir / f"{frame_prefix}_{frame_idx:04d}_camera.json"
-        cam_json_path.write_text(json.dumps(cam_json, indent=2))
+
+def _save_camera_metadata(
+    *,
+    frames_dir: Path,
+    frame_prefix: str,
+    frame_idx: int,
+    camera: MiniCam | OrthoMiniCam,
+    orthographic: bool,
+) -> None:
+    """Persist camera metadata JSON for one frame."""
+    cam_json = _serialize_camera(camera, orthographic=orthographic)
+    cam_json_path = frames_dir / f"{frame_prefix}_{frame_idx:04d}_camera.json"
+    cam_json_path.write_text(json.dumps(cam_json, indent=2))
 
 def _rotate_180_xy(xy: np.ndarray) -> np.ndarray:
     """Rotate 2D points by 180 degrees around origin."""
@@ -2091,6 +2098,7 @@ def render_actor_camera_only_sequence(
     video: bool,
     save_rgb_frames: bool,
     save_depth_maps: bool,
+    save_camera_metadata: bool,
     depth_bit_depth: int,
     frames_dir: Path,
     frame_prefix: str,
@@ -2225,18 +2233,28 @@ def render_actor_camera_only_sequence(
                 print(f"[WARN] Failed to save RGB frame {frame_counter}: {e}", flush=True)
         if save_depth_maps:
             try:
-                _save_depth_and_camera(
+                _save_depth_map(
                     frames_dir=frames_dir,
                     frame_prefix=frame_prefix,
                     frame_idx=frame_counter,
                     img_pkg=img_pkg,
-                    camera=camera,
                     orthographic=False,
                     depth_bit_depth=depth_bit_depth,
                     metrics=metrics,
                 )
             except Exception as e:
-                print(f"[WARN] Failed to save depth/camera for frame {frame_counter}: {e}", flush=True)
+                print(f"[WARN] Failed to save depth for frame {frame_counter}: {e}", flush=True)
+        if save_camera_metadata:
+            try:
+                _save_camera_metadata(
+                    frames_dir=frames_dir,
+                    frame_prefix=frame_prefix,
+                    frame_idx=frame_counter,
+                    camera=camera,
+                    orthographic=False,
+                )
+            except Exception as e:
+                print(f"[WARN] Failed to save camera metadata for frame {frame_counter}: {e}", flush=True)
 
         # Also write to video if requested
         if video:
@@ -2291,6 +2309,7 @@ def render_actor_follow_sequence(
     video: bool,
     save_rgb_frames: bool,
     save_depth_maps: bool,
+    save_camera_metadata: bool,
     depth_bit_depth: int,
     frames_dir: Path,
     frame_prefix: str,
@@ -2613,18 +2632,28 @@ def render_actor_follow_sequence(
                     print(f"[WARN] Failed to save RGB frame {frame_counter}: {e}", flush=True)
             if save_depth_maps:
                 try:
-                    _save_depth_and_camera(
+                    _save_depth_map(
                         frames_dir=frames_dir,
                         frame_prefix=frame_prefix,
                         frame_idx=frame_counter,
                         img_pkg=img_pkg,
-                        camera=camera,
                         orthographic=False,
                         depth_bit_depth=depth_bit_depth,
                         metrics=metrics,
                     )
                 except Exception as e:
-                    print(f"[WARN] Failed to save depth/camera for frame {frame_counter}: {e}", flush=True)
+                    print(f"[WARN] Failed to save depth for frame {frame_counter}: {e}", flush=True)
+            if save_camera_metadata:
+                try:
+                    _save_camera_metadata(
+                        frames_dir=frames_dir,
+                        frame_prefix=frame_prefix,
+                        frame_idx=frame_counter,
+                        camera=camera,
+                        orthographic=False,
+                    )
+                except Exception as e:
+                    print(f"[WARN] Failed to save camera metadata for frame {frame_counter}: {e}", flush=True)
             
             # Also write to video if requested (do this AFTER frame saving to avoid corruption)
             if video:
@@ -2802,18 +2831,28 @@ def render_actor_follow_sequence(
                 imageio.imwrite(frame_path, render_uint8)
         if save_depth_maps:
             try:
-                _save_depth_and_camera(
+                _save_depth_map(
                     frames_dir=frames_dir,
                     frame_prefix=frame_prefix,
                     frame_idx=frame_counter,
                     img_pkg=img_pkg,
-                    camera=camera,
                     orthographic=False,
                     depth_bit_depth=depth_bit_depth,
                     metrics=metrics,
                 )
             except Exception as e:
-                print(f"[WARN] Failed to save depth/camera for frame {frame_counter}: {e}", flush=True)
+                print(f"[WARN] Failed to save depth for frame {frame_counter}: {e}", flush=True)
+        if save_camera_metadata:
+            try:
+                _save_camera_metadata(
+                    frames_dir=frames_dir,
+                    frame_prefix=frame_prefix,
+                    frame_idx=frame_counter,
+                    camera=camera,
+                    orthographic=False,
+                )
+            except Exception as e:
+                print(f"[WARN] Failed to save camera metadata for frame {frame_counter}: {e}", flush=True)
         frame_counter += 1
         if metrics:
             metrics.sample_vram()
@@ -3195,6 +3234,7 @@ def render_path_frames(
     mirror_bev_y = False,
     save_rgb_frames: bool = False,
     save_depth_maps: bool = True,
+    save_camera_metadata: bool = True,
     depth_bit_depth: int = 16,
     save_follow_metadata: bool = True,
     actor_dump_root: Path | None = None,
@@ -3334,7 +3374,7 @@ def render_path_frames(
     video_dir = output_dir / scene_id
     video_path = video_dir / f"{json_path.stem}.mp4"
     
-    # Always create frames_dir since we save depth/camera metadata there
+    # Always create frames_dir since per-frame outputs (camera/depth/RGB) live there.
     frames_dir.mkdir(parents=True, exist_ok=True)
     
     if effective_video:
@@ -3406,6 +3446,7 @@ def render_path_frames(
                         video=effective_video,
                         save_rgb_frames=save_rgb_frames,
                         save_depth_maps=save_depth_maps,
+                        save_camera_metadata=save_camera_metadata,
                         depth_bit_depth=depth_bit_depth,
                         frames_dir=frames_dir,
                         frame_prefix="frame",
@@ -3439,6 +3480,7 @@ def render_path_frames(
                         video=effective_video,
                         save_rgb_frames=save_rgb_frames,
                         save_depth_maps=save_depth_maps,
+                        save_camera_metadata=save_camera_metadata,
                         depth_bit_depth=depth_bit_depth,
                         frames_dir=frames_dir,
                         frame_prefix="frame",
@@ -3584,18 +3626,28 @@ def render_path_frames(
                             print(f"[WARN] Failed to save RGB frame {idx}: {e}", flush=True)
                     if save_depth_maps:
                         try:
-                            _save_depth_and_camera(
+                            _save_depth_map(
                                 frames_dir=frames_dir,
                                 frame_prefix="frame",
                                 frame_idx=idx,
                                 img_pkg=img_pkg,
-                                camera=camera,
                                 orthographic=orthographic,
                                 depth_bit_depth=depth_bit_depth,
                                 metrics=metrics_recorder,
                             )
                         except Exception as e:
-                            print(f"[WARN] Failed to save depth/camera for frame {idx}: {e}", flush=True)
+                            print(f"[WARN] Failed to save depth for frame {idx}: {e}", flush=True)
+                    if save_camera_metadata:
+                        try:
+                            _save_camera_metadata(
+                                frames_dir=frames_dir,
+                                frame_prefix="frame",
+                                frame_idx=idx,
+                                camera=camera,
+                                orthographic=orthographic,
+                            )
+                        except Exception as e:
+                            print(f"[WARN] Failed to save camera metadata for frame {idx}: {e}", flush=True)
                     
                     # Also write to video if requested
                     if video:
@@ -3842,7 +3894,13 @@ def parse_args() -> ArgumentParser:
         "--save-depth-maps",
         action=BooleanOptionalAction,
         default=True,
-        help="Persist per-frame depth PNGs and camera metadata (default: on).",
+        help="Persist per-frame depth PNGs (default: on).",
+    )
+    parser.add_argument(
+        "--save-camera-metadata",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Write per-frame camera metadata JSON files (default: on).",
     )
     parser.add_argument(
         "--depth-bit-depth",
@@ -3858,7 +3916,7 @@ def parse_args() -> ArgumentParser:
         "--save-follow-metadata",
         action=BooleanOptionalAction,
         default=True,
-        help="Write follow path metadata JSON alongside renders (default: on).",
+        help="Write per-path follow metadata JSON (separate from per-frame camera metadata; default: on).",
     )
     parser.add_argument(
         "--no-mirror-translation",
@@ -4233,6 +4291,7 @@ def main() -> None:
     video_enabled = bool(args.video)
     save_rgb_frames = bool(args.rgb_frames)
     save_depth_maps = bool(args.save_depth_maps)
+    save_camera_metadata = bool(args.save_camera_metadata)
     depth_bit_depth = int(args.depth_bit_depth)
     save_follow_metadata = bool(args.save_follow_metadata)
     npc_render_enabled = bool(args.npc_render)
@@ -4619,6 +4678,7 @@ def main() -> None:
                         video=video_enabled,
                         save_rgb_frames=save_rgb_frames,
                         save_depth_maps=save_depth_maps,
+                        save_camera_metadata=save_camera_metadata,
                         depth_bit_depth=depth_bit_depth,
                         save_follow_metadata=save_follow_metadata,
                         debug=debug_enabled,
