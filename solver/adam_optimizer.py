@@ -16,8 +16,21 @@ class AdamOptimizer:
         self.v = 0
         self.lr = self.lr_init
 
+    def reset_opacity(self):
+        if self.iter == 0:
+            return
+        self.m.opacity *= 0.0
+        self.v.opacity *= 0.0
+        self.lr = self.lr_init
+
     def update_lr(self, lr):
         self.lr = lr
+
+    def reset_indices(self, indices):
+        if self.iter == 0:
+            return
+        self.m.reset_indices_(indices)
+        self.v.reset_indices_(indices)
 
     def densify_and_prune(self, prune_mask):
         if self.iter == 0:

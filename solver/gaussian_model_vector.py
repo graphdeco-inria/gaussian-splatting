@@ -208,6 +208,20 @@ class GaussianModelVector:
         return cls(xyz, features_dc, features_rest, scaling, rotation, opacity, exposure,
                    gaussians=gaussians)
 
+    def reset_indices_(self, indices):
+        if self.tensor_xyz:
+            self.xyz[indices] = 0.0
+        if self.tensor_features_dc:
+            self.features_dc[indices] = 0.0
+        if self.tensor_features_rest:
+            self.features_rest[indices] = 0.0
+        if self.tensor_scaling:
+            self.scaling[indices] = 0.0
+        if self.tensor_rotation:
+            self.rotation[indices] = 0.0
+        if self.tensor_opacity:
+            self.opacity[indices] = 0.0
+
     def densify_and_prune_(self, prune_mask):
         valid_mask = ~prune_mask
         num_valid_points = valid_mask.sum().item()

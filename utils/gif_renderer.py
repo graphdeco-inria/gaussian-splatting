@@ -8,7 +8,7 @@ class GifRenderer:
         self.fig, self.axes = plt.subplots(num_rows, num_cols, figsize=figsize)
         if num_rows == 1:
             self.axes = self.axes[np.newaxis, :]
-        self.fig.subplots_adjust(hspace=0.6)
+        self.fig.subplots_adjust(hspace=0.3)
         self.ims = [[None] * num_cols for _ in range(num_rows)]
         self.images_series = [[None] * num_cols for _ in range(num_rows)]
         self.max_frames = [[0] * num_cols for _ in range(num_rows)]

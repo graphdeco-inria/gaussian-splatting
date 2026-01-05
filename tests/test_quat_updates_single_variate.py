@@ -1,0 +1,231 @@
+import numpy as np
+import torch
+from matplotlib import pyplot as plt
+
+rotation_activation = torch.nn.functional.normalize
+
+def build_rotation(r):
+    norm = torch.sqrt(r[:,0]*r[:,0] + r[:,1]*r[:,1] + r[:,2]*r[:,2] + r[:,3]*r[:,3])
+
+    q = r / norm[:, None]
+
+    R = torch.zeros((q.size(0), 3, 3), device='cuda')
+
+    r = q[:, 0]
+    x = q[:, 1]
+    y = q[:, 2]
+    z = q[:, 3]
+
+    R[:, 0, 0] = 1 - 2 * (y*y + z*z)
+    R[:, 0, 1] = 2 * (x*y - r*z)
+    R[:, 0, 2] = 2 * (x*z + r*y)
+    R[:, 1, 0] = 2 * (x*y + r*z)
+    R[:, 1, 1] = 1 - 2 * (x*x + z*z)
+    R[:, 1, 2] = 2 * (y*z - r*x)
+    R[:, 2, 0] = 2 * (x*z - r*y)
+    R[:, 2, 1] = 2 * (y*z + r*x)
+    R[:, 2, 2] = 1 - 2 * (x*x + y*y)
+    return R
+
+
+def quat_to_rot(quat, normalize=True):
+    R = torch.zeros(quat.shape[0], 3, 3, device=quat.device, dtype=quat.dtype)
+    w = quat[:, 0]
+    x = quat[:, 1]
+    y = quat[:, 2]
+    z = quat[:, 3]
+    q = (x**2 + y**2 + z**2 + w**2).sqrt()
+    R[:, 0, 0] = q ** 2 - 2 * (y ** 2 + z ** 2)
+    R[:, 0, 1] = 2 * (x * y - z * w)
+    R[:, 0, 2] = 2 * (x * z + y * w)
+    R[:, 1, 0] = 2 * (x * y + z * w)
+    R[:, 1, 1] = q ** 2 - 2 * (x ** 2 + z ** 2)
+    R[:, 1, 2] = 2 * (y * z - x * w)
+    R[:, 2, 0] = 2 * (x * z - y * w)
+    R[:, 2, 1] = 2 * (y * z + x * w)
+    R[:, 2, 2] = q ** 2 - 2 * (x ** 2 + y ** 2)
+
+    if normalize:
+        R /= (q ** 2).unsqueeze(-1).unsqueeze(-1)
+
+    return R
+
+def quat_to_drot(quat, wrt="x", normalize=True):
+    dR = torch.zeros(quat.shape[0], 3, 3, device=quat.device, dtype=quat.dtype)
+    w = quat[:, 0]
+    x = quat[:, 1]
+    y = quat[:, 2]
+    z = quat[:, 3]
+    q = (x**2 + y**2 + z**2 + w**2).sqrt()
+    if wrt == "x":
+        dR[:, 0, 0] = 2 * x
+        dR[:, 0, 1] = 2 * y
+        dR[:, 0, 2] = 2 * z
+        dR[:, 1, 0] = 2 * y
+        dR[:, 1, 1] = -2 * x
+        dR[:, 1, 2] = -2 * w
+        dR[:, 2, 0] = 2 * z
+        dR[:, 2, 1] = 2 * w
+        dR[:, 2, 2] = -2 * x
+    if wrt == "y":
+        dR[:, 0, 0] = -2 * y
+        dR[:, 0, 1] = 2 * x
+        dR[:, 0, 2] = 2 * w
+        dR[:, 1, 0] = 2 * x
+        dR[:, 1, 1] = 2 * y
+        dR[:, 1, 2] = 2 * z
+        dR[:, 2, 0] = -2 * w
+        dR[:, 2, 1] = 2 * z
+        dR[:, 2, 2] = -2 * y
+    if wrt == "z":
+        dR[:, 0, 0] = -2 * z
+        dR[:, 0, 1] = -2 * w
+        dR[:, 0, 2] = 2 * x
+        dR[:, 1, 0] = 2 * w
+        dR[:, 1, 1] = -2 * z
+        dR[:, 1, 2] = 2 * y
+        dR[:, 2, 0] = 2 * x
+        dR[:, 2, 1] = 2 * y
+        dR[:, 2, 2] = 2 * z
+    if wrt == "w":
+        dR[:, 0, 0] = 2 * w
+        dR[:, 0, 1] = -2 * z
+        dR[:, 0, 2] = 2 * y
+        dR[:, 1, 0] = 2 * z
+        dR[:, 1, 1] = 2 * w
+        dR[:, 1, 2] = -2 * x
+        dR[:, 2, 0] = -2 * y
+        dR[:, 2, 1] = 2 * x
+        dR[:, 2, 2] = 2 * w
+    if normalize:
+        dR /= q.unsqueeze(-1).unsqueeze(-1)
+    return dR
+
+def quat_to_d2rot(quat, wrt="x", normalize=True):
+    d2R = torch.zeros(quat.shape[0], 3, 3, device=quat.device, dtype=quat.dtype)
+    w = quat[:, 0]
+    x = quat[:, 1]
+    y = quat[:, 2]
+    z = quat[:, 3]
+    q = (x**2 + y**2 + z**2 + w**2).sqrt()
+    if wrt == "x":
+        d2R[:, 0, 0] = 2
+        d2R[:, 1, 1] = -2
+        d2R[:, 2, 2] = -2
+    if wrt == "y":
+        d2R[:, 0, 0] = -2
+        d2R[:, 1, 1] = 2
+        d2R[:, 2, 2] = -2
+    if wrt == "z":
+        d2R[:, 0, 0] = -2
+        d2R[:, 1, 1] = -2
+        d2R[:, 2, 2] = 2
+    if wrt == "w":
+        d2R[:, 0, 0] = 2
+        d2R[:, 1, 1] = 2
+        d2R[:, 2, 2] = 2
+    return d2R
+    
+def build_scaling_rotation(s, r):
+    L = torch.zeros((s.shape[0], 3, 3), dtype=torch.float, device="cuda")
+    R = build_rotation(r)
+
+    L[:,0,0] = s[:,0]
+    L[:,1,1] = s[:,1]
+    L[:,2,2] = s[:,2]
+
+    L = R @ L
+    return L
+
+def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
+    L = build_scaling_rotation(scaling_modifier * scaling, rotation)
+    actual_covariance = L @ L.transpose(1, 2)
+    return actual_covariance
+
+def compute_trace_delta(S, Q_tilde, dQ_tilde):
+    quat = rotation_activation(Q_tilde)
+    quat_new = rotation_activation(Q_tilde + dQ_tilde)
+
+    R = quat_to_rot(quat, normalize=True).transpose(1, 2)
+    R_new = quat_to_rot(quat_new, normalize=True).transpose(1, 2)
+    R_delta = R.transpose(1, 2) @ R_new
+
+    covar_delta = (S ** -2).unsqueeze(-1) * R_delta.transpose(1, 2) * (S ** 2).unsqueeze(1) @ R_delta
+    trace_delta = torch.diagonal(covar_delta, dim1=1, dim2=2).sum(dim=1) - 3.0
+
+    covar1 = build_covariance_from_scaling_rotation(S, 1.0, quat)
+    covar_new1 = build_covariance_from_scaling_rotation(S, 1.0, quat_new)
+
+    covar_delta1 = torch.linalg.solve(covar1, covar_new1)
+    trace_delta1 = torch.diagonal(covar_delta1, dim1=1, dim2=2).sum(dim=1) - 3.0
+
+    return trace_delta
+
+torch.manual_seed(10115)
+
+p = 1
+
+# S = torch.exp(torch.randn(p, 3))
+# Q_tilde = torch.randn(p, 4) 
+# S = torch.tensor([[1.0000056, 10.60, 0.00000060]], dtype=torch.double)
+# Q_tilde = torch.tensor([[0.01, -0.002,  0.000954,  -0.000356]], dtype=torch.double) 
+S = torch.tensor([[0.0931, 0.0892, 0.0892]], dtype=torch.double)
+Q_tilde = torch.tensor([[206070.5938, 162166.0625, 130921.7109, 262986.6875]], dtype=torch.double)
+delta_Q_tilde = torch.tensor([[-0.4, 1.0, 0.1, 0.5]], dtype=torch.double)
+delta_Q_tilde /= delta_Q_tilde.norm(dim=1, keepdim=True)
+quat = rotation_activation(Q_tilde)
+R = quat_to_rot(quat).transpose(1, 2)
+
+R_tilde = quat_to_rot(Q_tilde, normalize=False).transpose(1, 2)
+
+w = Q_tilde[:,0]
+x = Q_tilde[:,1]
+y = Q_tilde[:,2]
+z = Q_tilde[:,3]
+q = (x**2 + y**2 + z**2 + w**2).sqrt()
+
+G = torch.zeros(p, 3, 3)
+
+coeffs = torch.zeros_like(Q_tilde)
+
+for j in range(4):
+    param = ["w", "x", "y", "z"][j]
+    t = [w, x, y, z][j]
+
+    dR_tilde = quat_to_drot(Q_tilde, wrt=param, normalize=False).transpose(1, 2)
+    d2R_tilde = quat_to_d2rot(Q_tilde, wrt=param, normalize=False).transpose(1, 2)
+
+
+    dG = R.transpose(1, 2) @ ((q ** -2) * dR_tilde - 2 * t * (q ** -4) * R_tilde)
+    d2G = R.transpose(1, 2) @ (-2 * t * (q ** -4) * dR_tilde + ((q ** -2) * d2R_tilde + 8 * (t ** 2) * (q ** -6) * R_tilde - 2 * t * (q ** -4) * dR_tilde - 2 * (q ** -4) * R_tilde))
+
+    SdGSinv = S.unsqueeze(-1) * dG * (S ** -1).unsqueeze(1)
+    coeff = 2 * ((SdGSinv * SdGSinv).sum(dim=(1,2)) + torch.diagonal(d2G, dim1=1, dim2=2).sum(dim=1))
+    coeffs[:, j] = coeff
+
+    trace_delta_list = []
+    trace_delta_est_list = []
+
+import code; code.interact(local=locals())
+
+max_stepsize = 0.1 * q.item()
+stepsize = max_stepsize / 50.0
+for i in range(-50, 50, 1):
+    a = i * stepsize
+    dQ_tilde = a * delta_Q_tilde
+    trace_delta = compute_trace_delta(S, Q_tilde, dQ_tilde)
+    trace_delta_est = (0.5 * coeffs * (dQ_tilde ** 2)).sum(dim=1)
+
+    trace_delta_list.append(trace_delta[0].cpu().numpy())
+    trace_delta_est_list.append(trace_delta_est[0].cpu().numpy())
+
+fig = plt.figure(figsize=(12, 8))
+
+plt.plot(np.arange(-50, 50, 1) * stepsize, trace_delta_list, label='Actual Trace Delta')
+plt.plot(np.arange(-50, 50, 1) * stepsize, trace_delta_est_list, label='Estimated Trace Delta')
+plt.xlabel('Step Size (a)')
+plt.ylabel('Trace Delta')
+plt.title('Trace Delta vs Step Size')
+plt.legend()
+
+plt.savefig('figures/trace_delta_vs_stepsize_single_variate.png')

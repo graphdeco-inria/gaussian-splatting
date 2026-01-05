@@ -41,8 +41,7 @@ from solver.diagonal_estimator import restarted_squared_hutchinson, restarted_hu
 from solver.solver_functions import construct_loss_func, construct_g_func, construct_JTJv_func, dot, saxpy, construct_Dhat_func
 from solver.adam_optimizer import AdamOptimizer
 from solver.sophia_optimizer import SophiaOptimizer
-from solver.KL_clip2 import clip_kl
-from solver.hellinger_clip import clip_hellinger, compute_hellinger_distance
+from solver.KL_clip import clip_kl
 
 from utils.gif_renderer import GifRenderer
 
@@ -171,18 +170,6 @@ class ExponentialLRScheduler:
         current_iter = max(0, min(current_iter, self.max_iter))
         return self.init_lr * (self.gamma ** current_iter)
 
-def debug_hellinger(gaussians, update, debug=False):
-    for param_group in ["xyz", "scaling", "rotation", "opacity", "features_dc", "features_rest"]:
-        update_group = GaussianModelVector.zeros_like(gaussians)
-        setattr(update_group, param_group, getattr(update, param_group).clone())
-
-        hellinger_dist = compute_hellinger_distance(gaussians, update_group, debug=debug)
-        print(f"H dist ({param_group}): max = {hellinger_dist.max().item():.6f}, mean = {hellinger_dist.mean().item():.6f}")
-
-    total_hellinger_dist = compute_hellinger_distance(gaussians, update, debug=debug)
-    print(f"H dist (total): max = {total_hellinger_dist.max().item():.6f}, mean = {total_hellinger_dist.mean().item():.6f}")
-
-
 def run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
                   pipe, cameras, background, lr,
                   loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
@@ -191,16 +178,7 @@ def run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
     sophia_optimizer = SophiaOptimizer(lr=lr, betas=(0.9, 0.99), eps=1e-15, clip=True,
                                        diagonal_update_interval=10,)
 
-    print(f"Running test: {name}")
-
-    if isinstance(NUM_ITERATIONS, tuple):
-        adam_iterations, sophia_iterations, sophia_tr_iterations = NUM_ITERATIONS
-    else:
-        adam_iterations = NUM_ITERATIONS
-        sophia_iterations = NUM_ITERATIONS
-        sophia_tr_iterations = NUM_ITERATIONS
-
-    gif_interval = int(math.ceil(sophia_tr_iterations / 100))
+    gif_interval = int(math.ceil(NUM_ITERATIONS / 100))
 
     with torch.no_grad():
         image_gt_torch = render(viewpoint_camera=cameras[0], pc=gaussians_gt, pipe=pipe, bg_color=background)["render"]
@@ -212,13 +190,13 @@ def run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
         adam_images = []
 
         gaussians = gaussians_init.clone()
-        for _ in range(adam_iterations):
+        for _ in range(NUM_ITERATIONS):
             loss_adam, batch_stats = loss_func(gaussians=gaussians, viewpoint_cams=cameras, return_stats=True)
             image_adam = batch_stats[0]["images"][0]
             if _ % gif_interval == 0:
                 adam_losses.append(loss_adam.item())
                 adam_images.append(image_adam)
-            print(f"Adam loss: {loss_adam.item():.10f}", end="\r" if _ < adam_iterations - 1 else "\n")
+            print(f"Adam loss: {loss_adam.item():.10f}")
 
             g = g_func(gaussians=gaussians, viewpoint_cams=cameras)
             s_adam = adam_optimizer.get_update(g)
@@ -233,7 +211,7 @@ def run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
 
         gaussians = gaussians_init.clone()
 
-        for _ in range(sophia_iterations):
+        for _ in range(NUM_ITERATIONS // 100):
             JTJv_func1 = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=cameras, S=S, scale=1)
             Dhat_func1 = partial(Dhat_func, gaussians=gaussians, viewpoint_cams=cameras)
 
@@ -242,7 +220,7 @@ def run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
             if _ % gif_interval == 0:
                 sophia_losses.append(loss_sophia.item())
                 sophia_images.append(image_sophia)
-            print(f"Sophia loss: {loss_sophia.item():.10f}", end="\r" if _ < sophia_iterations - 1 else "\n")
+            print(f"Sophia loss: {loss_sophia.item():.10f}")
 
             g = g_func(gaussians=gaussians, viewpoint_cams=cameras)
 
@@ -259,7 +237,7 @@ def run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
 
         gaussians = gaussians_init.clone()
 
-        for _ in range(sophia_tr_iterations):
+        for _ in range(NUM_ITERATIONS):
             JTJv_func1 = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=cameras, S=S, scale=1)
             Dhat_func1 = partial(Dhat_func, gaussians=gaussians, viewpoint_cams=cameras)
 
@@ -268,21 +246,16 @@ def run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
             if _ % gif_interval == 0:
                 sophia_tr_losses.append(loss_sophia_tr.item())
                 sophia_tr_images.append(image_sophia_tr)
+            print(f"Sophia TR loss: {loss_sophia_tr.item():.10f}")
 
             g = g_func(gaussians=gaussians, viewpoint_cams=cameras)
 
             s_sophia_tr = sophia_optimizer.get_update(g, JTJv_func1, Dhat_func1, z_gen_func, S)
             s_sophia_tr_old = s_sophia_tr.clone()
 
-            # s_sophia_tr = clip_kl(gaussians, s_sophia_tr, kl_threshold, 0.01, lr)
-            s_sophia_tr = clip_hellinger(gaussians, s_sophia_tr, kl_threshold, lr)
+            s_sophia_tr = clip_kl(gaussians, s_sophia_tr, kl_threshold, lr)
 
-            # debug_hellinger(gaussians, s_sophia_tr_old)
-            # print("After KL clipping:")
-            # debug_hellinger(gaussians, s_sophia_tr)
-
-            print(f"Sophia TR loss: {loss_sophia_tr.item():.10f}", end="\r" if _ < sophia_tr_iterations - 1 else "\n")
-            # safe_interact(local=locals(), banner="\nAfter KL clipping in run_optimizer")
+            # safe_interact(local=locals(), banner="After KL clipping in run_optimizer")
 
             gaussians.update_step(s_sophia_tr)
 
@@ -304,23 +277,10 @@ def training(opt, pipe):
     white_background = False
     cameras_extent = 7.5
     model_path = ""
-    NUM_ITERATIONS = (100, 100, 100)
-    H, W = 200, 240
+    NUM_ITERATIONS = 200
+    H, W = 200, 200
     max_num_points = 5
-    kl_threshold = 0.001
-
-
-    run_shortside = False
-    run_longside = False
-    run_rotation = False
-    run_shrink = False
-    run_expand = False
-    run_underrepresented = False
-    run_two_gaussians = False
-    run_double_gaussian = False
-    run_small_color_shift = False
-    run_large_color_shift = True
-
+    kl_threshold = 0.01
     ####### Some fixed parameters #########
 
     first_iter = 0
@@ -395,322 +355,174 @@ def training(opt, pipe):
 
 
     with torch.no_grad():
-        if run_shortside:
-            ############## Test 1: Short-side shift ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
+        if True:
+            gaussians0 = init_invisible_gaussians(max_num_points, sh_degree, opt)
+            idx = add_gaussian(gaussians0,
                                xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -1.2, -1.2], device="cuda"),
+                               scaling=torch.tensor([-0.0, -0.0, -0.0], device="cuda"),
                                rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-
-            gaussians_init = gaussians_gt.clone()
-            gaussians_init._xyz.data[0, 1] += 0.7
-
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init, 
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="shortside")
-
-        if run_longside:
-            ############## Test 2: Long-side shift ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -1.2, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-
-            gaussians_init = gaussians_gt.clone()
-            gaussians_init._xyz.data[0, 0] -= 1.2
-
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="longside")
-
-            torch.cuda.empty_cache()
-
-        if run_rotation:
-            ############## Test 3: Rotation ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.0, -1.2, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-
-            gaussians_init = gaussians_gt.clone()
-            gaussians_init._rotation.data[0] += torch.tensor([-.0, 0.9, -0.5, -1.0], device="cuda")
-
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="rotation")
-
-        if run_shrink:
-            ############## Test 4: Shrink and shift ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._xyz.data += 100000.0           # Init invisible gaussians
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.9, -1.7, -1.7], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-
-            gaussians_init = gaussians_gt.clone()
-            gaussians_init._xyz.data[0] += torch.tensor([0.5, -0.3, 0.1], device="cuda")
-            gaussians_init._scaling.data[0] += torch.tensor([0.6, 0.9, 0.01], device="cuda")
-
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="shrink")
-
-        if run_expand:
-            ############## Test 5: Expand and shift ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._xyz += 100000.0           # Init invisible gaussians
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
-                               scaling=torch.tensor([0.4, 0.3, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-
-            gaussians_init = gaussians_gt.clone()
-            gaussians_init._xyz.data[0] += torch.tensor([0.5, -0.3, 0.1], device="cuda")
-            gaussians_init._scaling.data[0] -= torch.tensor([0.4, 0.5, 0.01], device="cuda")
-
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="expand")
-
-        if run_underrepresented:
-            ############## Test 6: Underrepresented ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([-0.566, 0.21, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -1.2, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([0.566, 0.21, -0.93], device="cuda"),
-                               scaling=torch.tensor([-0.6, -1.6, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.4, 2.5, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=idx)
-
-            gaussians_init = init_invisible_gaussians(max_num_points, sh_degree, opt)
-            idx = add_gaussian(gaussians_init,
-                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
-                               scaling=torch.tensor([0.4, 0.1, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="underrepresented")
-
-        if run_two_gaussians:
-            ############## Test 7: Two Gaussians ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([-0.566, 0.21, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -1.2, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([0.766, 0.21, -0.203], device="cuda"),
-                               scaling=torch.tensor([-1.6, -0.3, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.4, 2.5, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=idx)
-
-            gaussians_init = init_invisible_gaussians(max_num_points, sh_degree, opt)
-            idx = add_gaussian(gaussians_init,
-                               xyz=torch.tensor([-0.566, 0.31, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -0.8, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 4.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[2.5, 0.1, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-            idx = add_gaussian(gaussians_init,
-                               xyz=torch.tensor([0.966, 0.11, -0.223], device="cuda"),
-                               scaling=torch.tensor([-1.0, -0.3, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.5, 0.0, 0.1, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.4, 2.5, 0.1]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=idx)
-
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="two_gaussians")
-
-        if run_double_gaussian:
-            ############## Test 8: Double gaussian ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([0.366, 0.5, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -1.2, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[-0.0, -0.0, -0.0]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([0.366, -0.5, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -1.2, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.1, -3.0, -3.0]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=1)
-
-            gaussians_init = init_invisible_gaussians(max_num_points, sh_degree, opt)
-            idx = add_gaussian(gaussians_init,
-                               xyz=torch.tensor([-0.366, 0.31, -0.63], device="cuda"),
-                               scaling=torch.tensor([0.0, -0.9, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.2, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.0, 0.0, 0.0]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
-            idx = add_gaussian(gaussians_init,
-                               xyz=torch.tensor([0.366, -0.31, -0.703], device="cuda"),
-                               scaling=torch.tensor([-0.3, -1.0, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.1, -3.0, -3.0]], device="cuda"),
-                               features_rest=0.02 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=1)
-
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="double_red")
-
-        if run_small_color_shift:
-            ############## Test 9: small color shift ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([0.366, 0.5, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -1.2, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[1.3, -0.0, -0.0]], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
                                features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
                                opacity=torch.tensor([[10.0]], device="cuda"), 
                                idx=0)
 
-            gaussians_init = init_invisible_gaussians(max_num_points, sh_degree, opt)
-            idx = add_gaussian(gaussians_init,
-                               xyz=torch.tensor([-0.066, -0.1, -0.53], device="cuda"),
-                               scaling=torch.tensor([0.0, -0.9, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.2, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.8, 0.1, 0.2]], device="cuda"),
-                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=0)
+            image0 = render(viewpoint_camera=cameras[0], pc=gaussians0, pipe=pipe, bg_color=background)["render"]
 
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="small_color_shift")
-
-        if run_large_color_shift:
-            ############## Test 10: large color shift ##############
-            gif_renderer = GifRenderer(num_rows=2, num_cols=2, figsize=(6, 6))
-
-            gaussians_gt._opacity.data -= 100000.0  # Init invisible gaussians
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([0.366, 0.5, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.2, -1.2, -1.2], device="cuda"),
+            gaussians1 = init_invisible_gaussians(max_num_points, sh_degree, opt)
+            idx = add_gaussian(gaussians1,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.1, -0.1, -0.1], device="cuda"),
                                rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[1.3, -0.0, -0.0]], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
                                features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
                                opacity=torch.tensor([[10.0]], device="cuda"), 
                                idx=0)
-            idx = add_gaussian(gaussians_gt,
-                               xyz=torch.tensor([0.366, -0.6, -0.63], device="cuda"),
-                               scaling=torch.tensor([-1.2, -0.1, -1.2], device="cuda"),
+
+            image1 = render(viewpoint_camera=cameras[0], pc=gaussians1, pipe=pipe, bg_color=background)["render"]
+
+            gaussians2 = gaussians1.clone()
+            idx = add_gaussian(gaussians2,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.2, -0.2, -0.2], device="cuda"),
                                rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.0, 0.9, -0.0]], device="cuda"),
-                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
-                               opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=1)
-
-            gaussians_init = init_invisible_gaussians(max_num_points, sh_degree, opt)
-            idx = add_gaussian(gaussians_init,
-                               xyz=torch.tensor([0.366, -0.5, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.6, -0.2, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.2, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.1, 1.2, 0.8]], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
                                features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
                                opacity=torch.tensor([[10.0]], device="cuda"), 
                                idx=0)
-            idx = add_gaussian(gaussians_init,
-                               xyz=torch.tensor([0.366, -0.1, -0.63], device="cuda"),
-                               scaling=torch.tensor([-0.5, -0.1, -1.2], device="cuda"),
-                               rotation=torch.tensor([0.0, 0.2, 0.0, 1.0], device="cuda"),
-                               feature_dc=torch.tensor([[0.1, 1.2, 0.8]], device="cuda"),
+
+            image2 = render(viewpoint_camera=cameras[0], pc=gaussians2, pipe=pipe, bg_color=background)["render"]
+
+            gaussians3 = gaussians1.clone()
+            idx = add_gaussian(gaussians3,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.3, -0.3, -0.3], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
+                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
+                               opacity=torch.tensor([[0.0]], device="cuda"), 
+                               idx=0)
+
+            image3 = render(viewpoint_camera=cameras[0], pc=gaussians3, pipe=pipe, bg_color=background)["render"]
+
+            gaussians4 = gaussians1.clone()
+            idx = add_gaussian(gaussians4,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.4, -0.4, -0.4], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
+                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
+                               opacity=torch.tensor([[0.0]], device="cuda"), 
+                               idx=0)
+
+            image4 = render(viewpoint_camera=cameras[0], pc=gaussians4, pipe=pipe, bg_color=background)["render"]
+
+            gaussians5 = gaussians1.clone()
+            idx = add_gaussian(gaussians5,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.5, -0.5, -0.5], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
+                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
+                               opacity=torch.tensor([[0.0]], device="cuda"), 
+                               idx=0)
+
+            image5 = render(viewpoint_camera=cameras[0], pc=gaussians5, pipe=pipe, bg_color=background)["render"]
+
+            safe_interact(local=locals(), banner="Before run_optimizer Test 1")
+
+            ############## Test 1: Color value change ##############
+
+            gaussians1 = init_invisible_gaussians(max_num_points, sh_degree, opt)
+            idx = add_gaussian(gaussians1,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.3, -0.3, -0.3], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.1, -10.0, -10.0]], device="cuda"),
                                features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
                                opacity=torch.tensor([[10.0]], device="cuda"), 
-                               idx=1)
+                               idx=0)
 
-            run_optimizer(NUM_ITERATIONS, kl_threshold, gaussians_gt, gaussians_init,
-                          pipe, cameras, background, lr,
-                          loss_func, g_func, JTJv_func, Dhat_func, z_gen_func, S,
-                          gif_renderer, name="large_color_shift")
+            image1 = render(viewpoint_camera=cameras[0], pc=gaussians1, pipe=pipe, bg_color=background)["render"]
+
+            gaussians2 = gaussians1.clone()
+            idx = add_gaussian(gaussians2,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.3, -0.3, -0.3], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.2, -10.0, -10.0]], device="cuda"),
+                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
+                               opacity=torch.tensor([[10.0]], device="cuda"), 
+                               idx=0)
+
+            image2 = render(viewpoint_camera=cameras[0], pc=gaussians2, pipe=pipe, bg_color=background)["render"]
+
+            gaussians3 = gaussians1.clone()
+            idx = add_gaussian(gaussians3,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([1.0, 1.0, 1.0], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
+                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
+                               opacity=torch.tensor([[0.0]], device="cuda"), 
+                               idx=0)
+
+            image3 = render(viewpoint_camera=cameras[0], pc=gaussians3, pipe=pipe, bg_color=background)["render"]
+
+            safe_interact(local=locals(), banner="Before run_optimizer Test 1")
+
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
+            im1 = ax1.imshow(image1.permute(1, 2, 0).cpu().numpy())
+            ax1.set_title("GT Gaussian Color 1")
+            im2 = ax2.imshow(image2.permute(1, 2, 0).cpu().numpy())
+            ax2.set_title("GT Gaussian Color 2")
+            plt.savefig("figures/gaussian_color_change.png")
+
+            gaussians3 = init_invisible_gaussians(max_num_points, sh_degree, opt)
+            idx = add_gaussian(gaussians3,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.3, -0.3, -0.3], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
+                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
+                               opacity=torch.tensor([[10.0]], device="cuda"), 
+                               idx=0)
+
+            image3 = render(viewpoint_camera=cameras[0], pc=gaussians3, pipe=pipe, bg_color=background)["render"]
+
+            gaussians4 = gaussians3.clone()
+            idx = add_gaussian(gaussians4,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.3, -0.3, -0.3], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
+                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
+                               opacity=torch.tensor([[0.0]], device="cuda"), 
+                               idx=0)
+
+            image4 = render(viewpoint_camera=cameras[0], pc=gaussians4, pipe=pipe, bg_color=background)["render"]
+
+            gaussians5 = gaussians3.clone()
+            idx = add_gaussian(gaussians5,
+                               xyz=torch.tensor([-0.066, 0.21, -0.63], device="cuda"),
+                               scaling=torch.tensor([-0.3, -0.3, -0.3], device="cuda"),
+                               rotation=torch.tensor([0.0, 0.0, 0.0, 1.0], device="cuda"),
+                               feature_dc=torch.tensor([[0.4, -10.0, -10.0]], device="cuda"),
+                               features_rest=0.00 * torch.ones((1, 15, 3), device="cuda"),
+                               opacity=gaussians4.inverse_opacity_activation(torch.tensor([[0.25]], device="cuda")), 
+                               idx=0)
+
+            image5 = render(viewpoint_camera=cameras[0], pc=gaussians5, pipe=pipe, bg_color=background)["render"]
+
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
+            im1 = ax1.imshow(image3.permute(1, 2, 0).cpu().numpy())
+            ax1.set_title("GT Gaussian Color 1")
+            im2 = ax2.imshow(image4.permute(1, 2, 0).cpu().numpy())
+            ax2.set_title("GT Gaussian Color 2")
+            plt.savefig("figures/gaussian_opacity_change.png")
+
+            safe_interact(local=locals(), banner="Before run_optimizer Test 2")
+
+
 
     exit()
     

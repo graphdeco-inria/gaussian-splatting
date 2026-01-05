@@ -56,6 +56,8 @@ class ModelParams(ParamGroup):
         self.train_test_exp = False
         self.data_device = "cuda"
         self.eval = False
+        self.cap_max = -1
+        self.init_type = "random"
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
@@ -210,7 +212,9 @@ class OptimizationParams(ParamGroup):
         self.damp = self.damp_init
 
         self.noise_opacity_thresh = 0.995
-        self.noise_lr = 0 # 5e4
+        self.noise_lr = 5e5
+        self.scale_reg = 0.01
+        self.opacity_reg = 0.01
 
         self.regularize_scaling = False
         self.scaling_reg_weight = 5e-3
@@ -220,9 +224,12 @@ class OptimizationParams(ParamGroup):
         self.kl_threshold = 0.1
         self.diagonal_init_iter = 20
         self.diagonal_init_restart_iter = 3
-        self.diagonal_update_iter = 2
+        self.diagonal_update_iter = 1
         self.diagonal_update_restart_iter = 1
         self.diagonal_update_interval = 5
+
+        self.normalize_rotation = False
+        self.normalize_rotation_interval = 500
 
         self.eval_interval = 1000
 

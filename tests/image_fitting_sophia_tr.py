@@ -42,6 +42,7 @@ from solver.solver_functions import construct_loss_func, construct_g_func, const
 from solver.adam_optimizer import AdamOptimizer
 from solver.sophia_optimizer import SophiaOptimizer
 from solver.KL_clip import clip_kl
+from solver.KL_clip2 import clip_kl as clip_kl2
 
 from utils.gif_renderer import GifRenderer
 
@@ -348,8 +349,8 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
             s_sophia_tr = sophia_optimizer.get_update(g, JTJv_func1, Dhat_func1, z_gen_func, S)
             s_sophia_tr_old = s_sophia_tr.clone()
 
-            s_sophia_tr = clip_kl(gaussians_sophia_tr, s_sophia_tr, opt.kl_threshold,
-                                  lr.features_dc, lr.features_rest, lr.opacity)
+            # s_sophia_tr = clip_kl(gaussians_sophia_tr, s_sophia_tr, opt.kl_threshold, lr)
+            s_sophia_tr = clip_kl2(gaussians_sophia_tr, s_sophia_tr, opt.kl_threshold, 0.5, lr)
 
             gaussians_sophia_tr.update_step(s_sophia_tr)
 
@@ -390,8 +391,8 @@ def training(opt, pipe, testing_iterations, saving_iterations, checkpoint_iterat
 
             g = g_func(gaussians=gaussians_adam_tr, viewpoint_cams=viewpoint_cams)
             s_adam_tr = adam_optimizer.get_update(g)
-            s_adam_tr = clip_kl(gaussians_adam_tr, s_adam_tr, opt.kl_threshold,
-                             lr.features_dc, lr.features_rest, lr.opacity)
+            # s_adam_tr = clip_kl(gaussians_adam_tr, s_adam_tr, opt.kl_threshold, lr)
+            s_adam_tr = clip_kl2(gaussians_adam_tr, s_adam_tr, opt.kl_threshold, 0.5, lr)
 
             gaussians_adam_tr.update_step(s_adam_tr)
 

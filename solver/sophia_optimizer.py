@@ -1,5 +1,7 @@
 import torch
+from solver.gaussian_model_vector import GaussianModelVector
 from solver.diagonal_estimator import restarted_hutchinson
+from utils.general_utils import safe_interact
 
 class SophiaOptimizer:
     def __init__(self, lr=1.0, betas=(0.9, 0.99), eps=1e-15, clip=False, 
@@ -29,16 +31,29 @@ class SophiaOptimizer:
     def reset(self):
         self.iter = 0
         self.total_D_iter = 0
-        self.g_iter_vec = 0
         self.m = 0
         self.lr = self.lr_init
         self.diagonal_initialized = False
-        self.D_iter_vec = 0
         self.D_smoothed = 0
         self.D_est = 0
 
+    def reset_opacity(self):
+        self.m.opacity *= 0.0
+
+        # self._handle_new_parameters will take care of D_smoothed and D_est
+        self.D_smoothed.opacity *= 0.0
+        self.D_est.opacity *= 0.0
+
+
     def update_lr(self, lr):
         self.lr = lr
+
+    def reset_indices(self, indices):
+        if self.iter == 0:
+            return
+        self.m.reset_indices_(indices)
+        self.D_smoothed.reset_indices_(indices)
+        self.D_est.reset_indices_(indices)
 
     def densify_and_prune(self, prune_mask):
         if self.iter == 0:
@@ -52,9 +67,7 @@ class SophiaOptimizer:
             self._handle_new_parameters(g)
         else:
             # Initialize states
-            self.g_iter_vec = torch.zeros(g.as_1d_tensor().shape, device=g.xyz.device, dtype=torch.long)
             self.m = g * 0.0
-            self.D_iter_vec = torch.zeros_like(self.g_iter_vec)
             self.D_smoothed = g * 0.0
             self.D_est = g * 0.0
         if self.iter % self.diagonal_update_interval == 0 or not self.diagonal_initialized:
@@ -62,28 +75,10 @@ class SophiaOptimizer:
 
         self.iter += 1
 
-        # This makes the optimizer implementation not generalizable, but it works for now
-        g_vec = g.as_1d_tensor()
-        m_vec = self.m.as_1d_tensor()
-        nonzero_indices = g_vec.nonzero(as_tuple=True)[0]
-        
-        self.g_iter_vec[nonzero_indices] += 1
-
-        m_vec[nonzero_indices] = self.betas[0] * m_vec[nonzero_indices] + (1 - self.betas[0]) * g_vec[nonzero_indices]
-        m_hat_vec = torch.zeros_like(m_vec)
-        m_hat_vec = m_vec / (1 - (self.betas[0] ** self.g_iter_vec) + self.eps) * (self.g_iter_vec / self.iter) # Need to normalize at the end
-
-        v_vec = self.gamma * self.D_est.as_1d_tensor()
-        # s_vec = -m_hat_vec / (v_vec + self.eps)
-        s_vec = torch.zeros_like(m_vec)
-        s_vec[nonzero_indices] = -m_hat_vec[nonzero_indices] / (v_vec[nonzero_indices] + self.eps)
-        s = g * 0.0
-        s.load_1d_tensor(s_vec)
-
-        # self.m = self.betas[0] * self.m + (1 - self.betas[0]) * g
-        # v = self.gamma * self.D_est
-        # m_hat = self.m / (1 - self.betas[0] ** self.g_iter)
-        # s = -m_hat / (v + self.eps)
+        self.m = self.betas[0] * self.m + (1 - self.betas[0]) * g
+        v = self.gamma * self.D_est
+        m_hat = self.m / (1 - self.betas[0] ** self.iter)
+        s = -m_hat / (v + self.eps)
 
         if self.clip:
             s.clip_(-self.lr, self.lr)
@@ -102,10 +97,9 @@ class SophiaOptimizer:
         if new_params_mask.any():
             beta2 = self.betas[1]
             # print(f"New parameters detected, initializing their D_smoothed values.")
-            self.D_iter_vec[new_params_mask] = 1
             D_smoothed_vec[new_params_mask] = (1 - beta2) * g_vec[new_params_mask].abs()
             D_est_vec = self.D_est.as_1d_tensor()
-            D_est_vec = D_smoothed_vec / (1 - beta2 ** self.D_iter_vec + self.eps) * (self.D_iter_vec / self.total_D_iter)
+            D_est_vec = D_smoothed_vec.abs() / (1 - beta2 ** self.total_D_iter)
             self.D_smoothed.load_1d_tensor(D_smoothed_vec)
             self.D_est.load_1d_tensor(D_est_vec)
 
@@ -123,27 +117,25 @@ class SophiaOptimizer:
             restart_iter = self.num_update_restart_iter
             D_init = self.D_est
 
+        # D_est_t = restarted_hutchinson(Hz_func=JTJv_func,
+        #                                z_gen_func=z_gen_func,
+        #                                D_init=D_init,
+        #                                restart_iter=restart_iter,
+        #                                num_iters=num_diag_iter,
+        #                                )
+        D_init = GaussianModelVector.ones_like(D_init)
         D_est_t = restarted_hutchinson(Hz_func=JTJv_func,
                                        z_gen_func=z_gen_func,
                                        D_init=D_init,
-                                       restart_iter=restart_iter,
+                                       restart_iter=-1,
                                        num_iters=num_diag_iter,
                                        )
+        # D_est_t = D_est_t / (S * S)
         D_est_t = D_est_t.abs() / (S * S)
 
-        D_est_t_vec = D_est_t.as_1d_tensor()
-        nonzero_indices = D_est_t_vec.nonzero(as_tuple=True)[0]
-
-        self.D_iter_vec[nonzero_indices] += 1
-
-        D_smoothed_vec = self.D_smoothed.as_1d_tensor()
-        D_smoothed_vec[nonzero_indices] = beta2 * D_smoothed_vec[nonzero_indices] + (1 - beta2) * D_est_t_vec[nonzero_indices]
-        D_est_vec = self.D_est.as_1d_tensor()
-        D_est_vec = D_smoothed_vec / (1 - beta2 ** self.D_iter_vec + self.eps) * (self.D_iter_vec / self.total_D_iter)
-        self.D_smoothed.load_1d_tensor(D_smoothed_vec)
-        self.D_est.load_1d_tensor(D_est_vec)
-
         # self.D_iter += 1
-        # self.D_smoothed = beta2 * self.D_smoothed + (1 - beta2) * D_est_t
-        # self.D_est = self.D_smoothed / (1 - beta2 ** self.D_iter)
+        self.D_smoothed = beta2 * self.D_smoothed + (1 - beta2) * D_est_t
+        self.D_est = self.D_smoothed.abs() / (1 - beta2 ** self.total_D_iter)
+
+        # safe_interact(local=locals(), banner="After SophiaOptimizer.update_diagonal")
 
