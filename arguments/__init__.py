@@ -105,7 +105,7 @@ class OptimizationParams(ParamGroup):
         self.jvp_start = 15_001
         self.num_images = 5
 
-        self.loss_type = "huber"
+        self.loss_type = "l1"
         self.huber_delta = 1e-1
         self.disable_ssim = False
 
@@ -230,8 +230,8 @@ class OptimizationParams(ParamGroup):
         self.diagonal_update_restart_iter = 1
         self.diagonal_update_interval = 5
 
-        self.normalize_rotation = False
-        self.normalize_rotation_interval = 500
+        self.normalize_rotation = True
+        self.normalize_rotation_interval = 10
 
         self.eval_interval = 1000
 

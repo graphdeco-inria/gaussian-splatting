@@ -44,6 +44,10 @@ class SophiaOptimizer:
         self.D_smoothed.opacity *= 0.0
         self.D_est.opacity *= 0.0
 
+    def normalize_rotation(self, quat_norms):
+        self.m.rotation /= quat_norms
+        self.D_smoothed.rotation /= (quat_norms ** 2)
+        self.D_est.rotation /= (quat_norms ** 2)
 
     def update_lr(self, lr):
         self.lr = lr

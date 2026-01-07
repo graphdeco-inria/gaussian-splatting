@@ -382,7 +382,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             # if iteration % 200 == 1:
             if False and iteration == 3000:
-                safe_interact(local=locals(), banner="Debug prompt at iteration 6000")
+                safe_interact(local=locals(), banner="Debug prompt at iteration 3000")
 
             loss = loss_sophia_tr
             Ll1 = torch.tensor(0.0)
