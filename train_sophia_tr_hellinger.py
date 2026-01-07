@@ -381,7 +381,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 s_sophia_tr = s_adam
 
             # if iteration % 200 == 1:
-            if False and iteration == 6000:
+            if True and iteration == 3000:
                 safe_interact(local=locals(), banner="Debug prompt at iteration 6000")
 
             loss = loss_sophia_tr
@@ -442,8 +442,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     adam_optimizer.densify_and_prune(prune_mask)
                     s_sophia_tr.densify_and_prune_(prune_mask)
 
-                    print(f"Num dead gaussians at iteration {iteration}: {dead_mask.sum().item()}")
-                    print(f"After densification at iteration {iteration}, total gaussians: {gaussians.get_xyz.shape[0]}")
+                    # print(f"Num dead gaussians at iteration {iteration}: {dead_mask.sum().item()}")
+                    # print(f"After densification at iteration {iteration}, total gaussians: {gaussians.get_xyz.shape[0]}")
 
 
                     # safe_interact(local=locals(), banner=f"After densification at iteration {iteration} prompt")
