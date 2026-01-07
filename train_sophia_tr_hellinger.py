@@ -418,7 +418,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 gaussians.update_step(s_sophia_tr)
 
                 if not opt.use_adam and opt.normalize_rotation and iteration % opt.normalize_rotation_interval == 0:
-                    gaussians._rotation /= gaussians._rotation.norm(dim=1, keepdim=True)
+                    quat_norms = gaussians._rotation.norm(dim=1, keepdim=True)
+                    gaussians._rotation /= quat_norms
+                    sophia_optimizer.normalize_rotation(quat_norms)
 
             # Densification
             if iteration < opt.densify_until_iter:
