@@ -11,8 +11,12 @@ git clone https://github.com/rogerhh/gaussian-splatting-lm --recursive
 #### Local Setup
 
 ```shell
-conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_splatting
-conda activate <Drive>/<env_path>/gaussian_splatting
+mamba env create -f environment.yml
+conda activate gaussian_splatting-jvp
+(cd submodules/diff_gaussian_rasterization && pip install -e .)
+(cd submodules/fused-ssim && pip install -e .)
+(cd submodules/simple-knn && pip install -e .)
+
 ```
 
 ### Running
@@ -20,6 +24,6 @@ conda activate <Drive>/<env_path>/gaussian_splatting
 To run the optimizer, simply use
 
 ```shell
-python train.py -s <path to COLMAP or NeRF Synthetic dataset>
+python train_sophia_tr_hellinger.py -s <path to COLMAP or NeRF Synthetic dataset> --iterations 30000 --loss_type="l1" --gif_interval=10000000000 --num_images=1 --kl_threshold=0.000001 --eval --eval_interval=1000 --densify_until_iter=25000
 ```
 
