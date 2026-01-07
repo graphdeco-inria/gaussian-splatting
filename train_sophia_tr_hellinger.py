@@ -354,7 +354,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             clip_start.record()
             # s_sophia_tr = clip_kl(gaussians, s_sophia_tr, opt.kl_threshold, 0.2, lr)
-            s_sophia_tr = clip_hellinger(gaussians, s_sophia_tr, opt.kl_threshold, lr)
+            s_sophia_tr = clip_hellinger(gaussians, s_sophia_tr, opt.kl_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
 
             # DEBUG
             if iteration % gif_interval == 0:
@@ -381,7 +381,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 s_sophia_tr = s_adam
 
             # if iteration % 200 == 1:
-            if True and iteration == 3000:
+            if False and iteration == 3000:
                 safe_interact(local=locals(), banner="Debug prompt at iteration 6000")
 
             loss = loss_sophia_tr

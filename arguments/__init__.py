@@ -211,6 +211,8 @@ class OptimizationParams(ParamGroup):
         self.damp_res_target = 1e-4
         self.damp = self.damp_init
 
+        self.quat_norm_tr = 0.01
+
         self.noise_opacity_thresh = 0.995
         self.noise_lr = 5e5
         self.scale_reg = 0.01
