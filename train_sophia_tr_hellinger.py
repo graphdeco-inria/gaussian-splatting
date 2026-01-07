@@ -237,7 +237,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
     iter_start = torch.cuda.Event(enable_timing = True)
+    gradient_start = torch.cuda.Event(enable_timing = True)
+    sophia_update_start = torch.cuda.Event(enable_timing = True)
+    clip_start = torch.cuda.Event(enable_timing = True)
+    adam_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
+    post_step_start = torch.cuda.Event(enable_timing = True)
+    post_step_end = torch.cuda.Event(enable_timing = True)
 
 
     use_sparse_adam = opt.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
@@ -297,19 +303,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             rand_indices = np.random.choice(viewpoint_indices, num_batch_cameras, replace=False)
             scale = len(viewpoint_indices) / num_batch_cameras
 
-            # DEBUG
-            # rand_indices = np.array([0])
-            # if iteration < 50:
-            #     rand_indices = np.array([0])
-            # elif iteration < 100:
-            #     rand_indices = np.array([1])
-            # elif iteration < 150:
-            #     rand_indices = np.array([2])
-            # else:
-            #     rand_indices = np.array([3])
-
-            # print("Selected viewpoint indices for iteration {}: {}".format(iteration, rand_indices.tolist()))
-
             viewpoint_batch = []
             for rand_idx in rand_indices:
                 viewpoint_cam = viewpoint_stack[rand_idx]
@@ -345,6 +338,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             JTJv_func1 = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=viewpoint_batch, S=S, scale=1)
             Dhat_func1 = partial(Dhat_func, gaussians=gaussians, viewpoint_cams=viewpoint_batch)
 
+            gradient_start.record()
             loss_sophia_tr, g, batch_stats = g_func(gaussians=gaussians, viewpoint_cams=viewpoint_batch, return_stats=True, debug_loss=False)
             loss_sophia_tr = torch.tensor(loss_sophia_tr)
             # print(f"Iteration {iteration}, Sophia TR loss: {loss_sophia_tr.item():.10f}")
@@ -354,9 +348,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             radii = batch_stats[0]["max_radii"]
             viewspace_point_tensor = batch_stats[0]["viewspace_point_tensor"]
 
+            sophia_update_start.record()
             s_sophia_tr = sophia_optimizer.get_update(g, JTJv_func1, Dhat_func1, z_gen_func, S)
             s_sophia_tr_old = s_sophia_tr.clone()
 
+            clip_start.record()
             # s_sophia_tr = clip_kl(gaussians, s_sophia_tr, opt.kl_threshold, 0.2, lr)
             s_sophia_tr = clip_hellinger(gaussians, s_sophia_tr, opt.kl_threshold, lr)
 
@@ -377,6 +373,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print(f"Debug loss sum: {sum(debug_losses)}")
             # DEBUG END
 
+            adam_start.record()
             s_adam = adam_optimizer.get_update(g)
 
             if opt.use_adam:
@@ -413,6 +410,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, train_test_exp), train_test_exp, val_indices=None, test_stack=test_stack, train_stack=viewpoint_stack)
+
+            post_step_start.record()
 
             # First update
             if iteration < opt.iterations:
@@ -467,12 +466,27 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("Model path: {}".format(dataset.model_path + "/chkpnt" + str(iteration) + ".pth"))
                 torch.save((gaussians.capture(), iteration), dataset.model_path + "/chkpnt" + str(iteration) + ".pth")
                 # import code; code.interact(local=locals(), banner="Debug prompt after saving")
-            # safe_interact(local=locals(), banner="After iteration prompt")
 
-            # if iteration % 100 == 0:
-            #     safe_interact(local=locals(), banner="Debug prompt every 100 iterations")
-            #     print("reducing kl threshold")
-            #     opt.kl_threshold = max(0.5 * opt.kl_threshold, 0.00001)
+            post_step_end.record()
+
+            torch.cuda.synchronize()
+
+            iter_time = iter_start.elapsed_time(iter_end)
+            setup_time = iter_start.elapsed_time(gradient_start)
+            gradient_time = gradient_start.elapsed_time(sophia_update_start)
+            sophia_update_time = sophia_update_start.elapsed_time(clip_start)
+            clip_time = clip_start.elapsed_time(adam_start)
+            adam_time = adam_start.elapsed_time(iter_end)
+            post_step_time = post_step_start.elapsed_time(post_step_end)
+
+            if tb_writer:
+                tb_writer.add_scalar('timings/iteration_time', iter_time, iteration)
+                tb_writer.add_scalar('timings/setup_time', setup_time, iteration)
+                tb_writer.add_scalar('timings/gradient_time', gradient_time, iteration)
+                tb_writer.add_scalar('timings/sophia_update_time', sophia_update_time, iteration)
+                tb_writer.add_scalar('timings/clip_time', clip_time, iteration)
+                tb_writer.add_scalar('timings/adam_time', adam_time, iteration)
+                tb_writer.add_scalar('timings/post_step_time', post_step_time, iteration)
 
     # print("\n[ITER {}] Saving Gaussians".format(iteration))
     # scene.save(iteration)

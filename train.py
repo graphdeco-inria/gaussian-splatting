@@ -61,6 +61,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
+    adam_start = torch.cuda.Event(enable_timing = True)
+    adam_end = torch.cuda.Event(enable_timing = True)
 
     use_sparse_adam = opt.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
     depth_l1_weight = get_expon_lr_func(opt.depth_l1_weight_init, opt.depth_l1_weight_final, max_steps=opt.iterations)
@@ -178,6 +180,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
+            adam_start.record()
+
             # Optimizer step
             if iteration < opt.iterations:
                 gaussians.exposure_optimizer.step()
@@ -193,6 +197,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+
+            adam_end.record()
+
+            torch.cuda.synchronize()
+            iter_time = iter_start.elapsed_time(iter_end)
+            gradient_time = iter_time
+            adam_time = adam_start.elapsed_time(adam_end)
+            if tb_writer:
+                tb_writer.add_scalar('timings/iteration_time', iter_time, iteration)
+                tb_writer.add_scalar('timings/gradient_time', gradient_time, iteration)
+                tb_writer.add_scalar('timings/adam_time', adam_time, iteration)
 
 def prepare_output_and_logger(args):    
     if not args.model_path:

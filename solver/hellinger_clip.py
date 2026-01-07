@@ -2,6 +2,7 @@ import math
 import torch
 from utils.general_utils import safe_interact
 from solver.gaussian_model_vector import GaussianModelVector
+from diff_gaussian_rasterization import compute_trust_region_step
 
 def build_rotation(r):
     norm = torch.sqrt(r[:,0]*r[:,0] + r[:,1]*r[:,1] + r[:,2]*r[:,2] + r[:,3]*r[:,3])
@@ -68,144 +69,174 @@ def clip_hellinger(gaussians, update, threshold, lr):
     features_rest = gaussians.get_features_rest                         # (P, 15, 3)
     opacity = gaussians.get_opacity                                     # (P, 1)
 
-    det_sqrt = scaling[:, 0:1] * scaling[:, 1:2] * scaling[:, 2:3]      # (P, 1)
+    clip_xyz_pytorch = True
+    clip_scaling_pytorch = True
+    clip_rotation_pytorch = True
+    clip_opacity_pytorch = True
+    clip_features_dc_pytorch = True
+    clip_features_rest_pytorch = True
 
-    SH0 = 0.282
-    SH_rest = 1.0
-    features_dc_min = -0.5
-    color = (SH0 * features_dc - features_dc_min).clamp(min=1e-20)      # (P, 1, 3)
+    if False:
 
-    covar = build_covariance_from_scaling_rotation(scaling, 1.0, quat)  # (P, 3, 3)
+        det_sqrt = scaling[:, 0:1] * scaling[:, 1:2] * scaling[:, 2:3]      # (P, 1)
 
+        SH0 = 0.282
+        SH_rest = 1.0
+        features_dc_min = -0.5
+        color = (SH0 * features_dc - features_dc_min).clamp(min=1e-20)      # (P, 1, 3)
 
-    ################### Position clip #################
-    """
-    delta_x < sqrt(-8 * Sigma_xx * log(1 - epsilon / (opacity * color)))
-    """
-
-    epsilon_xyz = threshold / 3    # DEBUG
-    epsilon_xyz = epsilon_xyz / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM)   # (P, 1)
-    covar_xyz = covar + 1e-5 * torch.eye(3, device=covar.device).unsqueeze(0)  # (P, 3, 3)
-    covar_inv = torch.linalg.inv(covar_xyz)                                 # (P, 3, 3)
-    covar_inv_diag = torch.diagonal(covar_inv, dim1=-2, dim2=-1)                # (P, 3)
-    xyz_thresh = torch.sqrt((-8 * (1 / covar_inv_diag) * torch.log((1 - epsilon_xyz).clamp(min=1e-20))).clamp(min=1e-20))  # (P, 3)
-    update.xyz.clip_(min=-xyz_thresh, max=xyz_thresh)
-
-    # # DEBUG
-    # for i in range(3):
-    #     update_copy = update * 0.0
-    #     update_copy.xyz[:, i] = update.xyz[:, i]
-    #     H_squared = compute_hellinger_distance(gaussians, update_copy, scale_invariant=True, debug=False)
-    #     param = ["x", "y", "z"][i]
-    #     print(f"param {param} H_squared max: {H_squared.max().item():.6f}, mean: {H_squared.mean().item():.6f}")
-
-    # update_copy = update * 0.0
-    # update_copy.xyz = update.xyz
-    # H_squared = compute_hellinger_distance(gaussians, update_copy, scale_invariant=True, debug=False)
-    # print(f"param xyz combined H_squared max: {H_squared.max().item():.6f}, mean: {H_squared.mean().item():.6f}")
+        covar = build_covariance_from_scaling_rotation(scaling, 1.0, quat)  # (P, 3, 3)
 
 
-    ################### Rotation clip #################
-    """
-    tr(S^{-2} \Delta R^T S^2 \Delta R) < 3 - ln(1 - epsilon / (opacity * color))
-    \|S^{-1} (I + G) S\|_F^2 - 3 < -ln(1 - epsilon / (opacity * color))
-    """
+        ################### Position clip #################
+        """
+        delta_x < sqrt(-8 * Sigma_xx * log(1 - epsilon / (opacity * color)))
+        """
 
-    epsilon_rotation = threshold 
-    epsilon_rotation = epsilon_rotation / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM)   # (P, 1)
-    quat_coeffs = compute_quat_to_trace_coefficient(gaussians._rotation, scaling)  # (P, 4)
-    quat_thresh_hellinger = torch.sqrt((-8 / quat_coeffs * torch.log((1 - epsilon_rotation).clamp(min=1e-20))).clamp(min=1e-20))
-    update.rotation.clip_(min=-quat_thresh_hellinger, max=quat_thresh_hellinger)
-    # quat_thresh = torch.sqrt(epsilon_rotation.clamp(min=1e-20))
-    quat_thresh = gaussians._rotation.norm(dim=-1, keepdim=True) * 0.01
-    update.rotation.clip_(min=-quat_thresh, max=quat_thresh)
-    # safe_interact(local=locals(), banner="hellinger_clip_rotation_debug")
+        epsilon_xyz = threshold / 3    # DEBUG
+        epsilon_xyz = epsilon_xyz / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM)   # (P, 1)
+        covar_xyz = covar + 1e-5 * torch.eye(3, device=covar.device).unsqueeze(0)  # (P, 3, 3)
+        covar_inv = torch.linalg.inv(covar_xyz)                                 # (P, 3, 3)
+        covar_inv_diag = torch.diagonal(covar_inv, dim1=-2, dim2=-1)                # (P, 3)
+        xyz_thresh = torch.sqrt((-8 * (1 / covar_inv_diag) * torch.log((1 - epsilon_xyz).clamp(min=1e-20))).clamp(min=1e-20))  # (P, 3)
+        if clip_xyz_pytorch:
+            update.xyz.clip_(min=-xyz_thresh, max=xyz_thresh)
 
+        # # DEBUG
+        # for i in range(3):
+        #     update_copy = update * 0.0
+        #     update_copy.xyz[:, i] = update.xyz[:, i]
+        #     H_squared = compute_hellinger_distance(gaussians, update_copy, scale_invariant=True, debug=False)
+        #     param = ["x", "y", "z"][i]
+        #     print(f"param {param} H_squared max: {H_squared.max().item():.6f}, mean: {H_squared.mean().item():.6f}")
 
-    # # DEBUG
-    # for i in range(4):
-    #     update_copy = update * 0.0
-    #     update_copy.rotation[:, i] = update.rotation[:, i]
-    #     H_squared = compute_hellinger_distance(gaussians, update_copy, scale_invariant=True, debug=False)
-    #     param = ["qx", "qy", "qz", "qw"][i]
-    #     print(f"param {param} H_squared max: {H_squared.max().item():.6f}, mean: {H_squared.mean().item():.6f}")
-
-    # update_copy = update * 0.0
-    # update_copy.rotation = update.rotation
-    # H_squared = compute_hellinger_distance(gaussians, update_copy, scale_invariant=True, debug=False)
-    # print(f"param rotation combined H_squared max: {H_squared.max().item():.6f}, mean: {H_squared.mean().item():.6f}")
-
-    # safe_interact(local=locals(), banner="hellinger_clip_debug")
-
-    ################### Scaling clip #################
-    """
-    delta_Sx < sqrt(4/3 * S_x^2 * epsilon / (opacity * color))
-    """
-
-    epsilon_scaling = threshold / 3
-    epsiilon_scaling = epsilon_scaling / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM)   # (P, 1)
-    scaling_thresh = torch.sqrt((4/3 * (scaling ** 2) * epsiilon_scaling).clamp(1e-20))            # (P, 3)
-
-    # This scaling thresh is for bounding scaling after exponentiation
-    scaling_new = gaussians.scaling_activation(gaussians._scaling + update.scaling).clamp(min=1e-20)
-    scaling_new.clip_(min=scaling - scaling_thresh, max=scaling + scaling_thresh)
-    update.scaling = gaussians.scaling_inverse_activation(scaling_new) - gaussians._scaling
-
-    # ## DEBUG: Check ##
-    # check_hellinger_scaling(gaussians, update, scale_invariant=True, debug=True)
+        # update_copy = update * 0.0
+        # update_copy.xyz = update.xyz
+        # H_squared = compute_hellinger_distance(gaussians, update_copy, scale_invariant=True, debug=False)
+        # print(f"param xyz combined H_squared max: {H_squared.max().item():.6f}, mean: {H_squared.mean().item():.6f}")
 
 
-    ################### Opacity clip #################
-    """
-    delta_alpha < sqrt(4 * opacity * epsilon / color)
-    """
-    mass_scale = 1.0 # 0.01
+        ################### Rotation clip #################
+        """
+        tr(S^{-2} \Delta R^T S^2 \Delta R) < 3 - ln(1 - epsilon / (opacity * color))
+        \|S^{-1} (I + G) S\|_F^2 - 3 < -ln(1 - epsilon / (opacity * color))
+        """
 
-    epsilon_opacity = threshold * mass_scale
-    opacity_thresh = torch.sqrt(4 * opacity * epsilon_opacity)        # (P, 1)
+        epsilon_rotation = threshold / 4
+        epsilon_rotation = epsilon_rotation / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM)   # (P, 1)
+        quat_coeffs = compute_quat_to_trace_coefficient(gaussians._rotation, scaling)  # (P, 4)
+        quat_thresh_hellinger = torch.sqrt((-8 / quat_coeffs * torch.log((1 - epsilon_rotation).clamp(min=1e-20))).clamp(min=1e-20))
+        update.rotation.clip_(min=-quat_thresh_hellinger, max=quat_thresh_hellinger)
+        # quat_thresh = torch.sqrt(epsilon_rotation.clamp(min=1e-20))
+        quat_norm_thresh = gaussians._rotation.norm(dim=-1, keepdim=True) * 0.01
+        quat_thresh = torch.min(quat_norm_thresh, quat_thresh_hellinger)
 
-    # This opacity thresh is for bounding opacity after activation
-    opacity_new = gaussians.opacity_activation(gaussians._opacity + update.opacity)
-    opacity_new.clip_(min=opacity - opacity_thresh, max=opacity + opacity_thresh)
-    opacity_new.clip_(min=1e-5, max=1.0-1e-5)
-    update.opacity = gaussians.inverse_opacity_activation(opacity_new) - gaussians._opacity
+        if clip_rotation_pytorch:
+            update.rotation.clip_(min=-quat_thresh, max=quat_thresh)
+        # safe_interact(local=locals(), banner="hellinger_clip_rotation_debug")
 
 
-    ################### Color clip #################
-    """
-    delta_color < sqrt(4 * color * epsilon / opacity)
-    """
+        # # DEBUG
+        # for i in range(4):
+        #     update_copy = update * 0.0
+        #     update_copy.rotation[:, i] = update.rotation[:, i]
+        #     H_squared = compute_hellinger_distance(gaussians, update_copy, scale_invariant=True, debug=False)
+        #     param = ["qx", "qy", "qz", "qw"][i]
+        #     print(f"param {param} H_squared max: {H_squared.max().item():.6f}, mean: {H_squared.mean().item():.6f}")
 
-    epsilon_color = threshold / 3 * mass_scale
-    epsilon_color = epsilon_color / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM) # (P, 1)
-    color_thresh = torch.sqrt(4 * color * epsilon_color.unsqueeze(-1))  # (P, 1, 3)
+        # update_copy = update * 0.0
+        # update_copy.rotation = update.rotation
+        # H_squared = compute_hellinger_distance(gaussians, update_copy, scale_invariant=True, debug=False)
+        # print(f"param rotation combined H_squared max: {H_squared.max().item():.6f}, mean: {H_squared.mean().item():.6f}")
 
-    # This color thresh is for bounding color after activation
-    color_new = (SH0 * (features_dc + update.features_dc) - features_dc_min).clamp(min=1e-20)
-    color_new.clip_(min=color - color_thresh, max=color + color_thresh)
-    update.features_dc = (color_new + features_dc_min) / SH0 - features_dc
+        # safe_interact(local=locals(), banner="hellinger_clip_debug")
 
-    
-    epsilon_color_rest = threshold / 15 * mass_scale
-    epsilon_color_rest = epsilon_color_rest / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM) # (P, 1)
-    color_rest_thresh = torch.sqrt(4 * color * epsilon_color_rest.unsqueeze(-1))  # (P, 1, 3)
+        ################### Scaling clip #################
+        """
+        delta_Sx < sqrt(4/3 * S_x^2 * epsilon / (opacity * color))
+        """
 
-    # This color thresh is for bounding color after activation
-    color_rest = (SH_rest * features_rest - features_dc_min).clamp(min=1e-20)
-    color_rest_new = (SH_rest * (features_rest + update.features_rest) - features_dc_min).clamp(min=1e-20)
-    color_rest_new.clip_(min=color_rest - color_rest_thresh, max=color_rest + color_rest_thresh)
-    update.features_rest = (color_rest_new + features_dc_min) / SH_rest - features_rest
+        epsilon_scaling = threshold / 3
+        epsiilon_scaling = epsilon_scaling / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM)   # (P, 1)
+        scaling_thresh = torch.sqrt((4/3 * (scaling ** 2) * epsiilon_scaling).clamp(1e-20))            # (P, 3)
 
-    # update.xyz.clip_(min=-lr.xyz, max=lr.xyz)
-    # update.scaling.clip_(min=-lr.scaling, max=lr.scaling)
-    # update.rotation.clip_(min=-lr.rotation, max=lr.rotation)
+        # This scaling thresh is for bounding scaling after exponentiation
+        scaling_new = gaussians.scaling_activation(gaussians._scaling + update.scaling).clamp(min=1e-20)
+        scaling_new.clip_(min=scaling - scaling_thresh, max=scaling + scaling_thresh)
+        update.scaling = gaussians.scaling_inverse_activation(scaling_new) - gaussians._scaling
 
-    # update.opacity.clip_(min=-lr.opacity, max=lr.opacity)
-    # update.features_dc.clip_(min=-lr.features_dc, max=lr.features_dc)
-    # update.features_rest.clip_(min=-lr.features_rest, max=lr.features_rest)
-    # safe_interact(local=locals(), banner="hellinger_clip")
+        # ## DEBUG: Check ##
+        # check_hellinger_scaling(gaussians, update, scale_invariant=True, debug=True)
 
-    # compute_hellinger_distance(gaussians, update, scale_invariant=True, debug=True)
+
+        ################### Opacity clip #################
+        """
+        delta_alpha < sqrt(4 * opacity * epsilon / color)
+        """
+        mass_scale = 1.0 # 0.01
+
+        epsilon_opacity = threshold * mass_scale
+        opacity_thresh = torch.sqrt(4 * opacity * epsilon_opacity)        # (P, 1)
+
+        # This opacity thresh is for bounding opacity after activation
+        opacity_new = gaussians.opacity_activation(gaussians._opacity + update.opacity)
+        opacity_new.clip_(min=opacity - opacity_thresh, max=opacity + opacity_thresh)
+        opacity_new.clip_(min=1e-5, max=1.0-1e-5)
+        update.opacity = gaussians.inverse_opacity_activation(opacity_new) - gaussians._opacity
+
+
+        ################### Color clip #################
+        """
+        delta_color < sqrt(4 * color * epsilon / opacity)
+        """
+
+        epsilon_color = threshold / 3 * mass_scale
+        epsilon_color = epsilon_color / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM) # (P, 1)
+        color_thresh = torch.sqrt(4 * color * epsilon_color.unsqueeze(-1))  # (P, 1, 3)
+
+        # This color thresh is for bounding color after activation
+        color_new = (SH0 * (features_dc + update.features_dc) - features_dc_min).clamp(min=1e-20)
+        color_new.clip_(min=color - color_thresh, max=color + color_thresh)
+        update.features_dc = (color_new + features_dc_min) / SH0 - features_dc
+
+        
+        # epsilon_color_rest = threshold / 15 * mass_scale
+        # epsilon_color_rest = epsilon_color_rest / (opacity).clamp(min=MIN_MASS_DENOM, max=MAX_MASS_DENOM) # (P, 1)
+        # color_rest_thresh = torch.sqrt(4 * color * epsilon_color_rest.unsqueeze(-1))  # (P, 1, 3)
+
+        # # This color thresh is for bounding color after activation
+        # color_rest = (SH_rest * features_rest - features_dc_min).clamp(min=1e-20)
+        # color_rest_new = (SH_rest * (features_rest + update.features_rest) - features_dc_min).clamp(min=1e-20)
+        # color_rest_new.clip_(min=color_rest - color_rest_thresh, max=color_rest + color_rest_thresh)
+        # update.features_rest = (color_rest_new + features_dc_min) / SH_rest - features_rest
+
+        # update.xyz.clip_(min=-lr.xyz, max=lr.xyz)
+        # update.scaling.clip_(min=-lr.scaling, max=lr.scaling)
+        # update.rotation.clip_(min=-lr.rotation, max=lr.rotation)
+
+        # update.opacity.clip_(min=-lr.opacity, max=lr.opacity)
+        # update.features_dc.clip_(min=-lr.features_dc, max=lr.features_dc)
+        update.features_rest.clip_(min=-lr.features_rest, max=lr.features_rest)
+        # safe_interact(local=locals(), banner="hellinger_clip")
+
+        # compute_hellinger_distance(gaussians, update, scale_invariant=True, debug=True)
+
+    # update_copy = update.clone()
+
+    xyz_step_clipped, scaling_step_clipped, quat_step_clipped, opacity_step_clipped, shs_step_clipped  = compute_trust_region_step(
+            gaussians._xyz, gaussians._scaling, gaussians._rotation, gaussians._opacity, gaussians.get_features,
+            update.xyz, update.scaling, update.rotation, update.opacity, torch.cat([update.features_dc, update.features_rest], dim=1),
+            threshold, MIN_MASS_DENOM, MAX_MASS_DENOM, 1.0, 0.01)
+
+    update.xyz = xyz_step_clipped
+    update.scaling = scaling_step_clipped
+    update.rotation = quat_step_clipped
+    update.opacity = opacity_step_clipped
+    update.features_dc = shs_step_clipped[:, 0:1, :]
+    update.features_rest = shs_step_clipped[:, 1:, :]
+
+    # safe_interact(local=locals(), banner="hellinger_clip_final_debug")
+
 
     return update
 
@@ -354,16 +385,20 @@ def compute_quat_to_trace_coefficient(quat_tilde, S):
     x = quat_tilde[:,1]
     y = quat_tilde[:,2]
     z = quat_tilde[:,3]
-    q = (x**2 + y**2 + z**2 + w**2).sqrt()
+    q2 = (x**2 + y**2 + z**2 + w**2)
+    q4 = q2 ** 2
+    q6 = q4 * q2
 
     w = w[:, None, None]
     x = x[:, None, None]
     y = y[:, None, None]
     z = z[:, None, None]
-    q = q[:, None, None]
+    q2 = q2[:, None, None]
+    q4 = q4[:, None, None]
+    q6 = q6[:, None, None]
 
     R_tilde = quat_to_rot(quat_tilde, normalize=False).transpose(1, 2)
-    R = R_tilde / (q ** 2)
+    R = R_tilde / q2
 
     coeffs = torch.zeros(p, 4, device=quat_tilde.device)
 
@@ -374,12 +409,27 @@ def compute_quat_to_trace_coefficient(quat_tilde, S):
         dR_tilde = quat_to_drot(quat_tilde, wrt=param, normalize=False).transpose(1, 2)
         d2R_tilde = quat_to_d2rot(quat_tilde, wrt=param, normalize=False).transpose(1, 2)
 
-        dG = R.transpose(1, 2) @ ((q ** -2) * dR_tilde - 2 * t * (q ** -4) * R_tilde)
-        d2G = R.transpose(1, 2) @ (-2 * t * (q ** -4) * dR_tilde + ((q ** -2) * d2R_tilde + 8 * (t ** 2) * (q ** -6) * R_tilde - 2 * t * (q ** -4) * dR_tilde - 2 * (q ** -4) * R_tilde))
+        dG = R.transpose(1, 2) @ (dR_tilde / q2 - 2 * t * R_tilde / q4)
+        d2G = R.transpose(1, 2) @ (-2 * t * dR_tilde / q4 + d2R_tilde / q2 + 8 * (t ** 2) * R_tilde / q6 - 2 * t * dR_tilde / q4 - 2 * R_tilde / q4)
 
         SdGSinv = S.unsqueeze(-1) * dG * (S ** -1).unsqueeze(1)
         coeff = 2 * ((SdGSinv * SdGSinv).sum(dim=(1,2)) + torch.diagonal(d2G, dim1=1, dim2=2).sum(dim=1))
         coeffs[:, j] = coeff
+
+        # if j == 0:
+        #     print("param =", param)
+        #     print(w[0].item(), x[0].item(), y[0].item(), z[0].item())
+        #     print((x**2 + y**2 + z**2 + w**2)[0].item())
+        #     print(f"q4 = {q4[0].item()}, q_6 = {q6[0].item()}")
+        #     print(f"R = \n{R[0]}\nR_tilde = \n{R_tilde[0]}")
+        #     print(f"dR_tilde =\n{dR_tilde[0]}\nd2R_tilde = \nd{d2R_tilde[0]}\ndG = \n{dG[0]}\nSdGSinv = \n{SdGSinv[0]}\nd2G = \n{d2G[0]}\ncoeff = {coeff[0].item()} for param {param}")
+        #     temp1 = dR_tilde / q2
+        #     print(f"(dR_tilde / q2) = \n{temp1[0]}")
+        #     temp1 = t * R_tilde / q4
+        #     print(f"(t * R_tilde / q4) = \n{temp1[0]}")
+        #     print("\n\n")
+
+        #     safe_interact(local=locals(), banner="quat_to_trace_coefficient_debug")
 
     # safe_interact(local=locals(), banner="quat_to_trace_coefficient_debug")
 

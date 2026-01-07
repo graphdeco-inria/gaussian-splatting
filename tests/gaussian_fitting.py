@@ -310,15 +310,15 @@ def training(opt, pipe):
     kl_threshold = 0.001
 
 
-    run_shortside = False
-    run_longside = False
-    run_rotation = False
-    run_shrink = False
-    run_expand = False
-    run_underrepresented = False
-    run_two_gaussians = False
-    run_double_gaussian = False
-    run_small_color_shift = False
+    run_shortside = True
+    run_longside = True
+    run_rotation = True
+    run_shrink = True
+    run_expand = True
+    run_underrepresented = True
+    run_two_gaussians = True
+    run_double_gaussian = True
+    run_small_color_shift = True
     run_large_color_shift = True
 
     ####### Some fixed parameters #########
