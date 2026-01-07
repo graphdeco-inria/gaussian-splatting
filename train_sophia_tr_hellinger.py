@@ -497,13 +497,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     # gif_renderer.animate(f"figures/train_sophia_tr.gif", interval=500)
     # print(f"save figures/train_sophia_tr.gif")
 
-    gif_renderer = GifRenderer(num_rows=len(sophia_images), num_cols=2, figsize=(10, 14), gif_interval=1)
-    for row in range(len(sophia_images)):
-        gif_renderer.add_gt(row, 0, viewpoint_stack[row].original_image)
-        gif_renderer.add_series(row, 1, sophia_images[row], sophia_losses[row], title="Sophia TR (Ours)")
-    fname = f"figures/train_sophia_tr.gif" if not opt.use_adam else f"figures/train_adam.gif"
-    gif_renderer.animate(fname, interval=500)
-    print(f"save {fname}")
+    # gif_renderer = GifRenderer(num_rows=len(sophia_images), num_cols=2, figsize=(10, 14), gif_interval=1)
+    # for row in range(len(sophia_images)):
+    #     gif_renderer.add_gt(row, 0, viewpoint_stack[row].original_image)
+    #     gif_renderer.add_series(row, 1, sophia_images[row], sophia_losses[row], title="Sophia TR (Ours)")
+    # fname = f"figures/train_sophia_tr.gif" if not opt.use_adam else f"figures/train_adam.gif"
+    # gif_renderer.animate(fname, interval=500)
+    # print(f"save {fname}")
 
 
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp, val_indices=None, test_stack=None, train_stack=None):
