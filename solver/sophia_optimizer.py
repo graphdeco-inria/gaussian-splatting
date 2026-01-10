@@ -135,6 +135,8 @@ class SophiaOptimizer:
                                        num_iters=num_diag_iter,
                                        )
         # D_est_t = D_est_t / (S * S)
+        if S is None:
+            S = 1.0
         D_est_t = D_est_t.abs() / (S * S)
 
         # self.D_iter += 1
