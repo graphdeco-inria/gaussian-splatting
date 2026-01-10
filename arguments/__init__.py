@@ -151,6 +151,7 @@ class OptimizationParams(ParamGroup):
         self.sophia_epsilon = 1.0
 
         self.use_adam = False
+        self.disable_sophia_if_use_adam = True
 
         self.adahessian_beta1 = 0.9
         self.adahessian_beta2 = 0.999

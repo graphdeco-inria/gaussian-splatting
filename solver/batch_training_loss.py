@@ -63,6 +63,8 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
                         track_weights=False,
                         **kwargs
                         ):
+    scale_reg = kwargs.get('scale_reg', 0.0)
+    opacity_reg = kwargs.get('opacity_reg', 0.0)
 
     B = len(viewpoint_cams)
 
@@ -106,11 +108,10 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
     for vc in viewpoint_cams:
         H, W = int(vc.image_height), int(vc.image_width)
         n = 3 * H * W
-        alpha_per_image.append(math.sqrt(alpha / n))
-        beta_per_image.append(math.sqrt(beta / n))
+        alpha_per_image.append(math.sqrt(2.0 * alpha / n))
+        beta_per_image.append(math.sqrt(2.0 * beta / n))
     alpha_per_image = torch.tensor(alpha_per_image, dtype=images.dtype, device=images.device).view(B, 1, 1, 1)
     beta_per_image = torch.tensor(beta_per_image, dtype=images.dtype, device=images.device).view(B, 1, 1, 1)
-
     
     # TODO: get checkpointing to work here
     Ll1_per_pixel, ssim_loss_per_pixel = compute_batch_loss_block(images, alpha_masks, gt_images, alpha_per_image, beta_per_image, FUSED_SSIM_AVAILABLE, **kwargs) # use_l1_loss, disable_ssim)
@@ -135,7 +136,24 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
         pass
         # loss_image = torch.cat((Ll1_per_pixel, ssim_loss_per_pixel), dim=1)
 
-    loss_image = torch.cat((Ll1_per_pixel.flatten(), ssim_loss_per_pixel.flatten()))
+
+    if scale_reg > 0.0:
+        scaling = gaussians.get_scaling
+        scaling_numel = scaling.numel()
+        scaling_nonzero = scaling[scaling > 0.0]
+        scaling_reg_loss = math.sqrt(2.0 * scale_reg / scaling_numel) * scaling_nonzero.sqrt()
+    else:
+        scaling_reg_loss = torch.tensor([], device=images.device)
+
+    if opacity_reg > 0.0:
+        opacity = gaussians.get_opacity
+        opacity_numel = opacity.numel()
+        opacity_nonzero = opacity[opacity > 0.0]
+        opacity_reg_loss = math.sqrt(2.0 * opacity_reg / opacity_numel) * opacity_nonzero.sqrt()
+    else:
+        opacity_reg_loss = torch.tensor([], device=images.device)
+
+    loss_image = torch.cat((Ll1_per_pixel.flatten(), ssim_loss_per_pixel.flatten(), scaling_reg_loss.flatten(), opacity_reg_loss.flatten()), dim=0)
 
     if kwargs.get("debug_loss", False):
         safe_interact(local=locals(), banner="Debug batch_training_loss")

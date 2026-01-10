@@ -24,6 +24,9 @@ conda activate gaussian_splatting-jvp
 To run the optimizer, simply use
 
 ```shell
-python train_sophia_tr_hellinger.py -s <path to COLMAP or NeRF Synthetic dataset> --iterations 30000 --loss_type="l1" --noise_lr=0.0 --gif_interval=10000000000 --num_images=1 --kl_threshold=0.000001 --eval --eval_interval=1000 --densify_until_iter=25000
+python train_mcmc_sophia_hellinger.py -s <path to COLMAP or NeRF Synthetic dataset> --iterations 30000 --loss_type="l1" --noise_lr=0.0 --kl_threshold=0.000001 --eval --eval_interval=1000 --cap_max <CAP_MAX>
 ```
 
+cap_max is the max number of Gaussians, set to 1100000 for the train dataset
+
+One more difference: In the 3DGS-MCMC train script, the densify_until_iter parameter is set to 25000, but it is default to 15000 in our script.

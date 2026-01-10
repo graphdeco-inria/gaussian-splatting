@@ -196,6 +196,19 @@ class GaussianModelVector:
                        rademacher(other.exposure_shape),)
 
     @classmethod
+    def from_gaussians(cls, gaussians):
+        xyz = gaussians._xyz
+        features_dc = gaussians._features_dc
+        features_rest = gaussians._features_rest
+        scaling = gaussians._scaling
+        rotation = gaussians._rotation
+        opacity = gaussians._opacity
+        exposure = gaussians._exposure
+
+        return cls(xyz, features_dc, features_rest, scaling, rotation, opacity, exposure,
+                   gaussians=gaussians)
+
+    @classmethod
     def from_gaussians_grad(cls, gaussians):
         xyz = gaussians._xyz.grad if gaussians._xyz.grad is not None else torch.zeros_like(gaussians._xyz)
         features_dc = gaussians._features_dc.grad if gaussians._features_dc.grad is not None else torch.zeros_like(gaussians._features_dc)
