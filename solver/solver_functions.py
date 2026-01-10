@@ -6,6 +6,7 @@ from functools import partial
 from solver.gaussian_model_vector import GaussianModelVector
 from solver.training_loss import scalar_training_loss
 from solver.batch_training_loss import batch_training_loss
+# from solver.single_training_loss import single_training_loss as batch_training_loss
 from solver.training_loss_hessian import scalar_training_loss_hessian
 from utils.general_utils import safe_interact
 
@@ -61,6 +62,7 @@ def g(gaussians, viewpoint_cams, scale=1.0, return_loss=False, **render_kwargs):
         l = 0.0
         stats = []
         for vc in viewpoint_cams:
+            
             if return_stats:
                 l_vec_i, stats_i = batch_training_loss(gaussians=gaussians, viewpoint_cams=[vc], **render_kwargs)
                 stats.append(stats_i)
