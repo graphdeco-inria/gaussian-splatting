@@ -61,6 +61,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
     depth_l1_weight = get_expon_lr_func(opt.depth_l1_weight_init, opt.depth_l1_weight_final, max_steps=opt.iterations)
 
+    kl_threshold_func = get_expon_lr_func(lr_init=opt.kl_threshold_init, 
+                                          lr_final=opt.kl_threshold_final, 
+                                          lr_delay_mult=opt.kl_threshold_delay_mult,
+                                          max_steps=opt.iterations)
+
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
@@ -206,7 +211,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 else:
                     s_sophia = sophia_optimizer.get_update(g, JTJv_func1, Dhat_func1, z_gen_func, S=None)
                     s_sophia_old = s_sophia.clone()
-                    s_sophia = clip_hellinger(gaussians, s_sophia, opt.kl_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
+                    kl_threshold = kl_threshold_func(iteration)
+                    s_sophia = clip_hellinger(gaussians, s_sophia, kl_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
 
                 if opt.use_adam:
                     s = s_adam
