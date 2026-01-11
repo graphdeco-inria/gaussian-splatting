@@ -10,3 +10,10 @@ screenshots
 
 *.out
 *.pth
+
+
+logs
+eval
+job_script.sh
+srun_sub.sh
+srun_sub_all.sh

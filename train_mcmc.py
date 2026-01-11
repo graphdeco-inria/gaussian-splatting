@@ -173,6 +173,8 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
         tb_writer.add_scalar('iter_time', elapsed, iteration)
 
+    testing_iterations = testing_iterations + list(range(0, opt.iterations + 1, opt.eval_interval))
+
     # Report test and samples of training set
     if iteration in testing_iterations:
         torch.cuda.empty_cache()
