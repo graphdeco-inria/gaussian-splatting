@@ -224,7 +224,10 @@ class OptimizationParams(ParamGroup):
         self.scaling_reg_thresh = 5
         self.debug_loss = False
 
-        self.kl_threshold = 0.1
+        self.kl_threshold_init = 1e-6
+        self.kl_threshold_final = 1e-8
+        self.kl_threshold_delay_mult = 0.01
+        self.kl_threshold_max_steps = 30_000
         self.diagonal_init_iter = 20
         self.diagonal_init_restart_iter = 3
         self.diagonal_update_iter = 1
