@@ -21,10 +21,15 @@ deep_blending_scenes=("drjohnson" "playroom")
 # common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --kl_threshold=0.000001 --eval --eval_interval=1000 --cap_max 1000000 "
 # output_dir=$output_path/$SCENE/
 
+# # ours
+# train_script="train_mcmc_sophia_hellinger.py"
+# common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --kl_threshold=1e-7 --eval --eval_interval=1000 --cap_max 1000000 "
+# output_dir=$output_path/$SCENE/kl_1e-7
+
 # ours
 train_script="train_mcmc_sophia_hellinger.py"
-common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --kl_threshold=1e-7 --eval --eval_interval=1000 --cap_max 1000000 "
-output_dir=$output_path/$SCENE/kl_1e-7
+common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --eval --eval_interval=1000 --cap_max 1000000 "
+output_dir=$output_path/$SCENE/kl_1e-6-1e-8_4d33134
 
 if [[ " ${mipnerf360_outdoor_scenes[*]} " =~ " ${SCENE} " ]]; then
     colmap_datadir=$mipnerf360_datadir/$SCENE
