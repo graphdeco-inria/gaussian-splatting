@@ -16,7 +16,8 @@ conda activate gaussian_splatting-jvp
 (cd submodules/diff_gaussian_rasterization && pip install -e .)
 (cd submodules/fused-ssim && pip install -e .)
 (cd submodules/simple-knn && pip install -e .)
-
+# extra env needed
+apt update && apt install libtiff5
 ```
 
 ### Running
