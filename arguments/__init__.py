@@ -237,6 +237,8 @@ class OptimizationParams(ParamGroup):
         self.normalize_rotation = True
         self.normalize_rotation_interval = 10
 
+        self.opacity_prune_thresh = 0.005
+
         self.eval_interval = 1000
 
         super().__init__(parser, "Optimization Parameters")

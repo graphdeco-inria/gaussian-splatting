@@ -227,7 +227,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             densified = False
             if iteration < opt.densify_until_iter and iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                 densified = True
-                dead_mask = (gaussians.get_opacity <= 0.005).squeeze(-1)
+                dead_mask = (gaussians.get_opacity <= opt.opacity_prune_thresh).squeeze(-1)
                 gaussians.relocate_gs(dead_mask=dead_mask)
                 gaussians.add_new_gs(cap_max=args.cap_max)
 
