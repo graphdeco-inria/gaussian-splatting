@@ -227,9 +227,31 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             densified = False
             if iteration < opt.densify_until_iter and iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                 densified = True
+
+                if opt.sparsify_gaussians:
+                    opacity_cutoff = 0.005
+                    dead_mask = (gaussians.get_opacity <= opacity_cutoff).squeeze(-1)
+                    probs = 1 - (gaussians.get_opacity[:, 0]) 
+                    probs[dead_mask] = 0.0
+                    num_alives = (probs > 0).sum().item()
+                    densify_num_samples = int(opt.sparsify_ratio * num_alives)
+                    # print(f"Densification sampling {densify_num_samples} gaussians among {num_alives} alives.")
+                    if densify_num_samples >= 1:
+                        sampled_indices, ratio = gaussians._sample_alives(probs, densify_num_samples)
+                        gaussians._opacity[sampled_indices] = -10000.0
+
+                opacity_cutoff = 0.005
+                dead_mask = (gaussians.get_opacity <= opacity_cutoff).squeeze(-1)
+
                 dead_mask = (gaussians.get_opacity <= opt.opacity_prune_thresh).squeeze(-1)
-                gaussians.relocate_gs(dead_mask=dead_mask)
-                gaussians.add_new_gs(cap_max=args.cap_max)
+
+                if opt.densify_preserve_gaussians:
+                    gaussians.relocate_gs2(dead_mask=dead_mask)
+                    gaussians.add_new_gs2(cap_max=args.cap_max)
+                else:
+                    gaussians.relocate_gs(dead_mask=dead_mask)
+                    gaussians.add_new_gs(cap_max=args.cap_max)
+
 
                 adam_optimizer.reset_indices(dead_mask)
                 sophia_optimizer.reset_indices(dead_mask)
