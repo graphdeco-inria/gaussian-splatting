@@ -25,7 +25,7 @@ apt update && apt install libtiff5
 To run the optimizer, simply use
 
 ```shell
-python train_mcmc_sophia_hellinger.py -s <path to COLMAP or NeRF Synthetic dataset> --iterations 30000 --loss_type="l1" --noise_lr=0.0 --kl_threshold=0.000001 --eval --eval_interval=1000 --cap_max <CAP_MAX>
+python train_mcmc_sophia_hellinger.py -s <path to COLMAP or NeRF Synthetic dataset> --iterations 30000 --loss_type="l1" --noise_lr=0.0 --eval --eval_interval=1000 --cap_max <CAP_MAX>
 ```
 
 cap_max is the max number of Gaussians, set to 1100000 for the train dataset
