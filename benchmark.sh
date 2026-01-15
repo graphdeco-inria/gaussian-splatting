@@ -16,6 +16,11 @@ deep_blending_scenes=("drjohnson" "playroom")
 # common_args=" --iterations 30000 --loss_type=l1 --eval --eval_interval=1000 --quiet --cap_max 1000000 "
 # output_dir=$output_path/$SCENE/mcmc
 
+# # baseline
+# train_script="train_mcmc.py"
+# common_args=" --iterations 30000 --densify_from_iter 50000 --loss_type=l1 --eval --eval_interval=1000 --quiet --cap_max 1000000 "
+# output_dir=$output_path/$SCENE/mcmc_nodensify
+
 # ours
 # train_script="train_mcmc_sophia_hellinger.py"
 # common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --kl_threshold=0.000001 --eval --eval_interval=1000 --cap_max 1000000 "
@@ -27,9 +32,20 @@ deep_blending_scenes=("drjohnson" "playroom")
 # output_dir=$output_path/$SCENE/kl_1e-7
 
 # ours
-train_script="train_mcmc_sophia_hellinger.py"
-common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --eval --eval_interval=1000 --cap_max 1000000 "
-output_dir=$output_path/$SCENE/kl_1e-6-1e-8_4d33134
+# train_script="train_mcmc_sophia_hellinger.py"
+# common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --eval --eval_interval=1000 --cap_max 1000000 "
+# output_dir=$output_path/$SCENE/kl_1e-6-1e-8_4d33134
+
+
+# train_script="train_mcmc_sophia_hellinger.py"
+# common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --kl_threshold_init 1e-4 --eval --eval_interval=1000 --cap_max 1000000 "
+# output_dir=$output_path/$SCENE/kl_1e-4
+
+
+# train_script="train_mcmc_sophia_hellinger.py"
+# common_args=" --iterations 30000 --densify_from_iter 50000 --loss_type=l1 --noise_lr=0.0 --eval --eval_interval=1000 --cap_max 1000000 "
+# output_dir=$output_path/$SCENE/kl_1e-6-1e-8_nodensify
+
 
 if [[ " ${mipnerf360_outdoor_scenes[*]} " =~ " ${SCENE} " ]]; then
     colmap_datadir=$mipnerf360_datadir/$SCENE
