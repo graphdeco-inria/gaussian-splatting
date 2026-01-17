@@ -20,6 +20,7 @@ from utils.general_utils import safe_state, get_expon_lr_func
 import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr
+from utils.oracle_dump import dump_oracle
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 try:
@@ -40,7 +41,7 @@ try:
 except:
     SPARSE_ADAM_AVAILABLE = False
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, oracle_dump_dir="", oracle_dump_iters=None):
 
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
@@ -67,6 +68,26 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_indices = list(range(len(viewpoint_stack)))
     ema_loss_for_log = 0.0
     ema_Ll1depth_for_log = 0.0
+
+    # Oracle dump setup
+    oracle_iters = set(oracle_dump_iters or [])
+    oracle_meta = {
+        "source_path": dataset.source_path,
+        "model_path": dataset.model_path,
+        "sh_degree": dataset.sh_degree,
+        "iterations": opt.iterations,
+    }
+
+    # Dump at iteration 0 (before any training) if requested
+    if oracle_dump_dir and 0 in oracle_iters and first_iter <= 1:
+        dump_path = os.path.join(oracle_dump_dir, "oracle_iter000000.pt")
+        dump_oracle(
+            dump_path=dump_path,
+            iteration=0,
+            gaussians=gaussians,
+            viewpoint_cam=viewpoint_stack[0] if viewpoint_stack else None,
+            meta=oracle_meta,
+        )
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -189,6 +210,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
+            # Oracle dump (after optimizer step)
+            if oracle_dump_dir and iteration in oracle_iters:
+                dump_path = os.path.join(oracle_dump_dir, f"oracle_iter{iteration:06d}.pt")
+                dump_oracle(
+                    dump_path=dump_path,
+                    iteration=iteration,
+                    gaussians=gaussians,
+                    viewpoint_cam=viewpoint_cam,
+                    meta=oracle_meta,
+                )
+
 def prepare_output_and_logger(args):    
     if not args.model_path:
         if os.getenv('OAR_JOB_ID'):
@@ -267,6 +299,8 @@ if __name__ == "__main__":
     parser.add_argument('--disable_viewer', action='store_true', default=False)
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument("--oracle_dump_dir", type=str, default="", help="Oracle dump output directory (empty: disable)")
+    parser.add_argument("--oracle_dump_iters", nargs="*", type=int, default=[], help="Iterations to dump oracle snapshots")
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
@@ -279,7 +313,7 @@ if __name__ == "__main__":
     if not args.disable_viewer:
         network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.oracle_dump_dir, args.oracle_dump_iters)
 
     # All done
     print("\nTraining complete.")
