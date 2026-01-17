@@ -241,6 +241,7 @@ class OptimizationParams(ParamGroup):
         self.diagonal_update_iter = 1
         self.diagonal_update_restart_iter = 1
         self.diagonal_update_interval = 5
+        self.diagonal_accum_abs = False
 
         self.normalize_rotation = True
         self.normalize_rotation_interval = 10

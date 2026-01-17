@@ -95,7 +95,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                        num_init_iter=opt.diagonal_init_iter,
                                        num_init_restart_iter=opt.diagonal_init_restart_iter,
                                        num_update_iter=opt.diagonal_update_iter,
-                                       num_update_restart_iter=opt.diagonal_update_restart_iter
+                                       num_update_restart_iter=opt.diagonal_update_restart_iter,
+                                       diagonal_accum_abs=opt.diagonal_accum_abs
                                        )
     sophia_optimizer.reset()
 

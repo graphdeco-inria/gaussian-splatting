@@ -11,7 +11,9 @@ class SophiaOptimizer:
                  num_init_iter=20, 
                  num_init_restart_iter=3, 
                  num_update_iter=2, 
-                 num_update_restart_iter=1):
+                 num_update_restart_iter=1,
+                 diagonal_accum_abs=False
+                 ):
         self.lr_init = lr
         self.betas = betas
         self.gamma = gamma
@@ -22,6 +24,7 @@ class SophiaOptimizer:
         self.num_init_restart_iter = num_init_restart_iter
         self.num_update_iter = num_update_iter
         self.num_update_restart_iter = num_update_restart_iter
+        self.diagonal_accum_abs = diagonal_accum_abs
 
         self.reset()
 
@@ -137,7 +140,11 @@ class SophiaOptimizer:
         # D_est_t = D_est_t / (S * S)
         if S is None:
             S = 1.0
-        D_est_t = D_est_t.abs() / (S * S)
+
+        if self.diagonal_accum_abs:
+            D_est_t = D_est_t.abs() / (S * S)
+        else:
+            D_est_t = D_est_t / (S * S)
 
         # self.D_iter += 1
         self.D_smoothed = beta2 * self.D_smoothed + (1 - beta2) * D_est_t
