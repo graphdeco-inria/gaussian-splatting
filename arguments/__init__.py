@@ -223,6 +223,8 @@ class OptimizationParams(ParamGroup):
         self.noise_lr = 5e5
         self.scale_reg = 0.01
         self.opacity_reg = 0.01
+        self.binarize_opacity_reg = False
+        self.color_reg = 0.0
 
         self.regularize_scaling = False
         self.scaling_reg_weight = 5e-3

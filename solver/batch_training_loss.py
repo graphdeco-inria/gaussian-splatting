@@ -63,8 +63,9 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
                         track_weights=False,
                         **kwargs
                         ):
-    scale_reg = kwargs.get('scale_reg', 0.0)
-    opacity_reg = kwargs.get('opacity_reg', 0.0)
+    scale_reg = opt.scale_reg
+    opacity_reg = opt.opacity_reg
+    color_reg = opt.color_reg
 
     B = len(viewpoint_cams)
 
@@ -149,11 +150,23 @@ def batch_training_loss(iteration, opt, viewpoint_cams, gaussians, pipe, bg, tra
         opacity = gaussians.get_opacity
         opacity_numel = opacity.numel()
         opacity_nonzero = opacity[opacity > 0.0]
-        opacity_reg_loss = math.sqrt(2.0 * opacity_reg / opacity_numel) * opacity_nonzero.sqrt()
+        if opt.binarize_opacity_reg:
+            opacity_reg_loss = math.sqrt(2.0 * opacity_reg / opacity_numel) * (opacity_nonzero * (1 - opacity_nonzero)).sqrt()
+        else:
+            opacity_reg_loss = math.sqrt(2.0 * opacity_reg / opacity_numel) * opacity_nonzero.sqrt()
     else:
         opacity_reg_loss = torch.tensor([], device=images.device)
 
-    loss_image = torch.cat((Ll1_per_pixel.flatten(), ssim_loss_per_pixel.flatten(), scaling_reg_loss.flatten(), opacity_reg_loss.flatten()), dim=0)
+    if color_reg > 0.0:
+        color_dc = gaussians.get_color_dc.clamp(min=1e-5)
+        color_numel = color_dc.numel()
+        color_nonzero = color_dc[color_dc > 0.0]
+        color_reg_loss = math.sqrt(2.0 * color_reg / color_numel) * color_nonzero.sqrt()
+    else:
+        color_reg_loss = torch.tensor([], device=images.device)
+
+
+    loss_image = torch.cat((Ll1_per_pixel.flatten(), ssim_loss_per_pixel.flatten(), scaling_reg_loss.flatten(), opacity_reg_loss.flatten(), color_reg_loss.flatten()), dim=0)
 
     if kwargs.get("debug_loss", False):
         safe_interact(local=locals(), banner="Debug batch_training_loss")
