@@ -25,7 +25,7 @@ apt update && apt install libtiff5
 To run the optimizer, simply use
 
 ```shell
-python train_mcmc_sophia_hellinger.py -s <path to COLMAP or NeRF Synthetic dataset> --iterations 30000 --loss_type="l1" --noise_lr=0.0 --eval --eval_interval=1000 --cap_max <CAP_MAX> --densify_preserve_gaussians --sparsify_gaussians --sparsify_ratio=0.01 [--diagonal_accum_abs]
+python train_mcmc_sophia_hellinger.py -s <path to COLMAP or NeRF Synthetic dataset> --start_checkpoint <path/to/checkpoint> --iterations 30000 --loss_type="l1" --noise_lr=0.0 --eval --eval_interval=1000 --cap_max <CAP_MAX> --densify_preserve_gaussians --sparsify_gaussians --sparsify_ratio=0.01 [--diagonal_accum_abs]
 ```
 
 For Adam with new densification strategy, use
