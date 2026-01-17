@@ -554,6 +554,8 @@ class GaussianModelVector:
                 other.exposure / self.exposure,
                 gaussian_model_vector=self
             )
+        else:
+            raise TypeError(f"Unsupported type for division: {type(other)}")
 
     def __truediv__(self, other):
         if isinstance(other, (int, float)):
@@ -578,6 +580,8 @@ class GaussianModelVector:
                 self.exposure / other.exposure,
                 gaussian_model_vector=self
             )
+        else:
+            raise TypeError(f"Unsupported type for division: {type(other)}")
 
     def sum(self):
         N1, N2, N3, N4, N5, N6, N7 = self._get_param_group_lengths()
