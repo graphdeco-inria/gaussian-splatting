@@ -43,7 +43,7 @@ def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
     actual_covariance = L @ L.transpose(1, 2)
     return actual_covariance
 
-def clip_hellinger(gaussians, update, threshold, lr, quat_norm_tr=0.01):
+def clip_hellinger(gaussians, update, threshold, opacity_threshold, lr, quat_norm_tr=0.01):
     """
     For two unnormalized gaussians denoted by P(x) = C * N(x; mu, Sigma) and Q(x) = C' * N(x; mu', Sigma'),
     the squared Hellinger distance is given by:
@@ -226,7 +226,8 @@ def clip_hellinger(gaussians, update, threshold, lr, quat_norm_tr=0.01):
     xyz_step_clipped, scaling_step_clipped, quat_step_clipped, opacity_step_clipped, shs_step_clipped  = compute_trust_region_step(
             gaussians._xyz, gaussians._scaling, gaussians._rotation, gaussians._opacity, gaussians.get_features,
             update.xyz, update.scaling, update.rotation, update.opacity, torch.cat([update.features_dc, update.features_rest], dim=1),
-            threshold, MIN_MASS_DENOM, MAX_MASS_DENOM, scale_modifier=1.0, quat_norm_tr=quat_norm_tr,)
+            threshold, opacity_threshold,
+            MIN_MASS_DENOM, MAX_MASS_DENOM, scale_modifier=1.0, quat_norm_tr=quat_norm_tr,)
 
     update.xyz = xyz_step_clipped
     update.scaling = scaling_step_clipped

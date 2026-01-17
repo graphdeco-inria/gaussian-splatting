@@ -233,6 +233,7 @@ class OptimizationParams(ParamGroup):
         self.kl_threshold_final = 1e-8
         self.kl_threshold_delay_mult = 0.01
         self.kl_threshold_max_steps = 30_000
+        self.opacity_threshold_scale = 1.0
         self.diagonal_init_iter = 20
         self.diagonal_init_restart_iter = 3
         self.diagonal_update_iter = 1

@@ -212,7 +212,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     s_sophia = sophia_optimizer.get_update(g, JTJv_func1, Dhat_func1, z_gen_func, S=None)
                     s_sophia_old = s_sophia.clone()
                     kl_threshold = kl_threshold_func(iteration)
-                    s_sophia = clip_hellinger(gaussians, s_sophia, kl_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
+                    opacity_threshol = kl_threshold * opt.opacity_threshold_scale
+                    s_sophia = clip_hellinger(gaussians, s_sophia, kl_threshold, opacity_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
 
                 if opt.use_adam:
                     s = s_adam
