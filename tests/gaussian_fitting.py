@@ -304,17 +304,17 @@ def training(opt, pipe):
     white_background = False
     cameras_extent = 7.5
     model_path = ""
-    NUM_ITERATIONS = (100, 100, 100)
+    NUM_ITERATIONS = (10, 10, 200)
     H, W = 200, 240
     max_num_points = 5
-    kl_threshold = 0.001
+    kl_threshold = 0.0001
 
 
-    run_shortside = True
-    run_longside = True
-    run_rotation = True
-    run_shrink = True
-    run_expand = True
+    run_shortside = False
+    run_longside = False
+    run_rotation = False
+    run_shrink = False
+    run_expand = False
     run_underrepresented = True
     run_two_gaussians = True
     run_double_gaussian = True
