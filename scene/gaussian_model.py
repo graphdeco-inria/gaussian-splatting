@@ -53,6 +53,10 @@ class GaussianModel:
 
         self.rotation_activation = torch.nn.functional.normalize
 
+        SH0 = 0.282
+        self.color_activation = lambda x: (x * SH0 + 0.5).abs()
+        self.color_inverse_activation = lambda x: (x - 0.5) / SH0
+
 
     def __init__(self, sh_degree, optimizer_type="default"):
         self.active_sh_degree = 0
@@ -280,6 +284,10 @@ class GaussianModel:
     @property
     def get_features_rest(self):
         return self._features_rest
+
+    @property
+    def get_color_dc(self):
+        return self.color_activation(self.get_features_dc)
     
     @property
     def get_opacity(self):
@@ -675,7 +683,7 @@ class GaussianModel:
 
     def _update_params(self, idxs, ratio):
         new_opacity, new_scaling = compute_relocation_cuda(
-            opacity_old=self.get_opacity[idxs, 0],
+            opacity_old=self.get_opacity[idxs, 0].clamp_max(0.9995),
             scale_old=self.get_scaling[idxs],
             N=ratio[idxs, 0] + 1
         )
@@ -685,7 +693,7 @@ class GaussianModel:
 
         return self._xyz[idxs], self._features_dc[idxs], self._features_rest[idxs], new_opacity, new_scaling, self._rotation[idxs]
 
-    def _update_params2(self, idxs, start_opacity=0.01, eps=0.5):
+    def _update_params2(self, idxs, start_opacity=0.01, position_noise=0.01):
         num_new_indices = idxs.shape[0]
 
         new_dir = torch.randn((num_new_indices, 3), device=idxs.device)
@@ -698,12 +706,13 @@ class GaussianModel:
         mahalanobis = ((Rs @ new_dir.unsqueeze(-1)).squeeze(-1) / scaling).norm(dim=-1) ** 2
 
         old_opacity = self.get_opacity[idxs, 0]
-        max_mahalanobis = -8 * torch.log(torch.max(1.0 - eps / old_opacity, 1e-3 * torch.ones_like(old_opacity)))
+        max_mahalanobis = -8 * math.log(max(1 - position_noise, 1e-2))
 
         new_dir *= torch.sqrt(max_mahalanobis / (mahalanobis + 1e-6)).unsqueeze(-1)
 
         new_xyz = self._xyz[idxs] + new_dir
 
+        # new_opacity = self.inverse_opacity_activation(torch.ones_like(self.get_opacity[idxs]) * start_opacity)
         new_opacity = self.inverse_opacity_activation(torch.ones_like(self.get_opacity[idxs]) * start_opacity)
 
         SH0 = 0.282
@@ -711,7 +720,10 @@ class GaussianModel:
         # new_features_dc = torch.zeros_like(self.get_features_dc[idxs])
         new_features_rest = torch.zeros_like(self.get_features_rest[idxs])
 
-        return new_xyz, new_features_dc, new_features_rest, new_opacity, self._scaling[idxs], self._rotation[idxs]
+        new_scaling = self._scaling[idxs] # self.scaling_inverse_activation(scaling * 1.2)
+        new_rotation = self._rotation[idxs]
+
+        return new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation
 
 
     def _sample_alives(self, probs, num, alive_indices=None):
@@ -754,6 +766,7 @@ class GaussianModel:
 
         # sample from alive ones based on opacity
         probs = (self.get_opacity[alive_indices, 0]) 
+        # probs = torch.ones_like(self.get_opacity[alive_indices, 0]) 
         # probs = self.get_sampling_rate(alive_indices=alive_indices)
         reinit_idx, ratio = self._sample_alives(alive_indices=alive_indices, probs=probs, num=dead_indices.shape[0])
 
@@ -781,6 +794,7 @@ class GaussianModel:
             return 0
 
         probs = self.get_opacity.squeeze(-1) 
+        # probs = torch.ones_like(self._opacity[:,0])
         # probs = self.get_sampling_rate()
         add_idx, ratio = self._sample_alives(probs=probs, num=num_gs)
 
@@ -802,7 +816,7 @@ class GaussianModel:
 
         return num_gs
 
-    def relocate_gs2(self, dead_mask=None, keep_opacity=0.9):
+    def relocate_gs2(self, dead_mask=None, start_opacity=0.01, position_noise=0.1):
 
         if dead_mask.sum() == 0:
             return
@@ -826,12 +840,12 @@ class GaussianModel:
             self._opacity[dead_indices],
             self._scaling[dead_indices],
             self._rotation[dead_indices] 
-        ) = self._update_params2(reinit_idx)
+        ) = self._update_params2(reinit_idx, start_opacity=start_opacity, position_noise=position_noise)
 
         self.replace_tensors_to_optimizer(inds=reinit_idx) 
         
 
-    def add_new_gs2(self, cap_max, growth_factor=1.05, keep_opacity=0.9):
+    def add_new_gs2(self, cap_max, growth_factor=1.05, start_opacity=0.01, position_noise=0.1):
         current_num_points = self._opacity.shape[0]
         target_num = min(cap_max, int(growth_factor * current_num_points))
         num_gs = max(0, target_num - current_num_points)
@@ -850,7 +864,7 @@ class GaussianModel:
             new_opacity,
             new_scaling,
             new_rotation 
-        ) = self._update_params2(add_idx)
+        ) = self._update_params2(add_idx, start_opacity=start_opacity, position_noise=position_noise)
 
         temp_radii = torch.empty([], device="cuda")
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, temp_radii, reset_params=False)

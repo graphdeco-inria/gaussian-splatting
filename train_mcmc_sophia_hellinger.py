@@ -246,8 +246,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 dead_mask = (gaussians.get_opacity <= opt.opacity_prune_thresh).squeeze(-1)
 
                 if opt.densify_preserve_gaussians:
-                    gaussians.relocate_gs2(dead_mask=dead_mask)
-                    gaussians.add_new_gs2(cap_max=args.cap_max)
+                    gaussians.relocate_gs2(dead_mask=dead_mask, start_opacity=opt.densify_start_opacity, position_noise=opt.densify_position_noise)
+                    gaussians.add_new_gs2(cap_max=args.cap_max, start_opacity=opt.densify_start_opacity, position_noise=opt.densify_position_noise)
                 else:
                     gaussians.relocate_gs(dead_mask=dead_mask)
                     gaussians.add_new_gs(cap_max=args.cap_max)
