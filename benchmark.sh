@@ -1,4 +1,14 @@
-SCENE=$1
+TRAIN_SCRIPT=$1
+SCENE=$2
+SPARSIFY_RATIO=$3
+
+if [ -z "$TRAIN_SCRIPT" ]; then
+    TRAIN_SCRIPT="train_mcmc_sophia_hellinger.py"
+fi
+
+if [ -z "$SPARSIFY_RATIO" ]; then
+    SPARSIFY_RATIO=0.01
+fi
 
 output_path="./eval/"
 
@@ -46,6 +56,17 @@ deep_blending_scenes=("drjohnson" "playroom")
 # common_args=" --iterations 30000 --densify_from_iter 50000 --loss_type=l1 --noise_lr=0.0 --eval --eval_interval=1000 --cap_max 1000000 "
 # output_dir=$output_path/$SCENE/kl_1e-6-1e-8_nodensify
 
+
+# Ours new densification
+train_script=$TRAIN_SCRIPT
+common_args=" --iterations 30000 --loss_type=l1 --noise_lr=0.0 --eval --eval_interval=1000 --cap_max 1000000 "
+common_args+=" --densify_preserve_gaussians --sparsify_gaussians --sparsify_ratio=$SPARSIFY_RATIO "
+# if adam in TRAIN_SCRIPT
+if [[ $TRAIN_SCRIPT == *"adam"* ]]; then
+    output_dir=$output_path/$SCENE/adam_new_densify_sr$SPARSIFY_RATIO
+else
+    output_dir=$output_path/$SCENE/sophia_new_densify_sr$SPARSIFY_RATIO
+fi
 
 if [[ " ${mipnerf360_outdoor_scenes[*]} " =~ " ${SCENE} " ]]; then
     colmap_datadir=$mipnerf360_datadir/$SCENE
