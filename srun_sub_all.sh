@@ -11,13 +11,13 @@ for scene in "${all_scenes[@]}"; do
     # mcmc no densify
     bash srun_sub.sh train_mcmc.py $scene --densify_from_iter=50000
     # ours no densify [diagonal_accum_abs=True]
-    bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --diagonal_accum_abs=True
+    bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --diagonal_accum_abs
     # ours no densify [diagonal_accum_abs=False]
-    bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --diagonal_accum_abs=False
+    bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0
     # mcmc
     bash srun_sub.sh train_mcmc.py $scene
     # ours from 15k iter [diagonal_accum_abs=True]
-    # bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --diagonal_accum_abs=True --start_checkpoint eval/$scene/train_mcmc.py-/point_cloud/iteration_15000
+    # bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --diagonal_accum_abs --start_checkpoint eval/$scene/train_mcmc.py-/point_cloud/iteration_15000
     # ours from 15k iter [diagonal_accum_abs=False]
-    # bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --diagonal_accum_abs=False --start_checkpoint <START_CHECKPOINT>
+    # bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --start_checkpoint <START_CHECKPOINT>
 done
