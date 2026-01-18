@@ -22,16 +22,16 @@ output_dir=$output_path/$SCENE/$EXP_NAME
 
 if [[ " ${mipnerf360_outdoor_scenes[*]} " =~ " ${SCENE} " ]]; then
     colmap_datadir=$mipnerf360_datadir/$SCENE
-    cmd="python $train_script -s $colmap_datadir -i images_4 -m $output_dir $common_args"
+    cmd="python $train_script -s $colmap_datadir -i images_4 -m $output_dir $common_args $ARGS"
 elif [[ " ${mipnerf360_indoor_scenes[*]} " =~ " ${SCENE} " ]]; then
     colmap_datadir=$mipnerf360_datadir/$SCENE
-    cmd="python $train_script -s $colmap_datadir -i images_2 -m $output_dir $common_args"
+    cmd="python $train_script -s $colmap_datadir -i images_2 -m $output_dir $common_args $ARGS"
 elif [[ " ${tanks_and_temples_scenes[*]} " =~ " ${SCENE} " ]]; then
     colmap_datadir=$tanks_and_temples_datadir/$SCENE
-    cmd="python $train_script -s $colmap_datadir -m $output_dir $common_args"
+    cmd="python $train_script -s $colmap_datadir -m $output_dir $common_args $ARGS"
 elif [[ " ${deep_blending_scenes[*]} " =~ " ${SCENE} " ]]; then
     colmap_datadir=$deep_blending_datadir/$SCENE
-    cmd="python $train_script -s $colmap_datadir -m $output_dir $common_args"
+    cmd="python $train_script -s $colmap_datadir -m $output_dir $common_args $ARGS"
 fi
 
 echo "Running benchmark for scene: $SCENE"
