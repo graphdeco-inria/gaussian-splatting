@@ -246,7 +246,7 @@ class OptimizationParams(ParamGroup):
         self.diagonal_accum_abs = False
         self.diagonal_adam_precondition = False
 
-        self.normalize_rotation = True
+        self.normalize_rotation = False
         self.normalize_rotation_interval = 10
 
         self.opacity_prune_thresh = 0.005

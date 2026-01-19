@@ -233,6 +233,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 gaussians.update_step(s)
                 gaussians.optimizer.zero_grad(set_to_none = True)
 
+                if not opt.use_adam and opt.normalize_rotation and iteration % opt.normalize_rotation_interval == 0:
+                    quat_norms = gaussians._rotation.norm(dim=1, keepdim=True)
+                    gaussians._rotation /= quat_norms
+                    sophia_optimizer.normalize_rotation(quat_norms)
+
             densified = False
             if iteration < opt.densify_until_iter and iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                 densified = True
