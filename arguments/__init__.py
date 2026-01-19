@@ -156,7 +156,9 @@ class OptimizationParams(ParamGroup):
         self.sophia_epsilon = 1.0
 
         self.use_adam = False
+        self.use_adam_yes = False                   # Disable interactive session before using adam
         self.disable_sophia_if_use_adam = True
+        self.enable_adam_tr = False
 
         self.adahessian_beta1 = 0.9
         self.adahessian_beta2 = 0.999

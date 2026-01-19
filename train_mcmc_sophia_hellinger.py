@@ -100,7 +100,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                        )
     sophia_optimizer.reset()
 
-    if opt.use_adam:
+    if opt.use_adam and not opt.use_adam_yes:
         safe_interact(local=locals(), banner="Using Adam optimizer - not Sophia")
 
     for iteration in range(first_iter, opt.iterations + 1):        
