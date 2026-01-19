@@ -96,7 +96,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                                        num_init_restart_iter=opt.diagonal_init_restart_iter,
                                        num_update_iter=opt.diagonal_update_iter,
                                        num_update_restart_iter=opt.diagonal_update_restart_iter,
-                                       diagonal_accum_abs=opt.diagonal_accum_abs
+                                       diagonal_accum_abs=opt.diagonal_accum_abs,
+                                       diagonal_adam_precondition=opt.diagonal_adam_precondition,
                                        )
     sophia_optimizer.reset()
 
@@ -207,6 +208,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # Optimizer step
             if iteration < opt.iterations:
                 s_adam = adam_optimizer.get_update(g)
+                if opt.use_adam and opt.enable_adam_tr:
+                    kl_threshold = kl_threshold_func(iteration)
+                    opacity_threshold = kl_threshold * opt.opacity_threshold_scale
+                    s_adam = clip_hellinger(gaussians, s_adam, kl_threshold, opacity_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
+
+
                 if opt.use_adam and opt.disable_sophia_if_use_adam:
                     s_sophia = GaussianModelVector.zeros_like(gaussians)
                 else:

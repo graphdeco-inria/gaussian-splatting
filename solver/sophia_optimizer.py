@@ -12,7 +12,8 @@ class SophiaOptimizer:
                  num_init_restart_iter=3, 
                  num_update_iter=2, 
                  num_update_restart_iter=1,
-                 diagonal_accum_abs=False
+                 diagonal_accum_abs=False,
+                 diagonal_adam_precondition=False,
                  ):
         self.lr_init = lr
         self.betas = betas
@@ -25,6 +26,7 @@ class SophiaOptimizer:
         self.num_update_iter = num_update_iter
         self.num_update_restart_iter = num_update_restart_iter
         self.diagonal_accum_abs = diagonal_accum_abs
+        self.diagonal_adam_precondition = diagonal_adam_precondition
 
         self.reset()
 
@@ -35,6 +37,7 @@ class SophiaOptimizer:
         self.iter = 0
         self.total_D_iter = 0
         self.m = 0
+        self.adam_v = 0
         self.lr = self.lr_init
         self.diagonal_initialized = False
         self.D_smoothed = 0
@@ -42,6 +45,7 @@ class SophiaOptimizer:
 
     def reset_opacity(self):
         self.m.opacity *= 0.0
+        self.adam_v.opacity *= 0.0
 
         # self._handle_new_parameters will take care of D_smoothed and D_est
         self.D_smoothed.opacity *= 0.0
@@ -49,6 +53,7 @@ class SophiaOptimizer:
 
     def normalize_rotation(self, quat_norms):
         self.m.rotation /= quat_norms
+        self.adam_v.rotation /= (quat_norms ** 2)
         self.D_smoothed.rotation /= (quat_norms ** 2)
         self.D_est.rotation /= (quat_norms ** 2)
 
@@ -59,6 +64,7 @@ class SophiaOptimizer:
         if self.iter == 0:
             return
         self.m.reset_indices_(indices)
+        self.adam_v.reset_indices_(indices)
         self.D_smoothed.reset_indices_(indices)
         self.D_est.reset_indices_(indices)
 
@@ -66,23 +72,27 @@ class SophiaOptimizer:
         if self.iter == 0:
             return
         self.m.densify_and_prune_(prune_mask)
+        self.adam_v.densify_and_prune_(prune_mask)
         self.D_smoothed.densify_and_prune_(prune_mask)
         self.D_est.densify_and_prune_(prune_mask)
 
     def get_update(self, g, JTJv_func, Dhat_func, z_gen_func, S):
+        self.iter += 1
+
+        self.m = self.betas[0] * self.m + (1 - self.betas[0]) * g
+        self.adam_v = self.betas[1] * self.adam_v + (1 - self.betas[1]) * (g * g)
+
         if self.diagonal_initialized:
             self._handle_new_parameters(g)
         else:
             # Initialize states
             self.m = g * 0.0
+            self.adam_v = g * 0.0
             self.D_smoothed = g * 0.0
             self.D_est = g * 0.0
         if self.iter % self.diagonal_update_interval == 0 or not self.diagonal_initialized:
             self.update_diagonal(JTJv_func, Dhat_func, z_gen_func, S)
 
-        self.iter += 1
-
-        self.m = self.betas[0] * self.m + (1 - self.betas[0]) * g
         v = self.gamma * self.D_est
         m_hat = self.m / (1 - self.betas[0] ** self.iter)
         s = -m_hat / (v + self.eps)
@@ -118,11 +128,11 @@ class SophiaOptimizer:
             self.diagonal_initialized = True
             num_diag_iter = self.num_init_iter
             restart_iter = self.num_init_restart_iter
-            D_init = Dhat_func()
+            # D_init = Dhat_func()
         else:
             num_diag_iter = self.num_update_iter
             restart_iter = self.num_update_restart_iter
-            D_init = self.D_est
+            # D_init = self.D_est
 
         # D_est_t = restarted_hutchinson(Hz_func=JTJv_func,
         #                                z_gen_func=z_gen_func,
@@ -130,7 +140,12 @@ class SophiaOptimizer:
         #                                restart_iter=restart_iter,
         #                                num_iters=num_diag_iter,
         #                                )
-        D_init = GaussianModelVector.ones_like(D_init)
+
+        if self.diagonal_adam_precondition:
+            D_init = self.adam_v + self.eps
+        else:
+            D_init = GaussianModelVector.ones_like(self.m)
+
         D_est_t = restarted_hutchinson(Hz_func=JTJv_func,
                                        z_gen_func=z_gen_func,
                                        D_init=D_init,
