@@ -36,7 +36,6 @@ except:
     FUSED_SSIM_AVAILABLE = False
 
 try:
-    from diff_gaussian_rasterization import SparseGaussianAdam
     SPARSE_ADAM_AVAILABLE = True
 except:
     SPARSE_ADAM_AVAILABLE = False
@@ -44,7 +43,7 @@ except:
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, oracle_dump_dir="", oracle_dump_iters=None):
 
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
-        sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
+        sys.exit("Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
 
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
@@ -76,6 +75,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         "model_path": dataset.model_path,
         "sh_degree": dataset.sh_degree,
         "iterations": opt.iterations,
+        "white_background": dataset.white_background,
     }
 
     # Dump at iteration 0 (before any training) if requested
@@ -104,7 +104,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 network_gui.send(net_image_bytes, dataset.source_path)
                 if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
                     break
-            except Exception as e:
+            except Exception:
                 network_gui.conn = None
 
         iter_start.record()
