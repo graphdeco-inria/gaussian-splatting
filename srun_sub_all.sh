@@ -8,16 +8,17 @@ deep_blending_scenes=("drjohnson" "playroom")
 all_scenes=("${mipnerf360_outdoor_scenes[@]}" "${mipnerf360_indoor_scenes[@]}" "${tanks_and_temples_scenes[@]}" "${deep_blending_scenes[@]}")
 
 for scene in "${all_scenes[@]}"; do
-    # mcmc no densify
-    bash srun_sub.sh train_mcmc.py $scene --densify_from_iter=50000
-    # ours no densify [diagonal_accum_abs=True]
-    bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --diagonal_accum_abs
-    # ours no densify [diagonal_accum_abs=False]
-    bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0
-    # mcmc
-    bash srun_sub.sh train_mcmc.py $scene
-    # ours from 15k iter [diagonal_accum_abs=True]
-    # bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --diagonal_accum_abs --start_checkpoint eval/$scene/train_mcmc.py-/point_cloud/iteration_15000
-    # ours from 15k iter [diagonal_accum_abs=False]
-    # bash srun_sub.sh train_mcmc_sophia_hellinger.py $scene --densify_from_iter=50000 --noise_lr=0.0 --start_checkpoint <START_CHECKPOINT>
+    bash srun_sub.sh $scene mcmc
+    bash srun_sub.sh $scene mcmc_no_density
+    bash srun_sub.sh $scene sophia_hellinger_no_densify
+    bash srun_sub.sh $scene sophia_hellinger_no_density_abs
+    bash srun_sub.sh $scene sophia_hellinger_resume_from_15k # after mcmc
+    bash srun_sub.sh $scene sophia_hellinger_resume_from_15k_abs # after mcmc
+    bash srun_sub.sh $scene sophia_hellinger_no_densify_update10
+    bash srun_sub.sh $scene sophia_hellinger_no_densify_abs_update10
+    bash srun_sub.sh $scene sophia_hellinger_no_densify_update15
+    bash srun_sub.sh $scene sophia_hellinger_no_densify_abs_update15
+    bash srun_sub.sh $scene sophia_hellinger_no_densify_normrot
+    bash srun_sub.sh $scene sophia_hellinger_no_density_abs_normrot
+    bash srun_sub.sh $scene adam_tr_no_densify
 done

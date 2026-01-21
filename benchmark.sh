@@ -13,7 +13,7 @@ tanks_and_temples_scenes=("truck" "train")
 deep_blending_scenes=("drjohnson" "playroom")
 
 
-common_args=" --iterations 30000 --loss_type=l1 --eval --eval_interval=1000 --cap_max 1000000  --save_iterations 7000 15000 30000"
+common_args=" --iterations 30000 --loss_type=l1 --eval --eval_interval=1000 --cap_max 1000000  --save_iterations 7000 15000 30000 --checkpoint_iterations 7000 15000 30000"
 if [[ $EXP_NAME == "mcmc" ]]; then
     # stardard mcmc
     train_script="train_mcmc.py"
@@ -35,11 +35,11 @@ elif [[ $EXP_NAME == "sophia_hellinger_no_density_abs" ]]; then
 elif [[ $EXP_NAME == "sophia_hellinger_resume_from_15k" ]]; then
     # sophia hellinger resume from 15k adam mcmc
     train_script="train_mcmc_sophia_hellinger.py"
-    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --start_checkpoint eval/$SCENE/mcmc/chkpnt30000.pth"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --start_checkpoint eval/$SCENE/mcmc/chkpnt15000.pth"
 elif [[ $EXP_NAME == "sophia_hellinger_resume_from_15k_abs" ]]; then
     # sophia hellinger resume from 15k adam mcmc with diagonal_accum_abs
     train_script="train_mcmc_sophia_hellinger.py"
-    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --start_checkpoint eval/$SCENE/mcmc/chkpnt30000.pth --diagonal_accum_abs"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --start_checkpoint eval/$SCENE/mcmc/chkpnt15000.pth --diagonal_accum_abs"
 
 elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10" ]]; then
     # ablation: --diagonal_update_interval=10
