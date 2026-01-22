@@ -59,6 +59,15 @@ elif [[ $EXP_NAME == "sophia_hellinger_no_densify_abs_update15" ]]; then
     train_script="train_mcmc_sophia_hellinger.py"
     args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=15 --diagonal_accum_abs"
 
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update20" ]]; then
+    # ablation: --diagonal_update_interval=20
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=20"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_abs_update20" ]]; then
+    # ablation: --diagonal_update_interval=20 with diagonal_accum_abs
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=20 --diagonal_accum_abs"
+
 elif [[ $EXP_NAME == "sophia_hellinger_no_densify_normrot" ]]; then
     # ablation: --normalize_rotation
     train_script="train_mcmc_sophia_hellinger.py"
