@@ -12,6 +12,13 @@ mipnerf360_indoor_scenes=("room" "counter" "kitchen" "bonsai")
 tanks_and_temples_scenes=("truck" "train")
 deep_blending_scenes=("drjohnson" "playroom")
 
+# if "-eval" is in the EXP_NAME, then IS_TRAIN=false, and remove "-eval" from EXP_NAME
+if [[ $EXP_NAME == *"-eval"* ]]; then
+    IS_TRAIN=false
+    EXP_NAME=$(echo $EXP_NAME | sed 's/-eval//g')
+else
+    IS_TRAIN=true
+fi
 
 common_args=" --iterations 30000 --loss_type=l1 --eval --eval_interval=1000 --cap_max 1000000  --save_iterations 7000 15000 30000 --checkpoint_iterations 7000 15000 30000"
 if [[ $EXP_NAME == "mcmc" ]]; then
@@ -85,18 +92,40 @@ fi
 
 output_dir=$output_path/$SCENE/$EXP_NAME
 
-if [[ " ${mipnerf360_outdoor_scenes[*]} " =~ " ${SCENE} " ]]; then
-    colmap_datadir=$mipnerf360_datadir/$SCENE
-    cmd="python $train_script -s $colmap_datadir -i images_4 -m $output_dir $args"
-elif [[ " ${mipnerf360_indoor_scenes[*]} " =~ " ${SCENE} " ]]; then
-    colmap_datadir=$mipnerf360_datadir/$SCENE
-    cmd="python $train_script -s $colmap_datadir -i images_2 -m $output_dir $args"
-elif [[ " ${tanks_and_temples_scenes[*]} " =~ " ${SCENE} " ]]; then
-    colmap_datadir=$tanks_and_temples_datadir/$SCENE
-    cmd="python $train_script -s $colmap_datadir -m $output_dir $args"
-elif [[ " ${deep_blending_scenes[*]} " =~ " ${SCENE} " ]]; then
-    colmap_datadir=$deep_blending_datadir/$SCENE
-    cmd="python $train_script -s $colmap_datadir -m $output_dir $args"
+if [[ $IS_TRAIN == true ]]; then
+    # train
+    if [[ " ${mipnerf360_outdoor_scenes[*]} " =~ " ${SCENE} " ]]; then
+        colmap_datadir=$mipnerf360_datadir/$SCENE
+        cmd="python $train_script -s $colmap_datadir -i images_4 -m $output_dir $args"
+    elif [[ " ${mipnerf360_indoor_scenes[*]} " =~ " ${SCENE} " ]]; then
+        colmap_datadir=$mipnerf360_datadir/$SCENE
+        cmd="python $train_script -s $colmap_datadir -i images_2 -m $output_dir $args"
+    elif [[ " ${tanks_and_temples_scenes[*]} " =~ " ${SCENE} " ]]; then
+        colmap_datadir=$tanks_and_temples_datadir/$SCENE
+        cmd="python $train_script -s $colmap_datadir -m $output_dir $args"
+    elif [[ " ${deep_blending_scenes[*]} " =~ " ${SCENE} " ]]; then
+        colmap_datadir=$deep_blending_datadir/$SCENE
+        cmd="python $train_script -s $colmap_datadir -m $output_dir $args"
+    fi
+else
+    # eval
+    # exclude "  --save_iterations 7000 15000 30000 --checkpoint_iterations 7000 15000 30000" from args
+    args=$(echo $args | sed 's/--save_iterations 7000 15000 30000//g' | sed 's/--checkpoint_iterations 7000 15000 30000//g')
+    eval_script="evaluate_from_checkpoint.py"
+    if [[ " ${mipnerf360_outdoor_scenes[*]} " =~ " ${SCENE} " ]]; then
+        colmap_datadir=$mipnerf360_datadir/$SCENE
+        cmd="python $eval_script -s $colmap_datadir -i images_4 -m $output_dir $args --model_path $output_dir"
+    elif [[ " ${mipnerf360_indoor_scenes[*]} " =~ " ${SCENE} " ]]; then
+        colmap_datadir=$mipnerf360_datadir/$SCENE
+        cmd="python $eval_script -s $colmap_datadir -i images_2 -m $output_dir $args --model_path $output_dir"
+    elif [[ " ${tanks_and_temples_scenes[*]} " =~ " ${SCENE} " ]]; then
+        colmap_datadir=$tanks_and_temples_datadir/$SCENE
+        cmd="python $eval_script -s $colmap_datadir -m $output_dir $args --model_path $output_dir"
+    elif [[ " ${deep_blending_scenes[*]} " =~ " ${SCENE} " ]]; then
+        colmap_datadir=$deep_blending_datadir/$SCENE
+        cmd="python $eval_script -s $colmap_datadir -m $output_dir $args --model_path $output_dir"
+    fi
+
 fi
 
 echo "Running benchmark for scene: $SCENE"
