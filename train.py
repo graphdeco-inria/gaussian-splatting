@@ -36,8 +36,9 @@ except:
     FUSED_SSIM_AVAILABLE = False
 
 try:
+    from diff_gaussian_rasterization import SparseGaussianAdam
     SPARSE_ADAM_AVAILABLE = True
-except:
+except ImportError:
     SPARSE_ADAM_AVAILABLE = False
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, oracle_dump_dir="", oracle_dump_iters=None):
