@@ -20,7 +20,7 @@ else
     IS_TRAIN=true
 fi
 
-common_args=" --iterations 30000 --loss_type=l1 --eval --eval_interval=1000 --cap_max 1000000  --save_iterations 7000 15000 30000 --checkpoint_iterations 7000 15000 30000"
+common_args=" --iterations 30000 --loss_type=l1 --cap_max 1000000  --save_iterations 30000"
 if [[ $EXP_NAME == "mcmc" ]]; then
     # stardard mcmc
     train_script="train_mcmc.py"

@@ -12,6 +12,8 @@
 import os
 import json
 import torch
+import time
+import subprocess
 from random import randint
 from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
@@ -104,6 +106,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     if opt.use_adam and not opt.use_adam_yes:
         safe_interact(local=locals(), banner="Using Adam optimizer - not Sophia")
 
+    tic = time.time()
+    total_elapsed_time = 0
+
     for iteration in range(first_iter, opt.iterations + 1):        
         # if network_gui.conn == None:
         #     network_gui.try_connect()
@@ -190,6 +195,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         JTJv_func1 = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=[viewpoint_cam], S=None, scale=1)
         Dhat_func1 = partial(Dhat_func, gaussians=gaussians, viewpoint_cams=[viewpoint_cam])
 
+        toc = time.time()
+        total_elapsed_time += toc - tic
+
         with torch.no_grad():
             # Progress bar
             ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
@@ -202,8 +210,21 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
             if (iteration in saving_iterations):
+                # get the gpu memory usage using nvidia-smi
+                mem_smi = subprocess.check_output(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"]).decode("utf-8").strip()
+                mem_smi = float(mem_smi) / 1024 # convert to GB
+                mem_torch = torch.cuda.max_memory_allocated() / 1024 ** 3
+                stats = {
+                    "mem_smi (GB)": mem_smi,
+                    "mem_torch (GB)": mem_torch,
+                    "ellipse_time": total_elapsed_time,
+                    "num_GS": len(gaussians.get_xyz),
+                }
+                with open(scene.model_path + "/train_stats_" + str(iteration) + ".json", "w") as f:
+                    json.dump(stats, f)
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
+            tic = time.time()
 
             # Optimizer step
             if iteration < opt.iterations:
