@@ -15,6 +15,7 @@ from random import randint
 from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
 import sys
+from pathlib import Path
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state, get_expon_lr_func
 import uuid
@@ -23,6 +24,17 @@ from utils.image_utils import psnr
 from utils.oracle_dump import dump_oracle
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+
+# Add stags source to path for robust mixture loss
+_STAGS_SRC = Path(__file__).resolve().parent.parent.parent / "src"
+if _STAGS_SRC.exists():
+    sys.path.insert(0, str(_STAGS_SRC))
+
+try:
+    from stags.losses import RobustMixtureLoss, RobustCandidate
+    ROBUST_MIXTURE_AVAILABLE = True
+except ImportError:
+    ROBUST_MIXTURE_AVAILABLE = False
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -51,8 +63,39 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     gaussians = GaussianModel(dataset.sh_degree, opt.optimizer_type)
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
+
+    # Initialize robust mixture loss if requested
+    robust_loss_fn = None
+    if opt.loss_type == "robust_mixture":
+        if not ROBUST_MIXTURE_AVAILABLE:
+            sys.exit("Robust mixture loss requested but stags.losses not available.")
+        candidates = [
+            RobustCandidate(alpha=a, eps=opt.robust_eps, sigma=opt.robust_sigma)
+            for a in [float(x) for x in opt.robust_alphas.split(",")]
+        ]
+        robust_loss_fn = RobustMixtureLoss(
+            candidates=candidates,
+            entropy_weight=opt.robust_entropy_weight,
+            temperature=opt.robust_temperature,
+            learn_global_logits=opt.robust_learn_logits,
+        ).cuda()
+        if opt.robust_learn_logits:
+            gaussians.optimizer.add_param_group({
+                "params": [robust_loss_fn.global_logits],
+                "lr": opt.robust_logits_lr,
+                "name": "robust_logits",
+            })
+
     if checkpoint:
-        (model_params, first_iter) = torch.load(checkpoint)
+        ckpt_data = torch.load(checkpoint)
+        if len(ckpt_data) == 2:
+            model_params, first_iter = ckpt_data
+        elif len(ckpt_data) == 3:
+            model_params, first_iter, robust_loss_state = ckpt_data
+            if robust_loss_fn is not None and robust_loss_state is not None:
+                robust_loss_fn.load_state_dict(robust_loss_state)
+        else:
+            model_params, first_iter = ckpt_data[0], ckpt_data[1]
         gaussians.restore(model_params, opt)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
@@ -139,13 +182,26 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
-        if FUSED_SSIM_AVAILABLE:
-            ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+        if opt.loss_type == "robust_mixture" and robust_loss_fn is not None:
+            residual = image - gt_image
+            loss_photo = robust_loss_fn(residual, reduction="mean")
+            if opt.lambda_dssim > 0:
+                if FUSED_SSIM_AVAILABLE:
+                    ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+                else:
+                    ssim_value = ssim(image, gt_image)
+                loss = (1.0 - opt.lambda_dssim) * loss_photo + opt.lambda_dssim * (1.0 - ssim_value)
+            else:
+                loss = loss_photo
+            Ll1 = l1_loss(image, gt_image)  # For logging
         else:
-            ssim_value = ssim(image, gt_image)
-
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+            # Original L1 + SSIM
+            Ll1 = l1_loss(image, gt_image)
+            if FUSED_SSIM_AVAILABLE:
+                ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+            else:
+                ssim_value = ssim(image, gt_image)
+            loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
 
         # Depth regularization
         Ll1depth_pure = 0.0
@@ -177,7 +233,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 progress_bar.close()
 
             # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp)
+            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp, robust_loss_fn)
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
@@ -209,7 +265,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+                robust_state = robust_loss_fn.state_dict() if robust_loss_fn is not None else None
+                torch.save((gaussians.capture(), iteration, robust_state), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
             # Oracle dump (after optimizer step)
             if oracle_dump_dir and iteration in oracle_iters:
@@ -244,11 +301,18 @@ def prepare_output_and_logger(args):
         print("Tensorboard not available: not logging progress")
     return tb_writer
 
-def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp):
+def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp, robust_loss_fn=None):
     if tb_writer:
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
         tb_writer.add_scalar('iter_time', elapsed, iteration)
+        # Log robust mixture loss metrics
+        if robust_loss_fn is not None:
+            extra = robust_loss_fn.state_dict_extra()
+            tb_writer.add_scalar('robust_loss/expected_alpha', extra['expected_alpha'], iteration)
+            tb_writer.add_scalar('robust_loss/entropy', extra['entropy'], iteration)
+            for i, w in enumerate(extra['mixture_weights'].tolist()):
+                tb_writer.add_scalar(f'robust_loss/pi_{i}', w, iteration)
 
     # Report test and samples of training set
     if iteration in testing_iterations:

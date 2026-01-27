@@ -97,6 +97,15 @@ class OptimizationParams(ParamGroup):
         self.depth_l1_weight_final = 0.01
         self.random_background = False
         self.optimizer_type = "default"
+        # Robust Mixture Loss parameters
+        self.loss_type = "l1"
+        self.robust_alphas = "0.5,1.0,1.5,2.0"
+        self.robust_eps = 1e-3
+        self.robust_sigma = 1.0
+        self.robust_entropy_weight = 0.01
+        self.robust_temperature = 1.0
+        self.robust_learn_logits = True
+        self.robust_logits_lr = 0.01
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):
