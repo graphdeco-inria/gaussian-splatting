@@ -17,7 +17,7 @@ class GaussianGeometry:
         """
         self.device = device
         self.sh_degree = sh_degree
-        self.gaussians = GaussianModel(sh_degree=sh_degree)
+        self.gaussians = GaussianModel(sh_degree=sh_degree, use_labels=True)
         
         # The .ply is accesible from this directories by default
         self.ply_path = os.path.join(model_path, "point_cloud", f"iteration_{iteration}", "point_cloud.ply")
@@ -73,3 +73,8 @@ class GaussianGeometry:
     def features_rest(self):
         """Returns the SH features, with shape (N, 15, 3)"""
         return self.gaussians.get_features_rest
+
+    @property
+    def labels(self):
+        """Returns the semantic labels of the Gaussians, with shape (N,)"""
+        return self.gaussians.get_labels

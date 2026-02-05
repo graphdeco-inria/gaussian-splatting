@@ -50,7 +50,8 @@ class GaussianModel:
         self.rotation_activation = torch.nn.functional.normalize
 
 
-    def __init__(self, sh_degree, optimizer_type="default"):
+    def __init__(self, sh_degree, optimizer_type="default", use_labels=False):
+        self.use_labels = use_labels # Store it
         self.active_sh_degree = 0
         self.optimizer_type = optimizer_type
         self.max_sh_degree = sh_degree  
@@ -60,13 +61,24 @@ class GaussianModel:
         self._scaling = torch.empty(0)
         self._rotation = torch.empty(0)
         self._opacity = torch.empty(0)
+        if self.use_labels:
+            self._labels = torch.empty(0)
+        # self._labels = torch.empty(0)
         self.max_radii2D = torch.empty(0)
         self.xyz_gradient_accum = torch.empty(0)
         self.denom = torch.empty(0)
         self.optimizer = None
         self.percent_dense = 0
         self.spatial_lr_scale = 0
+        self._mask_index = None
         self.setup_functions()
+
+    def set_mask_index(self, mask):
+        self._mask_index = mask
+
+    @property
+    def get_mask_index(self):
+        return self._mask_index
 
     def capture(self):
         return (
@@ -109,6 +121,10 @@ class GaussianModel:
     @property
     def get_rotation(self):
         return self.rotation_activation(self._rotation)
+    
+    @property
+    def get_labels(self):
+        return self._labels
     
     @property
     def get_xyz(self):
@@ -172,6 +188,9 @@ class GaussianModel:
         self._scaling = nn.Parameter(scales.requires_grad_(True))
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
+        if self.use_labels:
+            self._labels = torch.zeros((fused_point_cloud.shape[0], 1), dtype=torch.int32, device="cuda")
+        # self._labels = torch.zeros((fused_point_cloud.shape[0], 1), dtype=torch.int32, device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         self.exposure_mapping = {cam_info.image_name: idx for idx, cam_info in enumerate(cam_infos)}
         self.pretrained_exposures = None
@@ -242,18 +261,34 @@ class GaussianModel:
     def save_ply(self, path):
         mkdir_p(os.path.dirname(path))
 
-        xyz = self._xyz.detach().cpu().numpy()
+        # Check for mask filtering
+        if self.use_labels and self._mask_index is not None:
+            mask = self._mask_index
+        else:
+            mask = slice(None)
+
+        xyz = self._xyz[mask].detach().cpu().numpy()
         normals = np.zeros_like(xyz)
-        f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
-        f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
-        opacities = self._opacity.detach().cpu().numpy()
-        scale = self._scaling.detach().cpu().numpy()
-        rotation = self._rotation.detach().cpu().numpy()
+        f_dc = self._features_dc[mask].detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
+        f_rest = self._features_rest[mask].detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
+        opacities = self._opacity[mask].detach().cpu().numpy()
+        scale = self._scaling[mask].detach().cpu().numpy()
+        rotation = self._rotation[mask].detach().cpu().numpy()
+        if self.use_labels:
+            labels = self._labels[mask].detach().cpu().numpy()
+        # labels = self._labels.detach().cpu().numpy()
 
         dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes()]
+        if self.use_labels:
+            dtype_full.append(('label', 'i4'))
+        # dtype_full.append(('label', 'i4'))
 
         elements = np.empty(xyz.shape[0], dtype=dtype_full)
-        attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
+        if self.use_labels:
+            attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation, labels), axis=1)
+        else:
+            attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
+         # Here labels shouldn't exist for usual calculation
         elements[:] = list(map(tuple, attributes))
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
@@ -307,13 +342,27 @@ class GaussianModel:
         for idx, attr_name in enumerate(rot_names):
             rots[:, idx] = np.asarray(plydata.elements[0][attr_name])
 
+        if self.use_labels:
+            if 'label' in [p.name for p in plydata.elements[0].properties]:
+                labels = np.asarray(plydata.elements[0]["label"])[..., np.newaxis]
+            else:
+                labels = np.zeros((xyz.shape[0], 1), dtype=np.int32)
+
+        # if 'label' in [p.name for p in plydata.elements[0].properties]:
+        #     labels = np.asarray(plydata.elements[0]["label"])[..., np.newaxis]
+        # else:
+        #     labels = np.zeros((xyz.shape[0], 1), dtype=np.int32)
+            
         self._xyz = nn.Parameter(torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True))
         self._features_dc = nn.Parameter(torch.tensor(features_dc, dtype=torch.float, device="cuda").transpose(1, 2).contiguous().requires_grad_(True))
         self._features_rest = nn.Parameter(torch.tensor(features_extra, dtype=torch.float, device="cuda").transpose(1, 2).contiguous().requires_grad_(True))
         self._opacity = nn.Parameter(torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(True))
         self._scaling = nn.Parameter(torch.tensor(scales, dtype=torch.float, device="cuda").requires_grad_(True))
         self._rotation = nn.Parameter(torch.tensor(rots, dtype=torch.float, device="cuda").requires_grad_(True))
-
+        if self.use_labels:
+            self._labels = torch.tensor(labels, dtype=torch.int32, device="cuda")
+        # self._labels = torch.tensor(labels, dtype=torch.int32, device="cuda")
+        
         self.active_sh_degree = self.max_sh_degree
 
     def replace_tensor_to_optimizer(self, tensor, name):
@@ -360,6 +409,9 @@ class GaussianModel:
         self._scaling = optimizable_tensors["scaling"]
         self._rotation = optimizable_tensors["rotation"]
 
+        if self.use_labels:
+            self._labels = self._labels[valid_points_mask]
+
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
 
         self.denom = self.denom[valid_points_mask]
@@ -388,7 +440,7 @@ class GaussianModel:
 
         return optimizable_tensors
 
-    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii):
+    def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii, new_labels=None):
         d = {"xyz": new_xyz,
         "f_dc": new_features_dc,
         "f_rest": new_features_rest,
@@ -403,6 +455,9 @@ class GaussianModel:
         self._opacity = optimizable_tensors["opacity"]
         self._scaling = optimizable_tensors["scaling"]
         self._rotation = optimizable_tensors["rotation"]
+
+        if self.use_labels and new_labels is not None:
+            self._labels = torch.cat((self._labels, new_labels), dim=0)
 
         self.tmp_radii = torch.cat((self.tmp_radii, new_tmp_radii))
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
@@ -430,7 +485,11 @@ class GaussianModel:
         new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
         new_tmp_radii = self.tmp_radii[selected_pts_mask].repeat(N)
 
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)
+        new_labels = None
+        if self.use_labels:
+            new_labels = self._labels[selected_pts_mask].repeat(N, 1)
+
+        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii, new_labels)
 
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
@@ -450,7 +509,11 @@ class GaussianModel:
 
         new_tmp_radii = self.tmp_radii[selected_pts_mask]
 
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii)
+        new_labels = None
+        if self.use_labels:
+            new_labels = self._labels[selected_pts_mask]
+
+        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii, new_labels)
 
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, radii):
         grads = self.xyz_gradient_accum / self.denom
