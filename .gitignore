@@ -7,4 +7,10 @@ diff_rasterization/dist
 tensorboard_3d
 screenshots
 trial/
-example_data/data/
+example_data/data
+segmentation/data
+segmentation_1view/data
+debug_vis/
+segmentation_old/
+segmentation_1view/
+*.pt
