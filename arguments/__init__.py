@@ -91,7 +91,11 @@ class OptimizationParams(ParamGroup):
         self.erank_lambda = 1.
         self.erank_from_iter = 0
         self.erank_end_iter = self.iterations
+        self.L1_ssim_from_iter = 7000
+        self.L1_ssim_end_iter =self.iterations
         self.thin_lambda = 0.
+        self.wd=1.0
+        self.l1_ssim=1.0
         self.densification_interval = 100
         self.opacity_reset_interval = 3000
         self.densify_from_iter = 500

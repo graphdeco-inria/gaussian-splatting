@@ -312,10 +312,10 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Generate histogram for pretrained 3DGS model")
 
     model = ModelParams(parser, sentinel=True)
-    parser.add_argument("--iteration", default=-1, type=int, required=True)
+    parser.add_argument("--iterations", default=-1, type=int, required=True)
     parser.add_argument("--quiet", action="store_true")
     args = get_combined_args(parser)
 
     safe_state(args.quiet)
 
-    generate_histograms(model.extract(args), args.iteration)
+    generate_histograms(model.extract(args), args.iterations)

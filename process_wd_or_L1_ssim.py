@@ -1,10 +1,10 @@
 import os
 import subprocess
+import random
+port = random.randint(20000, 40000)
 
 base_cmd = [
     "python", "-u","train_wd.py",
-    "-m", "/vast/cw4287/gaussian-model/train_WD_scales_3_log2sigma2",
-    "-s", "/home/cw4287/gaussian-dataset/tandt/train",
     "--eval",
     "--data_device", "cuda",
     "--switch_to_wd", "True",
@@ -13,32 +13,37 @@ base_cmd = [
 ]
 
 render_cmd = [
-    "python","-u", "render.py",
-    "-m", "/vast/cw4287/gaussian-model/train_WD_scales_3_log2sigma2",
-    "-s", "/home/cw4287/gaussian-dataset/tandt/train",
+    "python", "-u","render.py",
     "--eval",
     "--data_device", "cuda",
 ]
 
+metric_cmd=[
+    "python", "-u","metrics.py",
+]
 # factors = [ 1, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01]
 # scales  = [ 4, 2,   3,   4,   2,    3,    4]
 
 factors = [0.01]
 scales  = [3]
 log2sigma = [2]
+data=["mipnerf360/flowers","mipnerf360/stump"]
 
 
 os.makedirs("logs_wd", exist_ok=True)
 
 i=1
 import itertools
-for f,s,l in itertools.product(factors,scales,log2sigma):
+for f,s,l,d in itertools.product(factors,scales,log2sigma,data):
 
-    log_path = f"logs_wd/run_{i}_factor{f}_scale{s}_log2signma{l}.log"
-    log_path1 = f"logs_wd/render.log"
+    log_path = f"logs_wd/run_{i}_data{d.replace("/", "_")}_factor{f}_scale{s}_log2signma{l}_or_L1_ssim.log"
+    log_path1 = f"logs_wd/render_run_{i}_data{d.replace("/", "_")}_factor{f}_scale{s}_log2sigma{l}_or_L1_ssim.log"
+    log_path2 = f"logs_wd/metric_run_{i}_data{d.replace("/", "_")}_factor{f}_scale{s}_log2sigma{l}_or_L1_ssim.log"
 
-    cmd = base_cmd + ["--factor", str(f), "--scale", str(s), "--log2sigma", str(l)]
-    cmd2=render_cmd
+    cmd = base_cmd + ["--factor", str(f), "--scale", str(s), "--log2sigma", str(l)] + ["-m",f"/vast/cw4287/gaussian-model/{str(d)}_train_WD_scales_{str(s)}_log2sigma{str(l)}_or_L1_ssim"]
+    cmd = cmd + ["-s",f"/vast/cw4287/gaussian-dataset/{str(d)}"] + ["--ip", "127.0.0.1", "--port", str(port)]
+    cmd2=render_cmd +  ["-m",f"/vast/cw4287/gaussian-model/{str(d)}_train_WD_scales_{str(s)}_log2sigma{str(l)}_or_L1_ssim"] +["-s",f"/vast/cw4287/gaussian-dataset/{str(d)}"]
+    cmd3=metric_cmd + ["-m",f"/vast/cw4287/gaussian-model/{str(d)}_train_WD_scales_{str(s)}_log2sigma{str(l)}_or_L1_ssim"]
 
     print(f"\n==============================")
     print(f"Run {i}: factor={f}, scale={s}")
@@ -84,6 +89,26 @@ for f,s,l in itertools.product(factors,scales,log2sigma):
             os.fsync(log_f1.fileno())
 
         ret = proc.wait()
-
     if ret != 0:
-        print("render complete")
+        print(f"Run {i} FAILED with code {ret}. Continuing to next run.\n")
+        continue
+
+    with open(log_path2, "w") as log_f2:
+        proc = subprocess.Popen(
+            cmd3,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        for line in proc.stdout:
+            print(line, end="")
+            log_f2.write(line)
+            log_f2.flush()
+            os.fsync(log_f2.fileno())
+
+        ret = proc.wait()
+    if ret != 0:
+        print(f"Run {i} FAILED with code {ret}. Continuing to next run.\n")
+        continue
