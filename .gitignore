@@ -14,3 +14,13 @@ debug_vis/
 segmentation_old/
 segmentation_1view/
 *.pt
+data_download.zip
+data_download/
+data/
+output/
+markdowns
+evaluation/aggregate_metrics.py
+evaluation/evaluate_scene.py
+evaluation/recompute_miou.py
+evaluation/generate_2d_gt_masks.py
+segmentation/old_generate_mask.py

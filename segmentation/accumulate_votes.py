@@ -13,10 +13,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scene import Scene, GaussianModel
 from arguments import ModelParams, PipelineParams, get_combined_args
-from segmentation_1view.projection import GaussianProjector
+from segmentation.projection import GaussianProjector
+from segmentation.threshold_labels import apply_threshold
 from utils.general_utils import build_rotation, build_scaling_rotation
 from plyfile import PlyData, PlyElement
-from geometry import GaussianGeometry
 
 def get_covariance_3d(gaussians, scaling_modifier = 1.0) -> torch.Tensor:
         """
@@ -37,18 +37,10 @@ def get_covariance_3d(gaussians, scaling_modifier = 1.0) -> torch.Tensor:
 
 def get_target_class_id(args, classes_json_path):
     """
-    Retrieves the target class ID from the classes.json file based on the provided target class name.
-    
-    Args:
-        args: Argument parser object containing the target_class attribute.
-        classes_json_path (str): Path to the classes.json file.
-        
-    Returns:
-        int: The target class ID.
-        
-    Raises:
-        ValueError: If the target class is not found in the classes.json file.
+    Retrieves the target class ID from the classes.json file based on the provided target class name
+    args contains the target_class attribute
     """
+
     with open(classes_json_path, 'r') as f:
             classes_map = json.load(f)
             
@@ -56,11 +48,9 @@ def get_target_class_id(args, classes_json_path):
     name_to_id = {v: int(k) for k, v in classes_map.items()}
     
     if args.target_class not in name_to_id:
-        raise ValueError(f"Target class '{args.target_class}' not found in classes.json. Available: {list(name_to_id.keys())}")
+        raise ValueError(f"Target class {args.target_class} not found in classes.json")
         
-    target_id = name_to_id[args.target_class]
-    print(f"Targeting Class: '{args.target_class}' (ID: {target_id})")
-    
+    target_id = name_to_id[args.target_class]    
     return target_id
 
 
@@ -74,7 +64,10 @@ def main(args):
     # Calculate scalar sizes (max scale axis) for all gaussians
     scales = gaussians.get_scaling
     scalar_sizes = scales.max(dim=1).values
+
     '''
+    Analysis of gaussian sizes to select the default size penalty
+
     print(f"Gaussian sizes (max scale): Min={scalar_sizes.min().item():.5f}, Max={scalar_sizes.max().item():.5f}")
 
     # Statistical analysis of scales (Deciles)
@@ -105,7 +98,6 @@ def main(args):
     target_cameras = []
     
     for cam in train_cameras:
-
         basename = os.path.basename(cam.image_name)
         name_no_ext = os.path.splitext(basename)[0]
         name = f"{name_no_ext}.png"
@@ -120,17 +112,25 @@ def main(args):
     print(f"Matched {len(target_cameras)} cameras in the scene.")
 
     for i, (cam, mask_info) in enumerate(target_cameras):
-        print(f"\n--- Processing View {i+1}/{len(target_cameras)}: {cam.image_name} ---")
+        print(f"\n  Processing View {i+1}/{len(target_cameras)}: {cam.image_name}")
         sem_path = os.path.join(args.mask_dir, mask_info["semantic"])
         semantic_img = cv2.imread(sem_path, cv2.IMREAD_UNCHANGED) # (H, W)
+        
+        # Resize semantic mask to match camera dimensions
+        if semantic_img.shape[:2] != (cam.image_height, cam.image_width):
+            semantic_img = cv2.resize(semantic_img, (cam.image_width, cam.image_height), interpolation=cv2.INTER_NEAREST)
+            
         semantic_mask = torch.tensor(semantic_img, dtype=torch.long, device=args.device)
         semantic_height, semantic_width = semantic_img.shape
 
         # Compute Confidence for Target Class
         conf_path = os.path.join(args.mask_dir, mask_info["confidence"])
         confidence_img = cv2.imread(conf_path, cv2.IMREAD_UNCHANGED)
+
+        # Resize confidence mask to match camera dimensions
         if confidence_img.shape[:2] != (cam.image_height, cam.image_width):
             confidence_img = cv2.resize(confidence_img, (cam.image_width, cam.image_height), interpolation=cv2.INTER_NEAREST)
+
         confidence_mask = torch.tensor(confidence_img, dtype=torch.float32, device=args.device)
         max_confidence = confidence_mask.max()
         if max_confidence > 1.0:
@@ -216,7 +216,7 @@ def main(args):
         view_weights_sorted = torch.zeros((num_visible,), device=args.device, dtype=torch.float32)
 
         # Rasterization:
-        BLOCK_SIZE = args.raster_block_size
+        BLOCK_SIZE = args.raster_block_size # By default, we use 16x16 pixel blocks for rasterization. This means we will check which Gaussians potentially affect each block, and then only compute the Gaussian formula for the pixels in that block and those Gaussians. This is a common technique to speed up rasterization by reducing the number of Gaussian evaluations per pixel
         grid_columns = (semantic_width + BLOCK_SIZE - 1) // BLOCK_SIZE # It ensures that if the image width isn't perfectly divisible by 16, you still get that final partial tile at the edge
         grid_rows = (semantic_height + BLOCK_SIZE - 1) // BLOCK_SIZE 
         
@@ -239,11 +239,13 @@ def main(args):
                 if gaussians_in_tile.shape[0] == 0:
                     continue
                     
-                # For each Gaussian that overlaps with this tile, we would calculate its contribution to the pixels in the tile
-                # This is where we would apply the Gaussian formula using the precomputed "conic" parameters and opacities
-                # We would also check the semantic_mask to see if the pixel belongs to the target class and accumulate votes accordingly
-                # This part is complex and would involve iterating over the pixels in the tile and applying the Gaussian formula, which is why we want to minimize the number of Gaussians we check per tile
-                # The output would be a per-pixel vote for the target class, which we would accumulate in the global_votes tensor using the original indices of the Gaussians
+                '''
+                For each Gaussian that overlaps with this tile, we would calculate its contribution to the pixels in the tile
+                This is where we would apply the Gaussian formula using the precomputed "conic" parameters and opacities
+                We would also check the semantic_mask to see if the pixel belongs to the target class and accumulate votes accordingly
+                This part is complex and would involve iterating over the pixels in the tile and applying the Gaussian formula, which is why we want to minimize the number of Gaussians we check per tile
+                The output would be a per-pixel vote for the target class, which we would accumulate in the global_votes tensor using the original indices of the Gaussians
+                '''
 
                 tile_means = means2D[gaussians_in_tile]
                 tile_conics = conic[gaussians_in_tile]
@@ -300,83 +302,31 @@ def main(args):
                     class_votes = weighted_contribution[:, pixel_mask].sum(dim=1)          
                     view_weights_sorted[gaussians_in_tile] += class_votes
 
-
-        '''
-        Its possition in the loop may change
-        view_max = view_weights_sorted.max()
-        if view_max > 0:
-        view_weights_sorted /= view_max
-
-        '''
-
         global_weights[sorted_original_indices] += view_weights_sorted
         del view_weights_sorted, means2D, conic, radius, grid_min, grid_max
         torch.cuda.empty_cache()
-                    
-    # Threshold: hyperparameter
-    threshold = len(target_cameras)*args.beta
-    print(f"Applying threshold: {threshold} (Cameras: {len(target_cameras)})")
+
+    # Save the global votes and weights for later use in thresholding
+    safe_class_name = args.target_class.replace(" ", "_")
+    class_output_dir = os.path.join(args.output_dir, safe_class_name)
+    os.makedirs(class_output_dir, exist_ok=True)
+    voting_data_path = os.path.join(class_output_dir, f"voting_data_{safe_class_name}.pt")
     
-    pred_labels = torch.zeros((total_gaussians,), dtype=torch.long, device=args.device)
-    final_mask = global_weights > threshold
-    pred_labels[final_mask] = target_id
+    voting_data = {
+        'weights': global_weights,
+        'num_cameras': len(target_cameras),
+        'target_id': target_id
+    }
     
-    print(f"Labeled {final_mask.sum()} gaussians as {target_id}")
-    
-    # Map to Gaussian Property
-    gaussians._labels = pred_labels.unsqueeze(1).int()
-
-    # Save the new Gaussians with the target label as a PLY file
-    # gaussians.set_labels(pred_labels) # Method does not exist, setting _labels directly above
-    gaussians.set_mask_index(final_mask.nonzero(as_tuple=True)[0])
-    gaussians.save_ply(f"{args.output_dir}/labeled_gaussians_{target_id}.ply")
-
-    # Save all the Gaussians with their weights as a PLY file (for visualization)
-    # Custom save logic to support 'weight' property
-    '''
-    with torch.no_grad():
-        w_path = f"{args.output_dir}/gaussians_with_weights_{target_id}.ply"
-        os.makedirs(os.path.dirname(w_path), exist_ok=True)
-        
-        xyz = gaussians._xyz.detach().cpu().numpy()
-        normals = np.zeros_like(xyz)
-        f_dc = gaussians._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
-        f_rest = gaussians._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
-        opacities = gaussians._opacity.detach().cpu().numpy()
-        scale = gaussians._scaling.detach().cpu().numpy()
-        rotation = gaussians._rotation.detach().cpu().numpy()
-        
-        l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
-        for i in range(f_dc.shape[1]): l.append('f_dc_{}'.format(i))
-        for i in range(f_rest.shape[1]): l.append('f_rest_{}'.format(i))
-        l.append('opacity')
-        for i in range(scale.shape[1]): l.append('scale_{}'.format(i))
-        for i in range(rotation.shape[1]): l.append('rot_{}'.format(i))
-        
-        dtype_full = [(attribute, 'f4') for attribute in l]
-        dtype_full.append(('weight', 'f4'))
-
-        weights_np = global_weights.detach().cpu().numpy().reshape(-1, 1)
-        
-        attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation, weights_np), axis=1)
-        elements = np.empty(xyz.shape[0], dtype=dtype_full)
-        elements[:] = list(map(tuple, attributes))
-        el = PlyElement.describe(elements, 'vertex')
-        PlyData([el]).write(w_path)
-
-    print(f"Saved labeled gaussians and weights to {args.output_dir}")
-    '''
-
-
+    torch.save(voting_data, voting_data_path)
+    print(f"Saved voting weights to {voting_data_path}")
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--model_path", default="../example_data/output/truck_test")
-    parser.add_argument("--source_path", default="../example_data/data/tandt/truck")
     parser.add_argument("--mask_dir", default="./data/2D_mask/02-04_23-18", help="Directory containing masks.json (e.g. data/2D_mask/timestamp)")
     parser.add_argument("--output_dir", default="./data/output/02-04_23-18", help="Directory to save outputs")
-    parser.add_argument("--num_classes", type=int, default=81)
     parser.add_argument("--sh_degree", type=int, default=3)
     parser.add_argument("--target_class", type=str, default="truck", help="Only one object at a time can be segmented. The name must match one of the classes in the YOLO model.")
     parser.add_argument("--device", type=str, default="cuda", help="Device to load tensors on")
