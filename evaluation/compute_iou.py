@@ -54,7 +54,7 @@ def compute_iou(gt_mesh_path, pred_ply_path, beta, target_class_id, distance_thr
     tree = cKDTree(pred_points)
     
     print(f"Querying nearest neighbors with radius={distance_threshold}")
-    distances, _ = tree.query(gt_vertices, k=1, workers=-1)
+    distances, _ = tree.query(gt_vertices, k=1, workers=-1, distance_upper_bound=distance_threshold)
     
     # Determine which GT vertices are predicted as target
     pred_mask = (distances <= distance_threshold)

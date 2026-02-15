@@ -30,16 +30,19 @@ def generate_gt_gaussians(gaussian_path, gt_mesh_path, output_path, target_class
     print(f"Total gaussians: {len(gs_locations)}")
     
     # For each Gaussian, find the nearest GT vertex and its label
-    distances, indices = gt_tree.query(gs_locations, k=1, workers=-1)
+    distances, indices = gt_tree.query(gs_locations, k=1, workers=-1, distance_upper_bound=distance_threshold)
     
-    # Retrieve the label of the nearest vertex for each Gaussian
-    nearest_labels = gt_labels[indices]
+    # Handling invalid indices for points outside threshold (indices == len(gt_tree.data))
+    valid_mask = distances <= distance_threshold
     
-    # Filtering
-    is_close = (distances <= distance_threshold) # Distance matches threshold
-    is_target = (nearest_labels == target_class_id) # The surface it touches is the target class
+    # Pre-allocate boolean target mask (False everywhere)
+    is_target = np.zeros(len(gs_locations), dtype=bool)
     
-    is_gt_positive = is_close & is_target
+    # Only access labels for valid indices to avoid out-of-bounds error
+    valid_labels = gt_labels[indices[valid_mask]]
+    is_target[valid_mask] = (valid_labels == target_class_id)
+    
+    is_gt_positive = valid_mask & is_target
     
     count = np.sum(is_gt_positive)
     print(f"Identified {count} ground truth gaussians for class {target_class_id}.")

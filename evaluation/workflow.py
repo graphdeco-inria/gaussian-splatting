@@ -251,7 +251,7 @@ def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_o
             iou = res.get("iou", 0.0)
     return iou
 
-def evaluate_object(scene_id, class_name, yolo_id, available_labels):
+def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_voting=False):
     """
     Runs the evaluation workflow for a single object
     Returns best IoU found among betas [0.01, 0.02, 0.03] if initial seed > 0.1
@@ -262,6 +262,7 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels):
     output_base = os.path.join(ROOT_DIR, "output", scene_id)
     seg_output_dir = os.path.join(output_base, "segmentation") # Base for accum output
     class_output_dir = os.path.join(seg_output_dir, safe_class_name) # Folder for this class
+    voting_data_path = os.path.join(class_output_dir, f"voting_data_{safe_class_name}.pt")
     
     # Check if class exists in scene ground truth labels before processing
     candidates = get_possible_gt_ids(safe_class_name, available_labels)
@@ -270,21 +271,19 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels):
         return 0.0
 
     # 1. Accumulate Votes with beta 0.03
-    cmd_vote = [
-        PYTHON_FUSION, VOTE_SCRIPT,
-        "--model_path", output_base,
-        "--mask_dir", os.path.join(ROOT_DIR, "data", "2D_masks", scene_id),
-        "--output_dir", seg_output_dir,
-        "--target_class", class_name,
-        "--beta", "0.03"
-    ]
-    
-    subprocess.run(cmd_vote, check=True)
-    
-    ply_path_03 = os.path.join(class_output_dir, f"labeled_gaussians_{safe_class_name}_beta0_03.ply")
-    if not os.path.exists(ply_path_03):
-        print(f"Failed to generate labeled PLY for {class_name}")
-        return 0.0
+    if reuse_voting and os.path.exists(voting_data_path):
+        print(f"Skipping vote accumulation for {class_name}, voting data found at {voting_data_path}")
+    else: 
+        cmd_vote = [
+            PYTHON_FUSION, VOTE_SCRIPT,
+            "--model_path", output_base,
+            "--mask_dir", os.path.join(ROOT_DIR, "data", "2D_masks", scene_id),
+            "--output_dir", seg_output_dir,
+            "--target_class", class_name,
+            "--beta", "0.03"
+        ]
+        
+        subprocess.run(cmd_vote, check=True)
 
     # 2. Find ground truth Correspondence
     best_overall_iou = 0.0
@@ -333,7 +332,7 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels):
     return best_overall_iou
 
 
-def process_scene(scene_id):
+def process_scene(scene_id, reuse_voting=False):
 
     # Check for existing results first to avoid redundant processing
     miou_file = os.path.join(ROOT_DIR, "output", scene_id, "segmentation", "miou.txt")
@@ -376,7 +375,7 @@ def process_scene(scene_id):
     
     for class_name, yolo_id in classes.items():
         print(f"Evaluating Class: {class_name} (YOLO ID: {yolo_id})...")
-        iou = evaluate_object(scene_id, class_name, yolo_id, available_labels=scene_labels)
+        iou = evaluate_object(scene_id, class_name, yolo_id, available_labels=scene_labels, reuse_voting=reuse_voting)
         
         if iou >= 0.1:
             ious.append(iou)
@@ -415,8 +414,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=3, help="Number of scenes to process")
-    parser.add_argument("--seed", type=int, default=36, help="Random seed")
+    parser.add_argument("--seed", type=int, default=39, help="Random seed")
     parser.add_argument("--scene_id", type=str, default=None, help="Process a specific scene ID only")
+    parser.add_argument("--reuse_voting", action="store_true", help="Reuse existing voting data if available")
     args = parser.parse_args()
 
     # Set a random seed for reproducibility
@@ -473,12 +473,12 @@ if __name__ == "__main__":
         f.write(f"\n## Workflow executed - {datetime.now()}\n")
     
     for s in selected_scenes:
-        miou = process_scene(s)
+        miou = process_scene(s, reuse_voting=args.reuse_voting)
         scene_mious.append(miou)
         
     final_mean = sum(scene_mious) / len(scene_mious) if scene_mious else 0.0
     
-    print(f"\nFinal workflow result, with seed {args.seed} and {args.limit} scenes)")
+    print(f"\nFinal workflow result, with seed {args.seed} and {args.limit} scenes")
     print(f"Scenes: {selected_scenes}")
     print(f"mIoUs: {scene_mious}")
     print(f"Average mIoU: {final_mean}\n")
