@@ -48,19 +48,24 @@ def get_segmentation_masks(image_path, model, conf):
         class_ids = boxes.cls
         
         for idx in sort_idx:
-            # We don't need to resize because of retina_masks=True
-            mask_bool = masks[idx] > 0.5 # A non-binary mask could be used with the confidence values as weights in the future
+            # Use soft mask values combined with detection confidence for pixel-wise confidence
+            soft_mask = masks[idx]
+            
+            # Binary mask for assignment
+            mask_bool = soft_mask > 0.5
             
             cls_id = int(class_ids[idx])
-            conf_val = confidences[idx]
+            det_conf = confidences[idx]
             
             stored_id = cls_id + 1 # Shift by 1 to reserve 0 for background
             names_map[stored_id] = result.names[cls_id]
             
-            # Splat onto canvas
+            # We combine pixel-wise mask probability with detection confidence, this gives lower confidence to uncertain edges
+            pixel_conf = soft_mask * det_conf
+            
             # Because we are looping from low to high, if this pixel was already painted by a weaker detection, it gets overwritten
             semantic_mask[mask_bool] = stored_id
-            confidence_mask[mask_bool] = conf_val
+            confidence_mask[mask_bool] = pixel_conf[mask_bool]
             
     # Move final result to CPU numpy
     return (

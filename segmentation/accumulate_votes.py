@@ -132,23 +132,19 @@ def main(args):
             confidence_img = cv2.resize(confidence_img, (cam.image_width, cam.image_height), interpolation=cv2.INTER_NEAREST)
 
         confidence_mask = torch.tensor(confidence_img, dtype=torch.float32, device=args.device)
-        max_confidence = confidence_mask.max()
-        if max_confidence > 1.0:
-                confidence_mask /= max_confidence
         
+        # Normalize to [0, 1]. Since it was saved as uint8, we divide by 255.0
+        if confidence_mask.max() > 1.0:
+            confidence_mask /= 255.0
+
         target_mask_view = (semantic_mask == target_id)
         if not target_mask_view.any():
             continue
-        
-        # Extract scalar confidence for this view
-        view_confidence = confidence_mask[target_mask_view].mean()
 
         # Projection
         projector = GaussianProjector(cam)
         projection_results = projector.project(gaussians.get_xyz, cov3D)
-        # print(f"semantic_dimensions: {semantic_width} x {semantic_height}")
-        # print(f"camera dimensions: {cam.image_width} x {cam.image_height}")
-        # print(projection_results['indices'])
+        
         gaussians.set_mask_index(projection_results['indices'])
         # gaussians.save_ply(os.path.join(args.output_dir, f"gaussians_with_masks_view_again{i+1}.ply"))
 
@@ -293,11 +289,15 @@ def main(args):
                     continue # No pixels of the target class in this tile, skip the voting
                 else:
                     pixel_mask = (tile_classes == target_id)
+                    tile_confidences = confidence_mask[flat_y, flat_x] # Per-pixel confidence for this tile
                     
-                    # Weight Calculation: alpha * T * view_confidence
+                    # Weight Calculation: alpha * T * pixel_confidence
                     # Weighted by inverse size to punish large gaussians
                     size_penalty_val = (tile_sizes * args.size_penalty) ** args.alpha
-                    weighted_contribution = (weights * view_confidence) / size_penalty_val.view(-1, 1) # Reshape to a column vector for broadcasting
+                    
+                    # weights is (N_gaussians, N_pixels)
+                    # tile_confidences is (N_pixels,) - broadcasts correctly across gaussians
+                    weighted_contribution = (weights * tile_confidences) / size_penalty_val.view(-1, 1) 
                     
                     class_votes = weighted_contribution[:, pixel_mask].sum(dim=1)          
                     view_weights_sorted[gaussians_in_tile] += class_votes
