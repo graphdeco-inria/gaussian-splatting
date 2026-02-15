@@ -251,10 +251,10 @@ def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_o
             iou = res.get("iou", 0.0)
     return iou
 
-def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_voting=False):
+def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_voting=False, alpha=2.0, size_penalty=100.0, betas=[0.01, 0.02]):
     """
     Runs the evaluation workflow for a single object
-    Returns best IoU found among betas [0.01, 0.02, 0.03] if initial seed > 0.1
+    Returns best IoU found among given betas if initial seed > 0.1
     """
 
     # Sanitize for output folder
@@ -280,7 +280,9 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
             "--mask_dir", os.path.join(ROOT_DIR, "data", "2D_masks", scene_id),
             "--output_dir", seg_output_dir,
             "--target_class", class_name,
-            "--beta", "0.03"
+            "--beta", "0.03",
+            "--alpha", str(alpha),
+            "--size_penalty", str(size_penalty)
         ]
         
         subprocess.run(cmd_vote, check=True)
@@ -315,16 +317,21 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
 
         current_candidate_best = iou_03
         
-        # o.1 of IoU is the least to consider that labels correspond to each other, otherwise we consider that the class is mislabeled or simply not present in the scene, and we discard it
+        # 0.1 of IoU is the least to consider that labels correspond to each other, otherwise we consider that the class is mislabeled or simply not present in the scene, and we discard it
         if iou_03 > 0.1:
-            print(f"First IoU is greater than 0.1, so we consider this label valid. Testing refinement betas 0.01 and 0.02")
+            print(f"First IoU is greater than 0.1, so we consider this label valid. Testing refinement betas {betas}")
             
-            iou_01 = compute_iou_for_beta(0.01, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh)
-            iou_02 = compute_iou_for_beta(0.02, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh)
+            best_iou = iou_03
+            results_msg = f"beta 0.03: {iou_03:.4f}"
             
-            # Find max of refined search
-            current_candidate_best = max(iou_01, iou_03, iou_02)
-            print(f"Refinement results: beta 0.01: {iou_01:.4f}, beta 0.02: {iou_02:.4f}, beta 0.03: {iou_03:.4f}. Greatest: {current_candidate_best:.4f}")
+            for b in betas:
+                iou_b = compute_iou_for_beta(b, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh)
+                results_msg += f", beta {b}: {iou_b:.4f}"
+                if iou_b > best_iou:
+                    best_iou = iou_b
+
+            current_candidate_best = best_iou
+            print(f"Refinement results: {results_msg}. Greatest: {current_candidate_best:.4f}")
             
         if current_candidate_best > best_overall_iou:
             best_overall_iou = current_candidate_best
@@ -332,7 +339,7 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
     return best_overall_iou
 
 
-def process_scene(scene_id, reuse_voting=False):
+def process_scene(scene_id, reuse_voting=False, alpha=2.0, size_penalty=100.0, betas=[0.01, 0.02]):
 
     # Check for existing results first to avoid redundant processing
     miou_file = os.path.join(ROOT_DIR, "output", scene_id, "segmentation", "miou.txt")
@@ -375,7 +382,7 @@ def process_scene(scene_id, reuse_voting=False):
     
     for class_name, yolo_id in classes.items():
         print(f"Evaluating Class: {class_name} (YOLO ID: {yolo_id})...")
-        iou = evaluate_object(scene_id, class_name, yolo_id, available_labels=scene_labels, reuse_voting=reuse_voting)
+        iou = evaluate_object(scene_id, class_name, yolo_id, available_labels=scene_labels, reuse_voting=reuse_voting, alpha=alpha, size_penalty=size_penalty, betas=betas)
         
         if iou >= 0.1:
             ious.append(iou)
@@ -414,9 +421,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=3, help="Number of scenes to process")
-    parser.add_argument("--seed", type=int, default=39, help="Random seed")
+    parser.add_argument("--seed", type=int, default=3, help="Random seed")
     parser.add_argument("--scene_id", type=str, default=None, help="Process a specific scene ID only")
     parser.add_argument("--reuse_voting", action="store_true", help="Reuse existing voting data if available")
+    parser.add_argument("--alpha", type=float, default=2.0, help="Exponent for size punishment. Higher alpha penalizes larger Gaussians more.")
+    parser.add_argument("--size_penalty", type=float, default=100.0, help="Base multiplier for size punishment. Scales the Gaussian size before exponentiation.")
+    parser.add_argument("--betas", type=float, nargs='+', default=[0.01, 0.02], help="List of extra betas to try for refinement.")
     args = parser.parse_args()
 
     # Set a random seed for reproducibility
@@ -473,7 +483,7 @@ if __name__ == "__main__":
         f.write(f"\n## Workflow executed - {datetime.now()}\n")
     
     for s in selected_scenes:
-        miou = process_scene(s, reuse_voting=args.reuse_voting)
+        miou = process_scene(s, reuse_voting=args.reuse_voting, alpha=args.alpha, size_penalty=args.size_penalty, betas=args.betas)
         scene_mious.append(miou)
         
     final_mean = sum(scene_mious) / len(scene_mious) if scene_mious else 0.0
