@@ -335,7 +335,8 @@ if __name__ == "__main__":
     parser.add_argument("--alpha", type=float, default=2.0, help="Exponent for size punishment. Higher alpha penalizes larger Gaussians more.")
     parser.add_argument("--beta", type=float, default=0.05, help="Threshold factor for labeling Gaussians. Higher means more conservative segmentation.")
     parser.add_argument("--size_penalty", type=float, default=100.0, help="Base multiplier for size punishment. Scales the Gaussian size before exponentiation.")
-    
+    parser.add_argument("--source_path", type=str, default=None, help="Path to the source directory containing images/colmap data")
+
     args = get_combined_args(parser)
     
     with torch.no_grad():
