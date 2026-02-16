@@ -6,16 +6,18 @@ import os
 import json
 from plyfile import PlyData
 
-def compute_iou(gt_mesh_path, pred_ply_path, beta, target_class_id, distance_threshold=0.05):
+def compute_iou(gt_mesh_path, pred_ply_path, beta, target_class_id, distance_threshold=0.05, gt_iou_max=0.0):
     """
     Computes IoU for a single class by mapping predictions to ground truth mesh vertices
     
     Args:
-        gt_mesh_path: Path to the ground truth PLY mesh with 'label' property
-        pred_ply_path: Path to the predicted PLY (contains only points of the target class)
-        beta: Beta value used to suffix the output filename
-        target_class_id: The integer ID of the target class, or comma-separated string for union
-        distance_threshold: Distance in meters to consider a prediction "covering" a GT vertex
+        gt_mesh_path: path to the ground truth PLY mesh
+        pred_ply_path: path to the predicted PLY, which contains only points of the target class
+        beta: value used to suffix the output filename
+        target_class_id: the integer ID of the target class, or comma-separated string for union
+        distance_threshold: distance in meters to consider that a prediction covers a ground truth vertex
+        gt_iou_max: the theoretical maximum IoU achievable with ground truth gaussians
+        ...
     """
     
     # Extract vertices and labels from raw data
@@ -81,6 +83,11 @@ def compute_iou(gt_mesh_path, pred_ply_path, beta, target_class_id, distance_thr
     fn = np.sum(gt_is_target & (~pred_mask)) # GT but not predicted
     
     print(f"\nIoU for class {target_class_id}: {iou:.4f}")
+    
+    relative_iou = 0.0
+    if gt_iou_max > 0:
+        relative_iou = iou / gt_iou_max
+        print(f"Relative IoU (against the ground truth limit {gt_iou_max:.4f}): {relative_iou:.4f}")
 
     # Save results to JSON for later mIoU calculation
     output_dir = os.path.dirname(pred_ply_path)
@@ -105,7 +112,9 @@ def compute_iou(gt_mesh_path, pred_ply_path, beta, target_class_id, distance_thr
         "union": int(union),
         "threshold": float(distance_threshold),
         "gt_count": int(num_gt_positives),
-        "pred_count": int(len(pred_points))
+        "pred_count": int(len(pred_points)),
+        "gt_iou_max": float(gt_iou_max),
+        "relative_iou": float(relative_iou)
     }
     
     with open(result_path, 'w') as f:
@@ -121,7 +130,8 @@ if __name__ == "__main__":
     parser.add_argument("--class_id", type=str, required=True, help="Class ID")
     parser.add_argument("--beta", type=str, required=True, help="Beta value for filename suffix")
     parser.add_argument("--threshold", type=float, default=0.05, help="Distance threshold")
+    parser.add_argument("--gt_iou", type=float, default=0.0, help="Pre-computed IoU of GT gaussians")
     
     args = parser.parse_args()
     
-    compute_iou(args.gt_mesh, args.pred_ply, args.beta, args.class_id, args.threshold)
+    compute_iou(args.gt_mesh, args.pred_ply, args.beta, args.class_id, args.threshold, args.gt_iou)

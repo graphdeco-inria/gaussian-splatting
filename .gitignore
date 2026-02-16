@@ -25,3 +25,8 @@ evaluation/recompute_miou.py
 evaluation/generate_2d_gt_masks.py
 evaluation/recompute.py
 segmentation/old_generate_mask.py
+optimize_threshold.py
+verify_gt_iou.py
+verify_iou_components.py
+verify_gt_strategies.py
+debug_iou_bug.py

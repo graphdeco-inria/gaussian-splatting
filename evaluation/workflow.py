@@ -201,7 +201,7 @@ def run_2d_segmentation(scene_id):
         raise
 
 
-def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh):
+def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh, gt_iou_val):
     """
     Helper to run thresholding and IoU computation for a specific beta
     """
@@ -233,9 +233,10 @@ def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_o
         "--gt_mesh", gt_mesh,
         "--pred_ply", ply_path,
         "--class_id", str(gt_id),
-        "--beta", str(beta)
+        "--beta", str(beta),
+        "--gt_iou", str(gt_iou_val)
     ]
-    
+
     try:
         subprocess.run(cmd_iou, check=True, capture_output=True)
     except subprocess.CalledProcessError:
@@ -249,18 +250,19 @@ def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_o
         with open(iou_json, 'r') as f:
             res = json.load(f)
             iou = res.get("iou", 0.0)
+            
     return iou
 
 def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_voting=False, alpha=1.0, size_penalty=100.0, betas=[0.01, 0.02]):
     """
     Runs the evaluation workflow for a single object
-    Returns best IoU found among given betas if initial seed > 0.1
+    Returns (best_iou, best_rel_iou, best_beta) found among given betas if initial seed > 0.05
     """
 
     # Sanitize for output folder
     safe_class_name = class_name.replace(" ", "_")
     output_base = os.path.join(ROOT_DIR, "output", scene_id)
-    seg_output_dir = os.path.join(output_base, "segmentation") # Base for accum output
+    seg_output_dir = os.path.join(output_base, "segmentation")
     class_output_dir = os.path.join(seg_output_dir, safe_class_name) # Folder for this class
     voting_data_path = os.path.join(class_output_dir, f"voting_data_{safe_class_name}.pt")
     
@@ -268,7 +270,7 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
     candidates = get_possible_gt_ids(safe_class_name, available_labels)
     if not candidates:
         print(f"{class_name}: No matching ground truth label in scene.")
-        return 0.0
+        return 0.0, 0.0, None
 
     # 1. Accumulate Votes with beta 0.03
     if reuse_voting and os.path.exists(voting_data_path):
@@ -289,6 +291,8 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
 
     # 2. Find ground truth Correspondence
     best_overall_iou = 0.0
+    best_overall_rel_iou = 0.0
+    best_overall_beta = None
     
     # If multiple candidates exist, add a union candidate
     final_candidates = list(candidates)
@@ -318,8 +322,7 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
         try:
             subprocess.run(cmd_gen_gt, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
             
-            # Compute metrics for the generated GT gaussians (Max achievable IoU)
-            # We call the IOU script directly here because compute_iou_for_beta assumes thresholding
+            # Compute metrics for the generated GT gaussians. This is interpreted as the max achievable IoU.
             cmd_gt_iou = [
                 PYTHON_FUSION, IOU_SCRIPT,
                 "--gt_mesh", gt_mesh,
@@ -329,56 +332,71 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
             ]
             subprocess.run(cmd_gt_iou, check=True, capture_output=True)
             
-            # Read the special "gt" result
+            # Read the special gt result
             gt_iou_json = os.path.join(class_output_dir, "iou_result_betagt.json")
+            gt_iou_val = 0.0
             if os.path.exists(gt_iou_json):
                 with open(gt_iou_json, 'r') as f:
                     gt_res = json.load(f)
-                    print(f"  IoU for ID {gt_id} with ground truth gaussians: {gt_res.get('iou', 0.0):.4f}")
+                    gt_iou_val = gt_res.get('iou', 0.0)
+                    print(f"  IoU for ID {gt_id} with ground truth gaussians: {gt_iou_val:.4f}")
             
         except subprocess.CalledProcessError as e:
             pass
             
         # Compute first IoU with beta 0.03 as starting point
-        # For union IDs (strings with commas), we pass them directly. compute_iou.py handles parsing
-        iou_03 = compute_iou_for_beta(0.03, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh)
+        iou_03 = compute_iou_for_beta(0.03, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh, gt_iou_val)
 
-        current_candidate_best = iou_03
-        
-        # 0.1 of IoU is the least to consider that labels correspond to each other, otherwise we consider that the class is mislabeled or simply not present in the scene, and we discard it
-        if iou_03 > 0.1:
-            print(f"First IoU is greater than 0.1, so we consider this label valid. Testing refinement betas {betas}")
+        rel_iou_03 = iou_03 / gt_iou_val if gt_iou_val > 0 else iou_03
+        current_candidate_best_rel = rel_iou_03
+        current_candidate_best_iou = iou_03
+        current_candidate_best_beta = 0.03
+
+        # 0.05 of IoU is the least to consider that labels correspond to each other, otherwise we consider that the class is mislabeled or simply not present in the scene, and we discard it
+        if iou_03 > 0.05:
+            print(f"First IoU is greater than 0.05, so we consider this label valid. Testing refinement betas {betas}")
             
-            best_iou = iou_03
             results_msg = f"beta 0.03: {iou_03:.4f}"
             
+            if gt_iou_val > 0:
+                 results_msg += f" (Rel: {rel_iou_03:.4f})"
+            
             for b in betas:
-                iou_b = compute_iou_for_beta(b, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh)
+                iou_b = compute_iou_for_beta(b, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh, gt_iou_val)
+                rel_iou_b = iou_b / gt_iou_val if gt_iou_val > 0 else iou_b
                 results_msg += f", beta {b}: {iou_b:.4f}"
-                if iou_b > best_iou:
-                    best_iou = iou_b
+                if gt_iou_val > 0:
+                     results_msg += f" (Rel: {rel_iou_b:.4f})"
+                
+                if rel_iou_b > current_candidate_best_rel:
+                    current_candidate_best_rel = rel_iou_b
+                    current_candidate_best_iou = iou_b
+                    current_candidate_best_beta = b
 
-            current_candidate_best = best_iou
-            print(f"Refinement results: {results_msg}. Greatest: {current_candidate_best:.4f}")
+            print(f"Refinement results: {results_msg}. Greatest Relative: {current_candidate_best_rel:.4f}")
             
-        if current_candidate_best > best_overall_iou:
-            best_overall_iou = current_candidate_best
+        if current_candidate_best_rel > best_overall_rel_iou:
+            best_overall_rel_iou = current_candidate_best_rel
+            best_overall_iou = current_candidate_best_iou
+            best_overall_beta = current_candidate_best_beta
             
-    return best_overall_iou
+    return best_overall_iou, best_overall_rel_iou, best_overall_beta
 
 
 def process_scene(scene_id, reuse_voting=False, alpha=1.0, size_penalty=100.0, betas=[0.01, 0.02]):
 
     # Check for existing results first to avoid redundant processing
-    miou_file = os.path.join(ROOT_DIR, "output", scene_id, "segmentation", "miou.txt")
-    if os.path.exists(miou_file):
+    results_file = os.path.join(ROOT_DIR, "output", scene_id, "segmentation", "results.json")
+    if os.path.exists(results_file):
         try:
-            with open(miou_file, 'r') as f:
-                val = float(f.read().strip())
-            print(f"Scene {scene_id} already processed, with mIoU {val}")
-            return val
+            with open(results_file, 'r') as f:
+               data = json.load(f)
+            miou = data.get("mIoU", 0.0)
+            rel_miou = data.get("mRelIoU", 0.0)
+            print(f"Scene {scene_id} already processed, with mIoU {miou} and relative mIoU {rel_miou}")
+            return miou, rel_miou
         except:
-            print(f"Corrupt miou.txt for {scene_id}, reprocessing.")
+            print(f"Corrupt results.json for {scene_id}, reprocessing.")
 
 
     print(f" Processing scene {scene_id}")
@@ -407,28 +425,45 @@ def process_scene(scene_id, reuse_voting=False, alpha=1.0, size_penalty=100.0, b
         classes[v] = int(k)
     
     ious = []
+    rel_ious = []
+    object_results = {}
     
     for class_name, yolo_id in classes.items():
         print(f"Evaluating Class: {class_name} (YOLO ID: {yolo_id})...")
-        iou = evaluate_object(scene_id, class_name, yolo_id, available_labels=scene_labels, reuse_voting=reuse_voting, alpha=alpha, size_penalty=size_penalty, betas=betas)
+        best_iou, best_rel_iou, best_beta = evaluate_object(scene_id, class_name, yolo_id, available_labels=scene_labels, reuse_voting=reuse_voting, alpha=alpha, size_penalty=size_penalty, betas=betas)
         
-        if iou >= 0.1:
-            ious.append(iou)
+        # We check best_iou >= 0.05 to filter out bad matches
+        if best_iou >= 0.05:
+            ious.append(best_iou)
+            rel_ious.append(best_rel_iou)
+            
+            object_results[class_name] = {
+                "iou": best_iou,
+                "relative_iou": best_rel_iou,
+                "best_beta": best_beta
+            }
         else:
-            print(f"Class {class_name} discarded (Mislabeled or no match).")
+            print(f"Class {class_name} discarded, there was no match.")
             
     mIoU = sum(ious) / len(ious) if ious else 0.0
+    mRelIoU = sum(rel_ious) / len(rel_ious) if rel_ious else 0.0
 
-    # Save mIoU to file
+    # Save results to json file
+    results_data = {
+        "mIoU": mIoU,
+        "mRelIoU": mRelIoU,
+        "objects": object_results
+    }
+    
     try:
-        os.makedirs(os.path.dirname(miou_file), exist_ok=True)
-        with open(miou_file, "w") as f:
-            f.write(f"{mIoU:.6f}")
-        print(f"Saved mIoU to {miou_file}")
+        os.makedirs(os.path.dirname(results_file), exist_ok=True)
+        with open(results_file, "w") as f:
+            json.dump(results_data, f, indent=4)
+        print(f"Saved results to {results_file}")
     except Exception as e:
-        print(f"Failed to save mIoU file: {e}")
+        print(f"Failed to save results file: {e}")
 
-    print(f"Scene {scene_id} finished with mIoU: {mIoU}")
+    print(f"Scene {scene_id} finished with mIoU {mIoU} and mRelIoU {mRelIoU}")
     
     # Write to markdowns/results.md for easy tracking of results so we have a historical log of all runs and their mIoUs. We also include the scene ID for reference.
     results_md_path = os.path.join(ROOT_DIR, "markdowns", "results.md")
@@ -441,8 +476,8 @@ def process_scene(scene_id, reuse_voting=False, alpha=1.0, size_penalty=100.0, b
             f.write(header)
             
     with open(results_md_path, 'a') as f:
-        f.write(f"Scene id {scene_id} got mIoU of {mIoU:.4f} \n")
-    return mIoU
+        f.write(f"Scene id {scene_id} got mIoU of {mIoU:.4f} and mRelIoU of {mRelIoU:.4f}\n")
+    return mIoU, mRelIoU
  
 
 if __name__ == "__main__":
@@ -471,8 +506,8 @@ if __name__ == "__main__":
     valid_scenes = []
     
     # Explicit exclusion list
-    # excluded_scenes = ["c4c04e6d6c"]
-    excluded_scenes = []
+    excluded_scenes = ["7831862f02"]
+    # excluded_scenes = []
     
     for s in all_scenes:
         if s in excluded_scenes: # Scene where the workflow was developed, not used for final evaluation
@@ -500,6 +535,7 @@ if __name__ == "__main__":
         print(f"Selected scenes: {selected_scenes}")
     
     scene_mious = []
+    scene_rel_mious = []
     results_md_path = os.path.join(ROOT_DIR, "markdowns", "results.md")
     
     if not os.path.exists(results_md_path):
@@ -511,15 +547,19 @@ if __name__ == "__main__":
         f.write(f"\n## Workflow executed - {datetime.now()}\n")
     
     for s in selected_scenes:
-        miou = process_scene(s, reuse_voting=args.reuse_voting, alpha=args.alpha, size_penalty=args.size_penalty, betas=args.betas)
+        miou, rel_miou = process_scene(s, reuse_voting=args.reuse_voting, alpha=args.alpha, size_penalty=args.size_penalty, betas=args.betas)
         scene_mious.append(miou)
+        scene_rel_mious.append(rel_miou)
         
     final_mean = sum(scene_mious) / len(scene_mious) if scene_mious else 0.0
+    final_rel_mean = sum(scene_rel_mious) / len(scene_rel_mious) if scene_rel_mious else 0.0
     
     print(f"\nFinal workflow result, with seed {args.seed} and {args.limit} scenes")
     print(f"Scenes: {selected_scenes}")
     print(f"mIoUs: {scene_mious}")
-    print(f"Average mIoU: {final_mean}\n")
+    print(f"Relative mIoUs: {scene_rel_mious}")
+    print(f"Average mIoU: {final_mean}")
+    print(f"Average Relative mIoU: {final_rel_mean}\n")
     
     # Save Results
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -528,4 +568,6 @@ if __name__ == "__main__":
         f.write(f"- Seed: {args.seed}\n")
         f.write(f"- Scenes: {', '.join(selected_scenes)}\n")
         f.write(f"- Scene mIoUs: {scene_mious}\n")
+        f.write(f"- Scene Rel mIoUs: {scene_rel_mious}\n")
         f.write(f"- Average mIoU: {final_mean:.4f}\n")
+        f.write(f"- Average Relative mIoU: {final_rel_mean:.4f}\n")
