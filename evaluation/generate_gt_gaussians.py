@@ -38,9 +38,24 @@ def generate_gt_gaussians(gaussian_path, gt_mesh_path, output_path, target_class
     # Pre-allocate boolean target mask (False everywhere)
     is_target = np.zeros(len(gs_locations), dtype=bool)
     
+    # Parse target class ID(s)
+    
     # Only access labels for valid indices to avoid out-of-bounds error
     valid_labels = gt_labels[indices[valid_mask]]
-    is_target[valid_mask] = (valid_labels == target_class_id)
+    
+    try:
+        if "," in str(target_class_id):
+            target_ids = [int(x) for x in str(target_class_id).split(",")]
+            # Check if label is in list
+            is_target_mask = np.isin(valid_labels, target_ids)
+        else:
+            target_ids = [int(target_class_id)]
+            is_target_mask = (valid_labels == target_ids[0])
+    except ValueError:
+        print(f"Error parsing target class ID: {target_class_id}")
+        return
+
+    is_target[valid_mask] = is_target_mask
     
     is_gt_positive = valid_mask & is_target
     
@@ -69,7 +84,7 @@ if __name__ == "__main__":
     parser.add_argument("--gaussian_ply", required=True, help="Input full 3DGS model")
     parser.add_argument("--gt_mesh", required=True, help="Ground truth labeled mesh")
     parser.add_argument("--output_ply", required=True, help="Output filtered PLY")
-    parser.add_argument("--class_id", type=int, required=True, help="Target class ID to extract")
+    parser.add_argument("--class_id", type=str, required=True, help="Target class ID to extract")
     parser.add_argument("--threshold", type=float, default=0.05)
     args = parser.parse_args()
     

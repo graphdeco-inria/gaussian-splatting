@@ -251,7 +251,7 @@ def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_o
             iou = res.get("iou", 0.0)
     return iou
 
-def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_voting=False, alpha=2.0, size_penalty=100.0, betas=[0.01, 0.02]):
+def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_voting=False, alpha=1.0, size_penalty=100.0, betas=[0.01, 0.02]):
     """
     Runs the evaluation workflow for a single object
     Returns best IoU found among given betas if initial seed > 0.1
@@ -290,11 +290,19 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
     # 2. Find ground truth Correspondence
     best_overall_iou = 0.0
     
+    # If multiple candidates exist, add a union candidate
+    final_candidates = list(candidates)
+    if len(candidates) > 1:
+        union_id = ",".join(map(str, candidates))
+        final_candidates.append(union_id)
+
     # Attempt available candidates
-    for i, gt_id in enumerate(candidates):
-        print(f"Testing ground truth label candidate {i+1}/{len(candidates)}: ID {gt_id} for {class_name}")
+    for i, gt_id in enumerate(final_candidates):
+        print(f"Testing ground truth label candidate {i+1}/{len(final_candidates)}: ID {gt_id} for {class_name}")
         
-        gt_ply_out = os.path.join(class_output_dir, f"gt_{safe_class_name}_id{gt_id}.ply")
+        # Use a safe filename for the union case
+        safe_gt_id = str(gt_id).replace(",", "_")
+        gt_ply_out = os.path.join(class_output_dir, f"gt_{safe_class_name}_id{safe_gt_id}.ply")
         gt_mesh = os.path.join(SCENES_DIR, scene_id, "scans", "mesh_aligned_0.05_semantic.ply")
         gaussian_ply = os.path.join(output_base, "point_cloud", "iteration_30000", "point_cloud.ply")
         
@@ -309,10 +317,30 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
         
         try:
             subprocess.run(cmd_gen_gt, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        except subprocess.CalledProcessError:
+            
+            # Compute metrics for the generated GT gaussians (Max achievable IoU)
+            # We call the IOU script directly here because compute_iou_for_beta assumes thresholding
+            cmd_gt_iou = [
+                PYTHON_FUSION, IOU_SCRIPT,
+                "--gt_mesh", gt_mesh,
+                "--pred_ply", gt_ply_out,
+                "--class_id", str(gt_id),
+                "--beta", "gt"
+            ]
+            subprocess.run(cmd_gt_iou, check=True, capture_output=True)
+            
+            # Read the special "gt" result
+            gt_iou_json = os.path.join(class_output_dir, "iou_result_betagt.json")
+            if os.path.exists(gt_iou_json):
+                with open(gt_iou_json, 'r') as f:
+                    gt_res = json.load(f)
+                    print(f"  IoU for ID {gt_id} with ground truth gaussians: {gt_res.get('iou', 0.0):.4f}")
+            
+        except subprocess.CalledProcessError as e:
             pass
             
         # Compute first IoU with beta 0.03 as starting point
+        # For union IDs (strings with commas), we pass them directly. compute_iou.py handles parsing
         iou_03 = compute_iou_for_beta(0.03, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh)
 
         current_candidate_best = iou_03
@@ -339,7 +367,7 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
     return best_overall_iou
 
 
-def process_scene(scene_id, reuse_voting=False, alpha=2.0, size_penalty=100.0, betas=[0.01, 0.02]):
+def process_scene(scene_id, reuse_voting=False, alpha=1.0, size_penalty=100.0, betas=[0.01, 0.02]):
 
     # Check for existing results first to avoid redundant processing
     miou_file = os.path.join(ROOT_DIR, "output", scene_id, "segmentation", "miou.txt")
@@ -420,13 +448,13 @@ def process_scene(scene_id, reuse_voting=False, alpha=2.0, size_penalty=100.0, b
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=3, help="Number of scenes to process")
+    parser.add_argument("--limit", type=int, default=8, help="Number of scenes to process")
     parser.add_argument("--seed", type=int, default=3, help="Random seed")
     parser.add_argument("--scene_id", type=str, default=None, help="Process a specific scene ID only")
     parser.add_argument("--reuse_voting", action="store_true", help="Reuse existing voting data if available")
-    parser.add_argument("--alpha", type=float, default=2.0, help="Exponent for size punishment. Higher alpha penalizes larger Gaussians more.")
+    parser.add_argument("--alpha", type=float, default=1.0, help="Exponent for size punishment. Higher alpha penalizes larger Gaussians more.")
     parser.add_argument("--size_penalty", type=float, default=100.0, help="Base multiplier for size punishment. Scales the Gaussian size before exponentiation.")
-    parser.add_argument("--betas", type=float, nargs='+', default=[0.01, 0.02], help="List of extra betas to try for refinement.")
+    parser.add_argument("--betas", type=float, nargs='+', default=[0.05, 0.07, 0.1, 0.12, 0.15, 0.35], help="List of extra betas to try for refinement.")
     args = parser.parse_args()
 
     # Set a random seed for reproducibility

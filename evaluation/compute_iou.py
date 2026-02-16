@@ -14,7 +14,7 @@ def compute_iou(gt_mesh_path, pred_ply_path, beta, target_class_id, distance_thr
         gt_mesh_path: Path to the ground truth PLY mesh with 'label' property
         pred_ply_path: Path to the predicted PLY (contains only points of the target class)
         beta: Beta value used to suffix the output filename
-        target_class_id: The integer ID of the target class
+        target_class_id: The integer ID of the target class, or comma-separated string for union
         distance_threshold: Distance in meters to consider a prediction "covering" a GT vertex
     """
     
@@ -31,7 +31,13 @@ def compute_iou(gt_mesh_path, pred_ply_path, beta, target_class_id, distance_thr
     gt_labels = gt_labels.astype(int)
     
     # Boolean mask identifying which vertices belong to the class we are testing
-    gt_is_target = (gt_labels == target_class_id)
+    if "," in str(target_class_id):
+        target_ids = [int(x) for x in str(target_class_id).split(",")]
+        gt_is_target = np.isin(gt_labels, target_ids)
+        print(f"Computing IoU for union of classes: {target_ids}")
+    else:
+        gt_is_target = (gt_labels == int(target_class_id))
+
     num_gt_positives = np.sum(gt_is_target)
     print(f"Number of GT vertices for class {target_class_id}: {num_gt_positives}")
     
@@ -84,8 +90,14 @@ def compute_iou(gt_mesh_path, pred_ply_path, beta, target_class_id, distance_thr
         
     result_path = os.path.join(output_dir, result_filename)
     
+    # Handle composite ID for JSON serialization
+    try:
+        serializable_id = int(target_class_id)
+    except ValueError:
+        serializable_id = str(target_class_id)
+
     results = {
-        "class_id": int(target_class_id),
+        "class_id": serializable_id,
         "iou": float(iou),
         "tp": int(tp),
         "fp": int(fp),
@@ -106,8 +118,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compute IoU for a 3D class")
     parser.add_argument("--gt_mesh", type=str, required=True, help="Path to GT labeled mesh")
     parser.add_argument("--pred_ply", type=str, required=True, help="Path to predicted PLY")
-    parser.add_argument("--class_id", type=int, required=True, help="Class ID")
-    parser.add_argument("--beta", type=float, required=True, help="Beta value for filename suffix")
+    parser.add_argument("--class_id", type=str, required=True, help="Class ID")
+    parser.add_argument("--beta", type=str, required=True, help="Beta value for filename suffix")
     parser.add_argument("--threshold", type=float, default=0.05, help="Distance threshold")
     
     args = parser.parse_args()
