@@ -20,6 +20,12 @@ WARNED = False
 def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dataset):
     image = Image.open(cam_info.image_path)
 
+    if is_nerf_synthetic and image.mode == "RGBA":
+        bg = np.array([1, 1, 1]) if args.white_background else np.array([0, 0, 0])
+        im_data = np.array(image).astype(np.float32) / 255.0
+        arr = im_data[:, :, :3] * im_data[:, :, 3:4] + bg * (1 - im_data[:, :, 3:4])
+        image = Image.fromarray((arr * 255).astype(np.uint8), "RGB")
+
     if cam_info.depth_path != "":
         try:
             if is_nerf_synthetic:
