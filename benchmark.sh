@@ -20,7 +20,7 @@ else
     IS_TRAIN=true
 fi
 
-common_args=" --iterations 30000 --loss_type=l1 --cap_max 1000000  --save_iterations 30000"
+common_args=" --iterations 30000 --loss_type=l1 --cap_max 1000000  --save_iterations 7000 15000 30000"
 if [[ $EXP_NAME == "mcmc" ]]; then
     # stardard mcmc
     train_script="train_mcmc.py"
@@ -88,6 +88,48 @@ elif [[ $EXP_NAME == "adam_tr_no_densify" ]]; then
     # ablation: Adam TR
     train_script="train_mcmc_sophia_hellinger.py"
     args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --use_adam --use_adam_yes --enable_adam_tr"
+
+# rebuttal experiments
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_fixed_tr" ]]; then
+    # ablation: --diagonal_update_interval=10 with fixed trust region
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --tr_func=uniform"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_tr_sweep1" ]]; then
+    # ablation: --diagonal_update_interval=10 with different trust region
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --kl_threshold_init=1e-5 --kl_threshold_final=1e-7"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_tr_sweep2" ]]; then
+    # ablation: --diagonal_update_interval=10 with different trust region
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --kl_threshold_init=1e-7 --kl_threshold_final=1e-9"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_random_init_10k" ]]; then
+    # ablation: --diagonal_update_interval=10 with random init
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --init_type=random --random_init_pts=10000"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_random_init_20k" ]]; then
+    # ablation: --diagonal_update_interval=10 with random init
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --init_type=random --random_init_pts=20000"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_random_init_50k" ]]; then
+    # ablation: --diagonal_update_interval=10 with random init
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --init_type=random --random_init_pts=50000"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_random_init_100k" ]]; then
+    # ablation: --diagonal_update_interval=10 with random init
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --init_type=random --random_init_pts=100000"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_random_init_200k" ]]; then
+    # ablation: --diagonal_update_interval=10 with random init
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --init_type=random --random_init_pts=200000"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_random_init_500k" ]]; then
+    # ablation: --diagonal_update_interval=10 with random init
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --init_type=random --random_init_pts=500000"
+elif [[ $EXP_NAME == "sophia_hellinger_no_densify_update10_random_init_1M" ]]; then
+    # ablation: --diagonal_update_interval=10 with random init
+    train_script="train_mcmc_sophia_hellinger.py"
+    args="$common_args --noise_lr=0.0 --densify_from_iter=50000 --diagonal_update_interval=10 --init_type=random --random_init_pts=1000000"
 fi
 
 output_dir=$output_path/$SCENE/$EXP_NAME
