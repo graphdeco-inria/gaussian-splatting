@@ -57,7 +57,7 @@ class ModelParams(ParamGroup):
         self.data_device = "cuda"
         self.eval = False
         self.cap_max = -1
-        self.init_type = "random"
+        self.init_type = "sfm"
         self.random_init_pts = 100000
         super().__init__(parser, "Loading Parameters", sentinel)
 
