@@ -32,6 +32,7 @@ from solver.adam_optimizer import AdamOptimizer
 from solver.sophia_optimizer import SophiaOptimizer
 from solver.solver_functions import construct_loss_func, construct_g_func, construct_JTJv_func, dot, saxpy, construct_Dhat_func
 from solver.hellinger_clip import clip_hellinger, debug_hellinger
+from solver.uniform_clip import clip_uniform
 
 import re
 
@@ -195,6 +196,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         JTJv_func1 = partial(JTJv_func, gaussians=gaussians, viewpoint_cams=[viewpoint_cam], S=None, scale=1)
         Dhat_func1 = partial(Dhat_func, gaussians=gaussians, viewpoint_cams=[viewpoint_cam])
 
+        clip_func = clip_uniform if opt.tr_func == "uniform" else clip_hellinger
+
         toc = time.time()
         total_elapsed_time += toc - tic
 
@@ -232,7 +235,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if opt.use_adam and opt.enable_adam_tr:
                     kl_threshold = kl_threshold_func(iteration)
                     opacity_threshold = kl_threshold * opt.opacity_threshold_scale
-                    s_adam = clip_hellinger(gaussians, s_adam, kl_threshold, opacity_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
+                    s_adam = clip_func(gaussians, s_adam, kl_threshold, opacity_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
 
 
                 if opt.use_adam and opt.disable_sophia_if_use_adam:
@@ -242,7 +245,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     s_sophia_old = s_sophia.clone()
                     kl_threshold = kl_threshold_func(iteration)
                     opacity_threshold = kl_threshold * opt.opacity_threshold_scale
-                    s_sophia = clip_hellinger(gaussians, s_sophia, kl_threshold, opacity_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
+                    s_sophia = clip_func(gaussians, s_sophia, kl_threshold, opacity_threshold, lr, quat_norm_tr=opt.quat_norm_tr)
 
                 if opt.use_adam:
                     s = s_adam

@@ -233,6 +233,8 @@ class OptimizationParams(ParamGroup):
         self.scaling_reg_thresh = 5
         self.debug_loss = False
 
+        self.tr_func = "hellinger"      # "hellinger" or "uniform"
+
         self.kl_threshold_init = 1e-6
         self.kl_threshold_final = 1e-8
         self.kl_threshold_delay_mult = 0.01
