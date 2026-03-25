@@ -58,6 +58,7 @@ class ModelParams(ParamGroup):
         self.eval = False
         self.cap_max = -1
         self.init_type = "random"
+        self.random_init_pts = 100000
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
