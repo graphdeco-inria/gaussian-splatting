@@ -19,6 +19,7 @@ from lpipsPyTorch import lpips
 import json
 from tqdm import tqdm
 from utils.image_utils import psnr
+from utils.device_utils import DEVICE, device_set_device
 from argparse import ArgumentParser
 
 def readImages(renders_dir, gt_dir):
@@ -28,8 +29,8 @@ def readImages(renders_dir, gt_dir):
     for fname in os.listdir(renders_dir):
         render = Image.open(renders_dir / fname)
         gt = Image.open(gt_dir / fname)
-        renders.append(tf.to_tensor(render).unsqueeze(0)[:, :3, :, :].cuda())
-        gts.append(tf.to_tensor(gt).unsqueeze(0)[:, :3, :, :].cuda())
+        renders.append(tf.to_tensor(render).unsqueeze(0)[:, :3, :, :].to(DEVICE))
+        gts.append(tf.to_tensor(gt).unsqueeze(0)[:, :3, :, :].to(DEVICE))
         image_names.append(fname)
     return renders, gts, image_names
 
@@ -93,8 +94,8 @@ def evaluate(model_paths):
             print("Unable to compute metrics for model", scene_dir)
 
 if __name__ == "__main__":
-    device = torch.device("cuda:0")
-    torch.cuda.set_device(device)
+    device = torch.device(DEVICE)
+    device_set_device(device)
 
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")

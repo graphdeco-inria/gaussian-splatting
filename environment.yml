@@ -1,20 +1,30 @@
-name: gaussian_splatting
+name: gaussian_splatting_intel
 channels:
-  - pytorch
+  - https://software.repos.intel.com/python/conda/
+  - intel
   - conda-forge
   - defaults
 dependencies:
-  - cudatoolkit=11.6
+  # Intel oneAPI toolkit (needed to compile the SYCL rasterizer extension)
+  - dpcpp_linux-64           # DPC++/SYCL compiler (icpx)
+  - mkl
   - plyfile
-  - python=3.7.13
-  - pip=22.3.1
-  - pytorch=1.12.1
-  - torchaudio=0.12.1
-  - torchvision=0.13.1
+  - python=3.10
+  - pip>=23.0
   - tqdm
   - pip:
+    # PyTorch + Intel Extension for PyTorch (XPU backend for Intel Arc)
+    # Install from Intel's wheel index for the matching oneAPI version
+    - torch==2.1.0+xpu --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+    - torchvision==0.16.0+xpu --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+    - torchaudio==2.1.0+xpu --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+    - intel_extension_for_pytorch==2.1.10+xpu --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+    # Core rasterizer (SYCL port — compile from local submodule)
     - submodules/diff-gaussian-rasterization
-    - submodules/simple-knn
-    - submodules/fused-ssim
+    # fused-ssim is optional; the codebase falls back to the pure-Python ssim()
+    # when the extension is unavailable. Install only if you have CUDA available,
+    # or once a SYCL port is ready:
+    # - submodules/fused-ssim
+    # simple-knn has been replaced by a pure-PyTorch implementation; no install needed.
     - opencv-python
     - joblib

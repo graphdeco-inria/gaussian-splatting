@@ -12,6 +12,7 @@
 from argparse import ArgumentParser, Namespace
 import sys
 import os
+from utils.device_utils import DEVICE
 
 class GroupParams:
     pass
@@ -54,7 +55,7 @@ class ModelParams(ParamGroup):
         self._resolution = -1
         self._white_background = False
         self.train_test_exp = False
-        self.data_device = "cuda"
+        self.data_device = DEVICE
         self.eval = False
         super().__init__(parser, "Loading Parameters", sentinel)
 
