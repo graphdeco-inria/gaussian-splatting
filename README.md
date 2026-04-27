@@ -1,10 +1,24 @@
-# 3D Gaussian Splatting for Real-Time Radiance Field Rendering
-Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
-| [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) | [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |<br>
-| [T&T+DB COLMAP (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Viewers for Windows (60MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip) | [Evaluation Images (7 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip) |<br>
+# 3D Gaussian Splatting on Intel GPU
+
+> **Fork of [3D Gaussian Splatting for Real-Time Radiance Field Rendering](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) ported to run on Intel GPUs (Arc A-series, Data Center Max) using Intel Extension for PyTorch (IPEX) and oneAPI.**
+
+Original paper by Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
+| [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) | [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |
+| [T&T+DB COLMAP (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Evaluation Images (7 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip) |<br>
 ![Teaser image](assets/teaser.png)
 
-This repository contains the official authors implementation associated with the paper "3D Gaussian Splatting for Real-Time Radiance Field Rendering", which can be found [here](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/). We further provide the reference images used to create the error metrics reported in the paper, as well as recently created, pre-trained models. 
+## What Changed from the Original
+
+This fork replaces all NVIDIA CUDA dependencies so the training and rendering pipeline runs on Intel XPU devices:
+
+- **Device abstraction** — A new `utils/device_utils.py` auto-detects `xpu`, `cuda`, or `cpu` and every `.cuda()` call has been replaced with `.to(DEVICE)`.
+- **Rasterizer** — The CUDA kernels in `diff-gaussian-rasterization` have been ported to portable C++ (in `sycl_rasterizer/`). The initial implementation uses serial host code for correctness; a future pass will add SYCL `parallel_for` GPU acceleration.
+- **simple-knn removed** — Replaced with a pure PyTorch implementation using `torch.cdist` (chunked for memory efficiency).
+- **fused-ssim made optional** — Falls back to the existing Python SSIM implementation when the CUDA extension is unavailable.
+- **SparseGaussianAdam** — Falls back to `torch.optim.Adam` when the accelerated version is unavailable.
+- **Environment** — `environment.yml` rewritten for Intel oneAPI, IPEX, and PyTorch XPU wheels. No CUDA SDK required.
+
+The original README content follows below with updated instructions where applicable. 
 
 <a href="https://www.inria.fr/"><img height="100" src="assets/logo_inria.png"> </a>
 <a href="https://univ-cotedazur.eu/"><img height="100" src="assets/logo_uca.png"> </a>
@@ -80,19 +94,19 @@ The components have different requirements w.r.t. both hardware and software. Th
 
 ## Optimizer
 
-The optimizer uses PyTorch and CUDA extensions in a Python environment to produce trained models. 
+The optimizer uses PyTorch and C++ extensions in a Python environment to produce trained models. 
 
 ### Hardware Requirements
 
-- CUDA-ready GPU with Compute Capability 7.0+
-- 24 GB VRAM (to train to paper evaluation quality)
-- Please see FAQ for smaller VRAM configurations
+- **Intel Arc GPU** (A380, A580, A750, A770) or Intel Data Center GPU Max series
+- 16+ GB VRAM recommended (24 GB to match paper evaluation quality)
+- Alternatively, any CUDA-ready NVIDIA GPU or CPU-only (auto-detected)
 
 ### Software Requirements
 - Conda (recommended for easy setup)
-- C++ Compiler for PyTorch extensions (we used Visual Studio 2019 for Windows)
-- CUDA SDK 11 for PyTorch extensions, install *after* Visual Studio (we used 11.8, **known issues with 11.6**)
-- C++ Compiler and CUDA SDK must be compatible
+- C++ Compiler with C++17 support (g++ 9+ on Linux)
+- Intel oneAPI Base Toolkit (for IPEX / XPU support)
+- No CUDA SDK required
 
 ### Setup
 
@@ -100,11 +114,10 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 Our default, provided install method is based on Conda package and environment management:
 ```shell
-SET DISTUTILS_USE_SDK=1 # Windows only
 conda env create --file environment.yml
-conda activate gaussian_splatting
+conda activate gaussian_splatting_intel
 ```
-Please note that this process assumes that you have CUDA SDK **11** installed, not **12**. For modifications, see below.
+This installs Intel Extension for PyTorch (IPEX) and PyTorch with XPU support. No CUDA SDK is required.
 
 Tip: Downloading packages and creating a new environment with Conda can require a significant amount of disk space. By default, Conda will use the main system hard drive. You can avoid this by specifying a different package download location and an environment on a different drive:
 
@@ -116,7 +129,7 @@ conda activate <Drive>/<env_path>/gaussian_splatting
 
 #### Modifications
 
-If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make modifications, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.8, PyTorch 2.0.0, CUDA 12). Make sure to create an environment where PyTorch and its CUDA runtime version match and the installed CUDA SDK has no major version difference with PyTorch's CUDA version.
+If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make modifications, please note that major version changes might affect the results of our method. Make sure your PyTorch and IPEX versions are compatible (same minor version).
 
 #### Known Issues
 
@@ -144,7 +157,7 @@ python train.py -s <path to COLMAP or NeRF Synthetic dataset>
   #### --resolution / -r
   Specifies resolution of the loaded images before training. If provided ```1, 2, 4``` or ```8```, uses original, 1/2, 1/4 or 1/8 resolution, respectively. For all other values, rescales the width to the given number while maintaining image aspect. **If not set and input image width exceeds 1.6K pixels, inputs are automatically rescaled to this target.**
   #### --data_device
-  Specifies where to put the source image data, ```cuda``` by default, recommended to use ```cpu``` if training on large/high-resolution dataset, will reduce VRAM consumption, but slightly slow down training. Thanks to [HrsPythonix](https://github.com/HrsPythonix).
+  Specifies where to put the source image data. Defaults to the auto-detected device (`xpu` on Intel, `cuda` on NVIDIA). Use ```cpu``` if training on large/high-resolution datasets to reduce VRAM consumption at the cost of slightly slower training.
   #### --white_background / -w
   Add this flag to use white background instead of black (default), e.g., for evaluation of NeRF Synthetic dataset.
   #### --sh_degree
@@ -304,11 +317,10 @@ We provide two interactive viewers for our method: remote and real-time. Our vie
 ### Hardware Requirements
 - OpenGL 4.5-ready GPU and drivers (or latest MESA software)
 - 4 GB VRAM recommended
-- CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
+- Intel Arc GPU or CUDA-ready GPU with Compute Capability 7.0+ (only for Real-Time Viewer)
 
 ### Software Requirements
 - Visual Studio or g++, **not Clang** (we used Visual Studio 2019 for Windows)
-- CUDA SDK 11, install *after* Visual Studio (we used 11.8)
 - CMake (recent version, we used 3.24)
 - 7zip (only on Windows)
 
@@ -595,10 +607,9 @@ Within that branch, you can find documentation for VR support [here](https://git
 ```C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.29.30133\bin\Hostx64\x64```
 Then make sure you start a new conda prompt and cd to your repo location and try this;
 ```
-conda activate gaussian_splatting
+conda activate gaussian_splatting_intel
 cd <dir_to_repo>/gaussian-splatting
 pip install submodules\diff-gaussian-rasterization
-pip install submodules\simple-knn
 ```
 
 - *I'm on macOS/Puppy Linux/Greenhat and I can't manage to build, what do I do?* Sorry, we can't provide support for platforms outside of the ones we list in this README. Consider using the linked Colab template.
