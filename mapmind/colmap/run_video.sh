@@ -89,8 +89,7 @@ else
     colmap sequential_matcher \
     --database_path ${MAP_FOLDER}/${SESSION}/database.db \
     --TwoViewGeometry.min_inlier_ratio 0.2 \
-    --SequentialMatching.vocab_tree_path ${MODELS_FOLDER}/${VOC_NAME} \
-    --SequentialMatching.loop_detection 1 \
+    --SequentialMatching.loop_detection 0 \
     --SequentialMatching.loop_detection_num_images 50 \
     --SequentialMatching.loop_detection_num_nearest_neighbors 20 \
     --FeatureMatching.type SIFT_BRUTEFORCE
