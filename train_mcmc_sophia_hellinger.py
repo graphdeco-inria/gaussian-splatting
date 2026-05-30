@@ -37,6 +37,12 @@ from solver.uniform_clip import clip_uniform
 import re
 
 try:
+    from fused_ssim import fused_ssim_per_pixel, fused_ssim  # noqa: F401
+    FUSED_SSIM_AVAILABLE = True
+except ImportError:
+    FUSED_SSIM_AVAILABLE = False
+
+try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
 except ImportError:
@@ -184,6 +190,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                        "disable_ssim": opt.disable_ssim,
                        "batch_size": 1,
                        "pixel_mask": None,
+                       "FUSED_SSIM_AVAILABLE": FUSED_SSIM_AVAILABLE,
                        }
 
         loss_func = construct_loss_func(**render_args)

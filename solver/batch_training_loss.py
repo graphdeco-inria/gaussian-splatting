@@ -8,6 +8,12 @@ from gaussian_renderer.batch_render import batch_render
 from utils.loss_utils import l1_loss, l1_loss_per_pixel, ssim, ssim_per_pixel
 from utils.general_utils import safe_interact
 
+try:
+    from fused_ssim import fused_ssim_per_pixel, fused_ssim
+    FUSED_SSIM_AVAILABLE = True
+except:
+    FUSED_SSIM_AVAILABLE = False
+
 def huber_loss(x, delta=0.1):
     x_abs = x.abs()
     mask = x_abs <= delta
@@ -30,11 +36,12 @@ def compute_batch_loss_block(images, alpha_masks, gt_images, per_image_alphas, p
     else:
         if FUSED_SSIM_AVAILABLE:
             # raise NotImplementedError("Fused SSIM is not implemented in this version.")
-            ssim_value = fused_ssim(images, gt_images)
+            ssim_value = fused_ssim_per_pixel(images, gt_images)
         else:
             ssim_value = ssim_per_pixel(images, gt_images)
 
-        ssim_loss_per_pixel = 1.0 - ssim_per_pixel(images, gt_images)
+        # ssim_loss_per_pixel = 1.0 - ssim_per_pixel(images, gt_images)
+        ssim_loss_per_pixel = 1.0 - ssim_value
 
     if loss_type == "l2":
         pass
