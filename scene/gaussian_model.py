@@ -64,8 +64,14 @@ class GaussianModel:
         self.percent_dense = 0
         self.spatial_lr_scale = 0
         self.setup_functions()
+        # 다중 해상도 milestone 학습용: 영속 gaussian id + clone/split lineage 로그 + 성장 상한
+        self._gid = torch.empty(0, dtype=torch.long)
+        self.next_gid = 0
+        self.lineage_log = []
+        self.densify_cap = None
 
     def capture(self):
+        # gid/lineage 포함 — branch 체크포인트에서 재개해도 correspondence 추적이 이어지도록
         return (
             self.active_sh_degree,
             self._xyz,
@@ -79,21 +85,41 @@ class GaussianModel:
             self.denom,
             self.optimizer.state_dict(),
             self.spatial_lr_scale,
+            self._gid,
+            self.next_gid,
+            self.lineage_log,
         )
-    
+
     def restore(self, model_args, training_args):
-        (self.active_sh_degree, 
-        self._xyz, 
-        self._features_dc, 
-        self._features_rest,
-        self._scaling, 
-        self._rotation, 
-        self._opacity,
-        self.max_radii2D, 
-        xyz_gradient_accum, 
-        denom,
-        opt_dict, 
-        self.spatial_lr_scale) = model_args
+        if len(model_args) == 15:
+            (self.active_sh_degree,
+            self._xyz,
+            self._features_dc,
+            self._features_rest,
+            self._scaling,
+            self._rotation,
+            self._opacity,
+            self.max_radii2D,
+            xyz_gradient_accum,
+            denom,
+            opt_dict,
+            self.spatial_lr_scale,
+            self._gid,
+            self.next_gid,
+            self.lineage_log) = model_args
+        else:   # 구형 체크포인트 (gid/lineage 없음)
+            (self.active_sh_degree,
+            self._xyz,
+            self._features_dc,
+            self._features_rest,
+            self._scaling,
+            self._rotation,
+            self._opacity,
+            self.max_radii2D,
+            xyz_gradient_accum,
+            denom,
+            opt_dict,
+            self.spatial_lr_scale) = model_args
         self.training_setup(training_args)
         self.xyz_gradient_accum = xyz_gradient_accum
         self.denom = denom
@@ -170,6 +196,8 @@ class GaussianModel:
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+        self._gid = torch.arange(fused_point_cloud.shape[0], dtype=torch.long, device="cuda")
+        self.next_gid = fused_point_cloud.shape[0]
         self.exposure_mapping = {cam_info.image_name: idx for idx, cam_info in enumerate(cam_infos)}
         self.pretrained_exposures = None
         exposure = torch.eye(3, 4, device="cuda")[None].repeat(len(cam_infos), 1, 1)
@@ -362,6 +390,7 @@ class GaussianModel:
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
         self.tmp_radii = self.tmp_radii[valid_points_mask]
+        self._gid = self._gid[valid_points_mask]
 
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
@@ -406,14 +435,27 @@ class GaussianModel:
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
 
-    def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
+    def _pack14(self, mask):
+        """xyz(3)+raw scaling(3)+raw rotation(4)+raw opacity(1)+f_dc(3) = 14차원, week3 11d 표현과 호환."""
+        return torch.cat([
+            self._xyz[mask], self._scaling[mask], self._rotation[mask],
+            self._opacity[mask], self._features_dc[mask].squeeze(1),
+        ], dim=1)
+
+    def densify_and_split(self, grads, grad_threshold, scene_extent, N=2, iteration=None,
+                          selected_mask=None):
         n_init_points = self.get_xyz.shape[0]
-        # Extract points that satisfy the gradient condition
-        padded_grad = torch.zeros((n_init_points), device="cuda")
-        padded_grad[:grads.shape[0]] = grads.squeeze()
-        selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
-        selected_pts_mask = torch.logical_and(selected_pts_mask,
-                                              torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
+        if selected_mask is not None:
+            # budget 적용된 마스크가 밖에서 옴 — 이 call 이전의 clone으로 배열이 커졌을 수 있어 패딩
+            selected_pts_mask = torch.zeros(n_init_points, dtype=torch.bool, device="cuda")
+            selected_pts_mask[:selected_mask.shape[0]] = selected_mask
+        else:
+            # Extract points that satisfy the gradient condition
+            padded_grad = torch.zeros((n_init_points), device="cuda")
+            padded_grad[:grads.shape[0]] = grads.squeeze()
+            selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
+            selected_pts_mask = torch.logical_and(selected_pts_mask,
+                                                  torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
 
         stds = self.get_scaling[selected_pts_mask].repeat(N,1)
         means =torch.zeros((stds.size(0), 3),device="cuda")
@@ -427,17 +469,35 @@ class GaussianModel:
         new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
         new_tmp_radii = self.tmp_radii[selected_pts_mask].repeat(N)
 
+        # lineage: 부모 1개 -> 자식 N개 (원본은 아래서 곧 prune됨 — 부모 파라미터는 사라지기 전에 기록)
+        parent_params14 = self._pack14(selected_pts_mask).repeat(N, 1)
+        parent_gid = self._gid[selected_pts_mask].repeat(N)
+        n_new = parent_gid.shape[0]
+        new_gid = torch.arange(self.next_gid, self.next_gid + n_new, dtype=torch.long, device="cuda")
+        self.next_gid += n_new
+        if n_new > 0:
+            self.lineage_log.append({
+                'op': 'split', 'iter': iteration,
+                'parent_gid': parent_gid.tolist(), 'child_gid': new_gid.tolist(),
+                'parent_params14': parent_params14.tolist(),
+            })
+
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)
+        self._gid = torch.cat((self._gid, new_gid))
 
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
 
-    def densify_and_clone(self, grads, grad_threshold, scene_extent):
-        # Extract points that satisfy the gradient condition
-        selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
-        selected_pts_mask = torch.logical_and(selected_pts_mask,
-                                              torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
-        
+    def densify_and_clone(self, grads, grad_threshold, scene_extent, iteration=None,
+                          selected_mask=None):
+        if selected_mask is not None:
+            selected_pts_mask = selected_mask
+        else:
+            # Extract points that satisfy the gradient condition
+            selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
+            selected_pts_mask = torch.logical_and(selected_pts_mask,
+                                                  torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
+
         new_xyz = self._xyz[selected_pts_mask]
         new_features_dc = self._features_dc[selected_pts_mask]
         new_features_rest = self._features_rest[selected_pts_mask]
@@ -447,15 +507,58 @@ class GaussianModel:
 
         new_tmp_radii = self.tmp_radii[selected_pts_mask]
 
-        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii)
+        # lineage: 부모 1개 -> 자식 1개(복제, 원본도 유지됨)
+        parent_params14 = self._pack14(selected_pts_mask)
+        parent_gid = self._gid[selected_pts_mask]
+        n_new = parent_gid.shape[0]
+        new_gid = torch.arange(self.next_gid, self.next_gid + n_new, dtype=torch.long, device="cuda")
+        self.next_gid += n_new
+        if n_new > 0:
+            self.lineage_log.append({
+                'op': 'clone', 'iter': iteration,
+                'parent_gid': parent_gid.tolist(), 'child_gid': new_gid.tolist(),
+                'parent_params14': parent_params14.tolist(),
+            })
 
-    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, radii):
+        self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii)
+        self._gid = torch.cat((self._gid, new_gid))
+
+    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, radii, iteration=None):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
         self.tmp_radii = radii
-        self.densify_and_clone(grads, max_grad, extent)
-        self.densify_and_split(grads, max_grad, extent)
+        # budget형 densify: cap이 있으면 남은 예산만큼만, grad 상위 후보부터 추가.
+        # (기존의 "cap 아래면 무제한 densify"는 한 번에 수만 개를 넘겨 cap을 크게 초과했음.
+        #  clone·split 모두 순증 +1/후보라 후보 수 = 추가 개수 — 공동 랭킹으로 정확히 예산을 지킨다.)
+        budget = None
+        if self.densify_cap is not None:
+            budget = max(int(self.densify_cap) - self.get_xyz.shape[0], 0)
+        self.last_densify_hit_cap = (budget == 0)   # 후보 수와 무관하게 이미 cap에 닿아 있음
+        if budget is None or budget > 0:
+            grad_norm = torch.norm(grads, dim=-1).squeeze(-1) if grads.dim() > 1 else grads.squeeze()
+            n = self.get_xyz.shape[0]
+            padded = torch.zeros(n, device="cuda")
+            padded[:grad_norm.shape[0]] = grad_norm
+            big = torch.max(self.get_scaling, dim=1).values > self.percent_dense * extent
+            clone_mask = (padded >= max_grad) & ~big
+            split_mask = (padded >= max_grad) & big
+            n_cand = int(clone_mask.sum() + split_mask.sum())
+            if budget is not None and n_cand > budget:
+                cand = clone_mask | split_mask
+                scores = padded.clone()
+                scores[~cand] = -1.0
+                keep = torch.zeros_like(cand)
+                keep[torch.topk(scores, k=budget).indices] = True
+                clone_mask &= keep
+                split_mask &= keep
+                # cap이 실제로 구속됨 — 이 스텝에서 개수가 순간적으로 cap에 도달
+                # (직후 prune이 소폭 깎을 수 있어 호출자가 임계 판정에 이 플래그를 씀)
+                self.last_densify_hit_cap = True
+            self.densify_and_clone(grads, max_grad, extent, iteration=iteration,
+                                    selected_mask=clone_mask)
+            self.densify_and_split(grads, max_grad, extent, iteration=iteration,
+                                    selected_mask=split_mask)
 
         prune_mask = (self.get_opacity < min_opacity).squeeze()
         if max_screen_size:

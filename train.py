@@ -10,6 +10,7 @@
 #
 
 import os
+import pickle
 import torch
 from random import randint
 from utils.loss_utils import l1_loss, ssim
@@ -40,7 +41,8 @@ try:
 except:
     SPARSE_ADAM_AVAILABLE = False
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from,
+             max_gaussians=None, branch_at_counts=None):
 
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
@@ -51,7 +53,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
     if checkpoint:
-        (model_params, first_iter) = torch.load(checkpoint)
+        (model_params, first_iter) = torch.load(checkpoint, weights_only=False)
         gaussians.restore(model_params, opt)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
@@ -67,6 +69,16 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_indices = list(range(len(viewpoint_stack)))
     ema_loss_for_log = 0.0
     ema_Ll1depth_for_log = 0.0
+
+    # 다중 해상도 레벨 학습 (fair 프로토콜 v2 — "full 30k 스케줄 + 가우시안 수 cap"):
+    #   각 레벨 = 표준 30k 스케줄을 처음부터 끝까지 완주하되 densify가 max_gaussians를
+    #   넘지 못하는(budget형) 독립 런. 레벨 간 유일한 차이는 cap — iteration·스케줄은 고정.
+    #   correspondence는 branch로 유지: main 런(cap=최대)에서 개수가 하위 cap을 처음
+    #   넘는 순간 branch 체크포인트(gid·lineage 포함)를 저장하고, 하위 레벨 런은 거기서
+    #   --start_checkpoint로 재개해 자기 cap으로 남은 스케줄을 완주한다. 분기점까지의
+    #   히스토리가 물리적으로 공유되므로 레벨 간 조상 대응이 정확하다.
+    gaussians.densify_cap = max_gaussians
+    branch_pending = sorted(branch_at_counts) if branch_at_counts else []
 
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
@@ -159,19 +171,43 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
+                lineage_path = os.path.join(scene.model_path, f"lineage_upto_iter{iteration}.pkl")
+                with open(lineage_path, 'wb') as f:
+                    pickle.dump(gaussians.lineage_log, f)
+                torch.save(gaussians._gid.cpu(), os.path.join(scene.model_path, f"gid_iter{iteration}.pt"))
 
             # Densification
             if iteration < opt.densify_until_iter:
+                # densify 상한: 자기 cap과 "다음 branch 임계값" 중 작은 쪽 —
+                # branch 체크포인트가 임계값을 초과한 상태가 아니라 정확히 그 개수에서 찍히도록.
+                next_branch = branch_pending[0] if branch_pending else None
+                caps_now = [c for c in (max_gaussians, next_branch) if c is not None]
+                gaussians.densify_cap = min(caps_now) if caps_now else None
+
                 # Keep track of max radii in image-space for pruning
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)
-                
+                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii, iteration=iteration)
+
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
+
+            # branch 체크포인트: 개수가 하위 cap에 도달한 순간 전체 상태(gid·lineage 포함) 저장.
+            # densify가 cap에 구속된 스텝(같은 스텝의 prune이 소폭 깎아 count가 임계값
+            # 바로 아래일 수 있음)도 도달로 판정 — branch 런이 자기 budget으로 cap까지 채운다.
+            hit_cap = getattr(gaussians, 'last_densify_hit_cap', False)
+            while branch_pending and (
+                    gaussians.get_xyz.shape[0] >= branch_pending[0]
+                    or (hit_cap and gaussians.densify_cap == branch_pending[0])):
+                b = branch_pending.pop(0)
+                path = os.path.join(scene.model_path, f"chkpnt_branch{b}.pth")
+                torch.save((gaussians.capture(), iteration), path)
+                print(f"\n[Branch] 개수 {gaussians.get_xyz.shape[0]:,} (cap {b:,} 도달) at iter {iteration} — {path} 저장")
+                gaussians.last_densify_hit_cap = False
+                hit_cap = False
 
             # Optimizer step
             if iteration < opt.iterations:
@@ -188,6 +224,10 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+
+    if branch_pending:
+        print(f"\n⚠ 학습 종료 시점까지 개수가 도달하지 못한 branch cap: {branch_pending} "
+              f"(자연 최대가 cap보다 작음 — 해당 레벨은 생성 불가)")
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
@@ -267,9 +307,15 @@ if __name__ == "__main__":
     parser.add_argument('--disable_viewer', action='store_true', default=False)
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument("--max_gaussians", type=int, default=None,
+                        help="densify가 넘지 못할 가우시안 수 상한 (budget형 — grad 상위 후보부터 예산만큼만 추가). "
+                             "다중 해상도 레벨 = 이 값만 다른 full 30k 스케줄 런들.")
+    parser.add_argument("--branch_at_counts", nargs="+", type=int, default=[],
+                        help="개수가 이 값들을 처음 넘는 순간 branch 체크포인트(chkpnt_branch{N}.pth, "
+                             "gid·lineage 포함) 저장 — 하위 cap 레벨 런이 여기서 재개해 correspondence 유지")
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
-    
+
     print("Optimizing " + args.model_path)
 
     # Initialize system state (RNG)
@@ -279,7 +325,8 @@ if __name__ == "__main__":
     if not args.disable_viewer:
         network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from,
+             max_gaussians=args.max_gaussians, branch_at_counts=args.branch_at_counts)
 
     # All done
     print("\nTraining complete.")

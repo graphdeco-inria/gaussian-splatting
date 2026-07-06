@@ -6,3 +6,12 @@ diff_rasterization/diff_rast.egg-info
 diff_rasterization/dist
 tensorboard_3d
 screenshots
+
+# --- multires dataset generation: exclude generated data / checkpoints / tooling ---
+.omc/
+*.pth
+*.ply
+*.pkl
+*_multires*/
+multires_manifest.json
+results.json
