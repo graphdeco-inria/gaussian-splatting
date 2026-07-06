@@ -67,11 +67,8 @@ python generate_multires_dataset.py \
 ## Generated data
 
 The full generated dataset (11 scenes × levels) is ~18 GB and is **not** stored in this repo
-(GitHub caps files at 100 MB). Download link:
-
-- **[ TODO: paste Google Drive / Hugging Face / Zenodo link here ]**
-
-Everything needed to regenerate it from COLMAP scenes is in this repo.
+(GitHub caps files at 100 MB). 
+I will uploaded in the Lab server /srv/shared/Dataset
 
 ## Attribution & license
 
