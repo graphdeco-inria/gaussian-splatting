@@ -17,6 +17,7 @@ from os import makedirs
 from gaussian_renderer import render
 import torchvision
 from utils.general_utils import safe_state
+from utils.image_utils import composite_with_background
 from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
@@ -36,7 +37,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
         rendering = render(view, gaussians, pipeline, background, use_trained_exp=train_test_exp, separate_sh=separate_sh)["render"]
-        gt = view.original_image[0:3, :, :]
+        gt = composite_with_background(view.original_image[0:3, :, :], view.alpha_mask, background)
 
         if args.train_test_exp:
             rendering = rendering[..., rendering.shape[-1] // 2:]
