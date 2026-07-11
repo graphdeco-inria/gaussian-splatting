@@ -19,7 +19,7 @@ from scene import Scene, GaussianModel
 from utils.general_utils import safe_state, get_expon_lr_func
 import uuid
 from tqdm import tqdm
-from utils.image_utils import psnr
+from utils.image_utils import composite_with_background, psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 try:
@@ -111,12 +111,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
-        if viewpoint_cam.alpha_mask is not None:
-            alpha_mask = viewpoint_cam.alpha_mask.cuda()
-            image *= alpha_mask
-
         # Loss
-        gt_image = viewpoint_cam.original_image.cuda()
+        gt_image = composite_with_background(viewpoint_cam.original_image, viewpoint_cam.alpha_mask, bg)
         Ll1 = l1_loss(image, gt_image)
         if FUSED_SSIM_AVAILABLE:
             ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
@@ -229,7 +225,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                 psnr_test = 0.0
                 for idx, viewpoint in enumerate(config['cameras']):
                     image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs)["render"], 0.0, 1.0)
-                    gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
+                    gt_image = torch.clamp(composite_with_background(viewpoint.original_image, viewpoint.alpha_mask, renderArgs[1]), 0.0, 1.0)
                     if train_test_exp:
                         image = image[..., image.shape[-1] // 2:]
                         gt_image = gt_image[..., gt_image.shape[-1] // 2:]
