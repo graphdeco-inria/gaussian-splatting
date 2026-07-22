@@ -32,8 +32,32 @@ def focal2fov(focal, pixels):
 def main(args):
     # Khởi tạo mô hình và load trọng số đã train
     gaussians = GaussianModel(sh_degree=3)
-    scene_info = torch.load(os.path.join(args.model_path, "chkpnt30000.pth")) # Load model gốc
-    gaussians.restore(scene_info[0], args.model_path)
+    
+    chkpnt_path = os.path.join(args.model_path, f"chkpnt{args.iteration}.pth")
+    ply_path = os.path.join(args.model_path, "point_cloud", f"iteration_{args.iteration}", "point_cloud.ply")
+    
+    if os.path.exists(chkpnt_path):
+        print(f"Loading checkpoint: {chkpnt_path}")
+        scene_info = torch.load(chkpnt_path)
+        gaussians.restore(scene_info[0], args.model_path)
+    elif os.path.exists(ply_path):
+        print(f"Loading PLY model: {ply_path}")
+        gaussians.load_ply(ply_path)
+    else:
+        # Fallback to search any chkpnt or ply in model_path
+        print(f"Searching for model files in {args.model_path}...")
+        found = False
+        for root, dirs, files in os.walk(args.model_path):
+            for file in files:
+                if file.endswith(".ply") and "point_cloud" in file:
+                    p = os.path.join(root, file)
+                    print(f"Found fallback PLY: {p}")
+                    gaussians.load_ply(p)
+                    found = True
+                    break
+            if found: break
+        if not found:
+            raise FileNotFoundError(f"Could not find model checkpoint or PLY in {args.model_path}")
     
     background = torch.tensor([0, 0, 0], dtype=torch.float32, device="cuda")
     os.makedirs(args.output_dir, exist_ok=True)
@@ -89,6 +113,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_path", type=str, required=True, help="Đường dẫn tới thư mục model đã train (chứa point_cloud)")
     parser.add_argument("--csv_path", type=str, required=True, help="Đường dẫn tới test_poses.csv")
     parser.add_argument("--output_dir", type=str, required=True, help="Thư mục lưu ảnh đầu ra (vd: submission/scene_001)")
+    parser.add_argument("--iteration", type=int, default=30000, help="Iteration number to load (default: 30000)")
     
     # 3DGS pipeline params (giữ nguyên mặc định)
     class PipelineParams:
