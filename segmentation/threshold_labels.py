@@ -52,9 +52,9 @@ def apply_threshold(args, gaussians=None, voting_data=None):
     raw_class_name = args.target_class if hasattr(args, 'target_class') else str(target_id)
     safe_class_name = raw_class_name.replace(" ", "_")
     
-    # Check if beta is non-default (assuming 0.05 is default reference, but using the actual arg default if available)
+    # Append beta's value to the filename
     filename = f"labeled_gaussians_{safe_class_name}"
-    if hasattr(args, 'beta'): # In a previous version of this code, 0.05 was default and not included in filename (in case no beta is stated in filename)
+    if hasattr(args, 'beta'):
         beta_str = str(args.beta).replace('.', '_')
         filename += f"_beta{beta_str}"
     filename += ".ply"

@@ -41,13 +41,13 @@ def get_segmentation_masks(image_path, model, conf):
         masks = result.masks.data # result.masks.data is (N, H, W), where N is number of detections
         boxes = result.boxes # result.boxes contains .cls, class IDs, and .conf, confidence scores
         
-        # Get sorted indices by confidence, from low to high, so that higher confidence detections will overwrite lower ones in the mask
-        confidences = boxes.conf
+        # Get sorted indexes by confidence, from low to high, so that higher confidence detections will overwrite lower ones in the mask
+        confidences = boxes.conf # There is one confidence per object detected
         sort_idx = torch.argsort(confidences) # The highest confidence object is iterated last, ensuring it stays visible on top
         
         class_ids = boxes.cls
         
-        for idx in sort_idx:
+        for idx in sort_idx: # Loop over detected objects from lowest to highest confidence
             # Use soft mask values combined with detection confidence for pixel-wise confidence
             soft_mask = masks[idx]
             
@@ -60,7 +60,7 @@ def get_segmentation_masks(image_path, model, conf):
             stored_id = cls_id + 1 # Shift by 1 to reserve 0 for background
             names_map[stored_id] = result.names[cls_id]
             
-            # We combine pixel-wise mask probability with detection confidence, this gives lower confidence to uncertain edges
+            # We combine pixel-wise mask probability with detection confidence, this gives lower confidence to edges
             pixel_conf = soft_mask * det_conf
             
             # Because we are looping from low to high, if this pixel was already painted by a weaker detection, it gets overwritten
@@ -142,6 +142,15 @@ if __name__ == "__main__":
     # Save Metadata at the end
     with open(output_root / "masks.json", 'w') as f:
         json.dump(json_index, f, indent=4)
+
+    '''
+    In classes.json it is stored a dictionary mapping the  semantic class IDs, stored_id, 
+    to their corresponding class names, result.names[cls_id], detected by YOLO across the 
+    processed dataset images.
+
+    The Keys: the YOLO model's original class IDs are shifted by 1, stored_id = cls_id + 1
+    The Values: the corresponding class names, result.names[cls_id], detected by YOLO across the processed dataset images.
+    '''
 
     serializable_map = {str(k): v for k, v in global_names.items()}
     with open(output_root / "classes.json", 'w') as f:

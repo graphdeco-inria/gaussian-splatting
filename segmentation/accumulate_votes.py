@@ -27,8 +27,8 @@ def get_covariance_3d(gaussians, scaling_modifier = 1.0) -> torch.Tensor:
         """
 
         # L = R * S
-        scaling = gaussians.get_scaling
-        rotation = gaussians.get_rotation
+        scaling = gaussians.get_scaling # Stretch along the axes of the Gaussian. This is a diagonal matrix with the scaling factors for each axis
+        rotation = gaussians.get_rotation # Rotation of the Gaussian in 3D space, represented as a quaternion (w, x, y, z)
         L = build_scaling_rotation(scaling_modifier * scaling, rotation)
         
         # Eq. 6: Sigma = L*L^T
@@ -44,7 +44,7 @@ def get_target_class_id(args, classes_json_path):
     with open(classes_json_path, 'r') as f:
             classes_map = json.load(f)
             
-    # Invert map: Name -> ID
+    # It is stores as ID -> name, so we need to invert the map to Name -> ID
     name_to_id = {v: int(k) for k, v in classes_map.items()}
     
     if args.target_class not in name_to_id:
@@ -61,9 +61,9 @@ def main(args):
     ply_path = os.path.join(args.model_path, "point_cloud", f"iteration_{args.loaded_iter}", "point_cloud.ply")
     gaussians.load_ply(ply_path)
     
-    # Calculate scalar sizes (max scale axis) for all gaussians
-    scales = gaussians.get_scaling
-    scalar_sizes = scales.max(dim=1).values
+    # Calculate the size of all gaussians
+    scales = gaussians.get_scaling # tensor of shape (N, 3) containing the three scaling values for every Gaussian.
+    scalar_sizes = scales.max(dim=1).values # tensor of shape (N,) containing the maximum scaling value for each Gaussian. Will be used to penalize larger Gaussians during voting.
 
     '''
     Analysis of gaussian sizes to select the default size penalty
@@ -78,42 +78,47 @@ def main(args):
     print("-------------------------------------------\n")
     '''
 
-    cov3D = get_covariance_3d(gaussians)
+    cov3D = get_covariance_3d(gaussians) # shape (N, 3, 3), as there is one 3D covariance matrix per Gaussian. This will be used to project the 3D Gaussians into 2D for each camera view.
     # print("Covariance shape:", cov3D.shape)
 
     scene = Scene(args, gaussians, load_iteration=args.loaded_iter, shuffle=False)
 
     # Prepare global votes tensor
-    total_gaussians = gaussians.get_xyz.shape[0]
-    global_votes = torch.zeros((total_gaussians,), device=args.device, dtype=torch.float32)
+    total_gaussians = gaussians.get_xyz.shape[0] # gaussians.get_xyz has shape (N, 3), where N is the total number of Gaussians in the model.
 
+    # Initialize a tensor to accumulate votes for each Gaussian across all camera views
     global_weights = torch.zeros((total_gaussians,), device=args.device, dtype=torch.float32)
 
+    # Path to load the classes.json file, which contains a mapping of class IDs to class names detected by YOLO across the dataset
     classes_json_path = os.path.join(args.mask_dir, "classes.json")
-    target_id = get_target_class_id(args, classes_json_path)
+    target_id = get_target_class_id(args, classes_json_path) # The target class name is given in args.target_class, and we retrieve its corresponding ID from the classes.json file
 
 
-    # Filter scene cameras to find these views
+    # Iterate through scene cameras to find these views
     train_cameras = scene.getTrainCameras()
-    target_cameras = []
+    target_cameras = [] # Cameras that have a corresponding 2D mask
     
     for cam in train_cameras:
         basename = os.path.basename(cam.image_name)
         name_no_ext = os.path.splitext(basename)[0]
-        name = f"{name_no_ext}.png"
+        name = f"{name_no_ext}.png" # The YOLO script saves all the generated 2D masks as PNG files
         
         conf_full_path = os.path.join(args.mask_dir, "confidence", name)
         if os.path.exists(conf_full_path):
             target_cameras.append((cam, {
-                "semantic": os.path.join("semantic", name),
-                "confidence": os.path.join("confidence", name)
+                "semantic": os.path.join("semantic", name), # Constructs the path of the semantic mask for this camera view
+                "confidence": os.path.join("confidence", name) # Constructs the path of the confidence mask for this camera view
             }))
             
     print(f"Matched {len(target_cameras)} cameras in the scene.")
 
+
+    # Iterate through the matched cameras and accumulate votes for the target class
     for i, (cam, mask_info) in enumerate(target_cameras):
         print(f"\n  Processing View {i+1}/{len(target_cameras)}: {cam.image_name}")
-        sem_path = os.path.join(args.mask_dir, mask_info["semantic"])
+
+        # Getting semantic data
+        sem_path = os.path.join(args.mask_dir, mask_info["semantic"]) # Concatenating the mask directory with the semantic mask filename to get the full path of the semantic mask for this camera view
         semantic_img = cv2.imread(sem_path, cv2.IMREAD_UNCHANGED) # (H, W)
         
         # Resize semantic mask to match camera dimensions
@@ -123,7 +128,7 @@ def main(args):
         semantic_mask = torch.tensor(semantic_img, dtype=torch.long, device=args.device)
         semantic_height, semantic_width = semantic_img.shape
 
-        # Compute Confidence for Target Class
+        # Getting confidence data
         conf_path = os.path.join(args.mask_dir, mask_info["confidence"])
         confidence_img = cv2.imread(conf_path, cv2.IMREAD_UNCHANGED)
 
@@ -137,30 +142,37 @@ def main(args):
         if confidence_mask.max() > 1.0:
             confidence_mask /= 255.0
 
+        # Check if the target class is present in the semantic mask for this camera view
         target_mask_view = (semantic_mask == target_id)
         if not target_mask_view.any():
             continue
 
-        # Projection
+        # Projection of 3D Gaussians into 2D camera space
         projector = GaussianProjector(cam)
+
+        # projection_results is a map with means2D, cov2D, depths, and indices of the Gaussians that are visible in this camera view
         projection_results = projector.project(gaussians.get_xyz, cov3D)
-        
+
+        # Index to see which Gaussians are visible in this camera view. This is used to filter the global weights tensor later on
         gaussians.set_mask_index(projection_results['indices'])
-        # gaussians.save_ply(os.path.join(args.output_dir, f"gaussians_with_masks_view_again{i+1}.ply"))
+        # gaussians.save_ply(os.path.join(args.output_dir, f"gaussians_with_masks_view_again{i+1}.ply")) # To save and later see the Gaussians that are visible in this camera view
 
-        means2D = projection_results['means2D'] # (M, 2)
+        # print(f"  Visible Gaussians in this view: {projection_results['means2D'].shape[0]} / {total_gaussians}")
+        means2D = projection_results['means2D'] # (M, 2) being M the amount of Gaussians that are visible in this camera view
         cov2D = projection_results['cov2D'] # (M, 2, 2)
-        depths = projection_results['depths']
-        indices = projection_results['indices'] # (M_vis,) global indices
+        depths = projection_results['depths'] # (M,)
+        indices = projection_results['indices'] # (M,)
 
-        opacities = gaussians.get_opacity[indices] # (M_vis,)
-        view_sizes = scalar_sizes[indices] # (M_vis,)
+
+        opacities = gaussians.get_opacity[indices] # (M,)
+        view_sizes = scalar_sizes[indices] # (M,)
+        # print(f"  Projected 2D means shape: {means2D.shape}, Covariance shape: {cov2D.shape}, Depths shape: {depths.shape}, Indices shape: {indices.shape}, opacities shape: {opacities.shape}, view_sizes shape: {view_sizes.shape}")
 
         '''
         Equation 4 but projected in 2D
-        To make the rasterization loop fast, we don't want to calculate the matrix inverse for every single pixel. We calculate it once per Gaussian and store it.
+        To make the rasterization loop fast, we don't want to calculate the inverse matrix for every pixel. We calculate it once per Gaussian and store it.
         Sigma is semidefinite positive, so simmetric (and with non negative eigenvalues)
-        This is the inverse of the covariance matrix, which is used in the exponent of the Gaussian formula. We can precompute it for each Gaussian and store it as "conic" parameters (A, B, C) for the ellipse representation.
+        This is the inverse of the covariance matrix, which is used in the exponent of the Gaussian formula. We can precompute it for each Gaussian and store it as conic parameters (A, B, C) for the ellipse representation.
         As it's symmetric, we have only 3 unique values: [[A, B], [B, C]] where A = inv_cov2D[0,0], B = inv_cov2D[0,1], C = inv_cov2D[1,1]
         '''
 
@@ -183,20 +195,23 @@ def main(args):
         sqrt_term = torch.sqrt(trace * trace - 4 * det)
         eig1 = 0.5 * (trace + sqrt_term)
         eig2 = 0.5 * (trace - sqrt_term)
-        radius = torch.ceil(3.0 * torch.sqrt(torch.max(eig1, eig2))) # (M_vis,)
+        radius = torch.ceil(3.0 * torch.sqrt(torch.max(eig1, eig2))) # (M,)
 
-        # Sorting the gaussians by depth
+        # Sorting the gaussians by depth, before focusing on any tile
         sort_indices = torch.argsort(depths)
         means2D = means2D[sort_indices]
         conic = conic[sort_indices]
         opacities = opacities[sort_indices]
         radius = radius[sort_indices]
-        sorted_original_indices = indices[sort_indices]
+
+        # Now we save how the original indexes of the Gaussians are ordered after sorting by depth
+        # With sort_indices we get the order of the Gaussians once culled and sorted by depth. Indices is the original index of the Gaussians in the global model
+        sorted_original_indices = indices[sort_indices] # Save the original indexes by ordering now that we have sorted the Gaussians by depth. While we work with tiles, we will accumulate votes in a temporary depth-sorted tensor specifically for this view, and then we will add those votes to the global weights tensor using these original indices when all the tiles have been processed.
         view_sizes = view_sizes[sort_indices]
 
-        # Frustum Culling: Filter out gaussians that don't overlap with the image
-        # The projection only checks z > znear, so we need to filter X/Y bounds to match the view
-        # Gaussian Center must be inside the image coordinates. This removes Gaussians centered off-screen that bleed in due to large radii
+        # Frustum culling: filter out gaussians that don't overlap with the image
+        # The projection only checks z > znear, so we need to filter the x and y bounds to match the view
+        # Gaussian center must be inside the image coordinates. This removes Gaussians centered off-screen that bleed in due to large radius. This was a massive improvement
         intersect_x = (means2D[:, 0] >= 0) & (means2D[:, 0] < semantic_width)
         intersect_y = (means2D[:, 1] >= 0) & (means2D[:, 1] < semantic_height)
         in_frustum = intersect_x & intersect_y
@@ -212,35 +227,35 @@ def main(args):
         view_weights_sorted = torch.zeros((num_visible,), device=args.device, dtype=torch.float32)
 
         # Rasterization:
-        BLOCK_SIZE = args.raster_block_size # By default, we use 16x16 pixel blocks for rasterization. This means we will check which Gaussians potentially affect each block, and then only compute the Gaussian formula for the pixels in that block and those Gaussians. This is a common technique to speed up rasterization by reducing the number of Gaussian evaluations per pixel
-        grid_columns = (semantic_width + BLOCK_SIZE - 1) // BLOCK_SIZE # It ensures that if the image width isn't perfectly divisible by 16, you still get that final partial tile at the edge
+        BLOCK_SIZE = args.raster_block_size # By default, we use 16x16 pixel blocks for rasterization. This means we will check which Gaussians potentially affect each block, and then only compute the Gaussian formula for the pixels in that block and those Gaussians
+        grid_columns = (semantic_width + BLOCK_SIZE - 1) // BLOCK_SIZE # It ensures that if the image width is not perfectly divisible by 16, you still get that final partial tile at the edge
         grid_rows = (semantic_height + BLOCK_SIZE - 1) // BLOCK_SIZE 
         
-        # Convert the Gaussian's 2D position and size from Pixel Coordinates to Tile Coordinates
-        grid_min_x = ((means2D[:, 0] - radius).clamp(min=0) / BLOCK_SIZE).int()
+        # Convert the Gaussian's 2D position and size from pixel coordinates to tile coordinates
+        grid_min_x = ((means2D[:, 0] - radius).clamp(min=0) / BLOCK_SIZE).int() # We use clamp to stay inside valid image/grid dimensions
         grid_min_y = ((means2D[:, 1] - radius).clamp(min=0) / BLOCK_SIZE).int()
         grid_max_x = ((means2D[:, 0] + radius).clamp(max=semantic_width-1) / BLOCK_SIZE).int()
         grid_max_y = ((means2D[:, 1] + radius).clamp(max=semantic_height-1) / BLOCK_SIZE).int()
         
         # The grid_min and grid_max tensors now represent the bounding tiles for each Gaussian in terms of tile indices
-        grid_min = torch.stack([grid_min_x, grid_min_y], dim=1)
-        grid_max = torch.stack([grid_max_x, grid_max_y], dim=1)
+        grid_min = torch.stack([grid_min_x, grid_min_y], dim=1) # Coordinate of the lower-left corner of the bounding tile for each Gaussian. Will be something like (3, 0) for a Gaussian that starts in tile column 3, row 0
+        grid_max = torch.stack([grid_max_x, grid_max_y], dim=1) # Coordinate of the upper-right corner of the bounding tile for each Gaussian. Might be something like (5, 2) for the Gaussian if its center is in tile (4, 1) and its radius extends to tiles (3, 0) and (5, 2)
 
         for row_tile in range(grid_rows):
             for column_tile in range(grid_columns):
                 # Find which Gaussians have bounding tiles that include this tile
                 in_tile = (grid_min[:, 0] <= column_tile) & (column_tile <= grid_max[:, 0]) & (grid_min[:, 1] <= row_tile) & (row_tile <= grid_max[:, 1])
-                gaussians_in_tile = torch.nonzero(in_tile).squeeze(1)
+                # Check which Gaussians are in this tile. This is a boolean mask of shape (M,) where M is the number of Gaussians that passed the frustum culling
+                gaussians_in_tile = torch.nonzero(in_tile).squeeze(1) # Transforms the shape from (K, 1) into a tensor of shape (K,), squeezes dimension 1
 
                 if gaussians_in_tile.shape[0] == 0:
                     continue
                     
                 '''
-                For each Gaussian that overlaps with this tile, we would calculate its contribution to the pixels in the tile
-                This is where we would apply the Gaussian formula using the precomputed "conic" parameters and opacities
-                We would also check the semantic_mask to see if the pixel belongs to the target class and accumulate votes accordingly
-                This part is complex and would involve iterating over the pixels in the tile and applying the Gaussian formula, which is why we want to minimize the number of Gaussians we check per tile
-                The output would be a per-pixel vote for the target class, which we would accumulate in the global_votes tensor using the original indices of the Gaussians
+                For each Gaussian that overlaps with this tile, calculate its contribution to the pixels in the tile.
+                This applies the 2D Gaussian formula using precomputed conic parameters and opacities, 
+                accumulates the pixel-wise blending weights, checks the semantic mask against the target class, 
+                and accumulates votes into the global weights tensor using the original indices.
                 '''
 
                 tile_means = means2D[gaussians_in_tile]
@@ -248,60 +263,108 @@ def main(args):
                 tile_opacities = opacities[gaussians_in_tile]
                 tile_sizes = view_sizes[gaussians_in_tile]
                 
+                # Obtain the boundaries of the current tile in pixel coordinates
                 pix_min_x = column_tile * BLOCK_SIZE
                 pix_min_y = row_tile * BLOCK_SIZE
                 pix_max_x = min(pix_min_x + BLOCK_SIZE, semantic_width)
                 pix_max_y = min(pix_min_y + BLOCK_SIZE, semantic_height)
+
+                '''
+                y is before x because the first dimension of the image is height, y, and the second dimension is width, x.
+
+                If y_range is tensor([10, 11, 12]), then grid_y will be:
+                tensor([[10, 10, 10],
+                        [11, 11, 11],
+                        [12, 12, 12]])
+                And flat_y will be tensor([10, 10, 10, 11, 11, 11, 12, 12, 12])
+
+                Similarly, if x_range is tensor([20, 21, 22]), then grid_x will be:
+                tensor([[20, 21, 22],
+                        [20, 21, 22],
+                        [20, 21, 22]])
+                And flat_x will be tensor([20, 21, 22, 20, 21, 22, 20, 21, 22])
+                '''
                 
+                # Create a grid of pixel coordinates for the current tile
                 y_range = torch.arange(pix_min_y, pix_max_y, device=args.device)
                 x_range = torch.arange(pix_min_x, pix_max_x, device=args.device)
-                grid_y, grid_x = torch.meshgrid(y_range, x_range, indexing='ij')
+
+                # grid_y becomes a 2D grid where every row is identical, grid_x becomes a 2D grid where every column is identical
+                grid_y, grid_x = torch.meshgrid(y_range, x_range, indexing='ij') # Takes two 1D ranges and expands them into a 2D coordinate grid.
                 
+                # Write the grid in a whole 1D array to make it easier to compute the Gaussian formula for all pixels in the tile at once
                 flat_y = grid_y.flatten()
                 flat_x = grid_x.flatten()
 
-                # Equation 4 in the paper, but using the conic parameters and opacities, and applied to the pixels in this tile
-                # For each pixel in the tile, calculate its distance to the Gaussian centers and apply the Gaussian formula using the conic parameters
-                dx = flat_x.unsqueeze(0) - tile_means[:, 0].unsqueeze(1)
+                '''
+                Equation 4 in the paper, but using the conic parameters and opacities, and applied to the pixels in this tile
+                For each pixel in the tile, calculate its distance to the Gaussian centers and apply the Gaussian formula using the conic parameters
+                unsqueeze(0) is used to expand the dimensions of the pixel coordinates so that they can be broadcasted against the Gaussian parameters, (, N_Pixels_in_tile) -> (1, N_Pixels_in_tile)
+                unsqueeze(1) is used to expand the dimensions of the Gaussian parameters so that they can be broadcasted against the pixel coordinates, (N_Gaussians_in_tile, ) -> (N_Gaussians_in_tile, 1)
+                Now the shapes are compatible for broadcasting, resulting in a tensor of shape (N_Gaussians_in_tile, N_Pixels_in_tile)
+                '''
+
+                dx = flat_x.unsqueeze(0) - tile_means[:, 0].unsqueeze(1) # Calculates the horizontal distance from every Gaussian to every pixel simultaneously
                 dy = flat_y.unsqueeze(0) - tile_means[:, 1].unsqueeze(1)
                 
-                # This calculates exactly how intense the Gaussian is at those specific distances
+                # This calculates how intense the Gaussian is at those specific distances
                 power = -0.5 * (tile_conics[:, 0].unsqueeze(1) * dx**2 + 
                                 tile_conics[:, 2].unsqueeze(1) * dy**2) - \
                                 tile_conics[:, 1].unsqueeze(1) * dx * dy
                 
                 # The opacity of the Gaussian modulates its contributions
-                # alpha shape: (N_Gaussians, N_Pixels)
-                alpha = tile_opacities.view(-1, 1) * torch.exp(power.clamp(max=0)) # Computes the raw opacity of a Gaussian at a specific pixel
+                # alpha shape: (N_Gaussians_in_tile, N_Pixels_in_tile)
+                alpha = tile_opacities.view(-1, 1) * torch.exp(power.clamp(max=0)) # Computes the opacity of a Gaussian at a specific pixel
                 
                 transmission = 1.0 - alpha 
                 accummulated_transmission = torch.cumprod(transmission, dim=0) # Multiplies the transmission values down the list. Tells you how much light leaves the current layer
 
                 # We need to know how much light reached the current layer
+                # Ones is one row of ones, being each column a pixel in the tile
                 ones = torch.ones((1, alpha.shape[1]), device=args.device) # The first layer receives 100% of the light, then we accumulate the transmission of the previous layers to know how much light reaches the current layer
-                T = torch.cat([ones, accummulated_transmission[:-1]], dim=0)
-                weights = alpha * T 
 
+                # The rest of the rows are the accumulated transmission of the previous gaussians, which tells us how much light reaches the current layer
+                # Every row corresponds to a Gaussian, and every column corresponds to a pixel in the tile. We are only considering the Gaussians that are in this tile, so we can compute the contribution of each Gaussian to each pixel in the tile
+                T = torch.cat([ones, accummulated_transmission[:-1]], dim=0) # (N_Gaussians_in_tile, N_Pixels_in_tile)
+                weights = alpha * T # Weight from the paper. Size (N_Gaussians_in_tile, N_Pixels_in_tile). This is the usual product cell by cell
+
+                # flat_y and flat_x represent the pixel coordinates of the current tile, and we use them to index into the semantic mask to get the class labels for those pixels
                 tile_classes = semantic_mask[flat_y, flat_x] 
                 unique_classes = torch.unique(tile_classes)
 
                 if target_id not in unique_classes:
                     continue # No pixels of the target class in this tile, skip the voting
                 else:
+                    # Compare whether the pixel belongs to the target class and create a mask for those pixels
                     pixel_mask = (tile_classes == target_id)
-                    tile_confidences = confidence_mask[flat_y, flat_x] # Per-pixel confidence for this tile
+                    tile_confidences = confidence_mask[flat_y, flat_x] # Pixel by pixel confidence for this tile
                     
-                    # Weight Calculation: alpha * T * pixel_confidence
-                    # Weighted by inverse size to punish large gaussians
+                    '''
+                    Weight Calculation: alpha * T * pixel_confidence
+
+                    Weighted by the inverse of the size of the Gaussianto punish large gaussians
+
+                    weights has shape (N_gaussians_in_tile, N_pixels_in_tile), each row is a Gaussian and each column is a pixel in the tile. It represents how much each Gaussian contributes to each pixel in the tile.
+                    We can imagine tile_confidences as a row vector that advances through the rows of weights, affecting all Gaussians depending on the confidence of the pixel
+                    tile_confidences is (N_pixels_in_tile,) so it broadcasts across gaussians (rows):
+                    Shape  (K, P) * Shape (P,) results in Shape (K, P)
+
+                    We can imagine size_penalty_val as a column vector that advances through the columns of weights, affecting all pixels depending on the size of the Gaussian
+                    size_penalty_val is (N_gaussians_in_tile,) so it broadcasts across pixels (columns):
+                    Shape  (K, P) / Shape (K, 1) results in Shape (K, P)
+                    '''
+
                     size_penalty_val = (tile_sizes * args.size_penalty) ** args.alpha
+                    weighted_contribution = (weights * tile_confidences) / size_penalty_val.view(-1, 1) # .view(-1, 1) transforms size_penalty_val from shape (K,) into (K, 1), allowing it to broadcast across the pixel dimension (columns) of weights.
                     
-                    # weights is (N_gaussians, N_pixels)
-                    # tile_confidences is (N_pixels,) - broadcasts correctly across gaussians
-                    weighted_contribution = (weights * tile_confidences) / size_penalty_val.view(-1, 1) 
-                    
-                    class_votes = weighted_contribution[:, pixel_mask].sum(dim=1)          
+                    # Sum all the pixel contributions for the target class to get the total vote for each Gaussian in this tile
+                    class_votes = weighted_contribution[:, pixel_mask].sum(dim=1)    
+
+                    # Accumulate the votes for the Gaussians in this tile into the weights tensor of this view, where Gaussians are still sorted by depth. This is a temporary tensor that will be added to the global weights tensor after all tiles have been processed for this view.
                     view_weights_sorted[gaussians_in_tile] += class_votes
 
+        # After processing all tiles for this view, we add the votes from this view to the global weights tensor using the original indices of the Gaussians
+        # sorted_original_indices says to which original Gaussian each vote in view_weights_sorted corresponds, so we can accumulate the votes correctly into the global weights tensor
         global_weights[sorted_original_indices] += view_weights_sorted
         del view_weights_sorted, means2D, conic, radius, grid_min, grid_max
         torch.cuda.empty_cache()

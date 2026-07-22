@@ -30,6 +30,8 @@ class GaussianProjector:
     def project(self, means3D: torch.Tensor, cov3D: torch.Tensor):
         """
         Project 3D Gaussians to 2D
+        The center of a Gaussian distribution is the mean, that is why the 3D coordinates of the center of the Gaussian are passed as means3D. 
+        The covariance matrix of the Gaussian is passed as cov3D.
         """
         N = means3D.shape[0]
         
@@ -95,5 +97,5 @@ class GaussianProjector:
             'means2D': means2D,
             'cov2D': cov2D,
             'depths': z,
-            'indices': indices
+            'indices': indices # Original IDs of the subset of Gaussians that satisfy z > znear.
         }

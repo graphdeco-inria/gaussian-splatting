@@ -9,8 +9,11 @@ from datetime import datetime
 
 # Paths
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCENES_DIR = os.path.join(ROOT_DIR, "data", "scannetpp", "validation_data")
-METADATA_FILE = os.path.join(ROOT_DIR, "data", "scannetpp", "metadata", "semantic_classes.txt")
+# SCENES_DIR = os.path.join(ROOT_DIR, "data", "scannetpp", "validation_data")
+# METADATA_FILE = os.path.join(ROOT_DIR, "data", "scannetpp", "metadata", "semantic_classes.txt")
+DATA_EXTERNAL = "/mnt/hddb/dataTFGIvanVerdugo"
+SCENES_DIR = os.path.join(DATA_EXTERNAL, "scannetpp", "validation_data")
+METADATA_FILE = os.path.join(DATA_EXTERNAL, "scannetpp", "metadata", "semantic_classes.txt")
 TRAIN_SCRIPT = os.path.join(ROOT_DIR, "train.py")
 VOTE_SCRIPT = os.path.join(ROOT_DIR, "segmentation", "accumulate_votes.py")
 GEN_GT_SCRIPT = os.path.join(ROOT_DIR, "evaluation", "generate_gt_gaussians.py")
@@ -175,7 +178,8 @@ def run_2d_segmentation(scene_id):
 
     seg_script = os.path.join(ROOT_DIR, "segmentation", "generate_mask.py")
     source_images = os.path.join(SCENES_DIR, scene_id, "dslr", "undistorted_colmap", "images")
-    output_mask_dir = os.path.join(ROOT_DIR, "data", "2D_masks", scene_id)
+    # output_mask_dir = os.path.join(ROOT_DIR, "data", "2D_masks", scene_id)
+    output_mask_dir = os.path.join(DATA_EXTERNAL, "2D_masks", scene_id)
     
     classes_file = os.path.join(output_mask_dir, "classes.json")
 
@@ -279,7 +283,8 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
         cmd_vote = [
             PYTHON_FUSION, VOTE_SCRIPT,
             "--model_path", output_base,
-            "--mask_dir", os.path.join(ROOT_DIR, "data", "2D_masks", scene_id),
+            # "--mask_dir", os.path.join(ROOT_DIR, "data", "2D_masks", scene_id),
+            "--mask_dir", os.path.join(DATA_EXTERNAL, "2D_masks", scene_id),
             "--output_dir", seg_output_dir,
             "--target_class", class_name,
             "--beta", "0.03",
@@ -320,7 +325,8 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
         ]
         
         try:
-            subprocess.run(cmd_gen_gt, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            # subprocess.run(cmd_gen_gt, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            subprocess.run(cmd_gen_gt, check=True)
             
             # Compute metrics for the generated GT gaussians. This is interpreted as the max achievable IoU.
             cmd_gt_iou = [
@@ -414,7 +420,8 @@ def process_scene(scene_id, reuse_voting=False, alpha=1.0, size_penalty=100.0, b
     scene_labels = get_scene_gt_labels(scene_id)
     
     # Load 2D segmentation classes from this scene
-    classes_file = os.path.join(ROOT_DIR, "data", "2D_masks", scene_id, "classes.json")
+    # classes_file = os.path.join(ROOT_DIR, "data", "2D_masks", scene_id, "classes.json")
+    classes_file = os.path.join(DATA_EXTERNAL, "2D_masks", scene_id, "classes.json")
         
     with open(classes_file, 'r') as f:
         classes_raw = json.load(f)
@@ -506,8 +513,8 @@ if __name__ == "__main__":
     valid_scenes = []
     
     # Explicit exclusion list
-    excluded_scenes = ["7831862f02"]
-    # excluded_scenes = []
+    # excluded_scenes = ["7831862f02"]
+    excluded_scenes = []
     
     for s in all_scenes:
         if s in excluded_scenes: # Scene where the workflow was developed, not used for final evaluation
