@@ -38,8 +38,18 @@ def main(args):
     
     if os.path.exists(chkpnt_path):
         print(f"Loading checkpoint: {chkpnt_path}")
-        scene_info = torch.load(chkpnt_path)
-        gaussians.restore(scene_info[0], args.model_path)
+        scene_info = torch.load(chkpnt_path, weights_only=False)
+        from arguments import OptimizationParams
+        opt = OptimizationParams(ArgumentParser())
+        
+        # Viettel codebase bug: _exposure is not saved in checkpoints but expected by training_setup
+        gaussians.pretrained_exposures = None
+        mock_exposure = torch.tensor([[[1.0, 0.0, 0.0, 0.0],
+                                       [0.0, 1.0, 0.0, 0.0],
+                                       [0.0, 0.0, 1.0, 0.0]]], dtype=torch.float32, device="cuda")
+        gaussians._exposure = torch.nn.Parameter(mock_exposure.requires_grad_(False))
+        
+        gaussians.restore(scene_info[0], opt)
     elif os.path.exists(ply_path):
         print(f"Loading PLY model: {ply_path}")
         gaussians.load_ply(ply_path)
@@ -62,7 +72,7 @@ def main(args):
     background = torch.tensor([0, 0, 0], dtype=torch.float32, device="cuda")
     os.makedirs(args.output_dir, exist_ok=True)
 
-    print(f"Đang đọc file CSV: {args.csv_path}")
+    print(f"Reading CSV file: {args.csv_path}")
     with open(args.csv_path, 'r') as f:
         reader = csv.DictReader(f)
         for idx, row in enumerate(reader):
@@ -70,58 +80,54 @@ def main(args):
             width = int(row['width'])
             height = int(row['height'])
             
-            # Đọc Quaternion và Translation (World-to-Camera theo chuẩn COLMAP)
+            # Read Quaternion and Translation (World-to-Camera COLMAP)
             qvec = np.array([float(row['qw']), float(row['qx']), float(row['qy']), float(row['qz'])])
             tvec = np.array([float(row['tx']), float(row['ty']), float(row['tz'])])
             
             R = qvec2rotmat(qvec)
             
-            # Tính toán góc nhìn (FOV) từ Focal Length
+            # Calculate FOV from Focal Length
             fx = float(row['fx'])
             fy = float(row['fy'])
             FovX = focal2fov(fx, width)
             FovY = focal2fov(fy, height)
             
-            # Cấu hình Camera cho 3DGS
+            # Configure Camera for 3DGS
             custom_cam = Camera(
+                resolution=(width, height),
                 colmap_id=idx, 
-                R=R.transpose(), # 3DGS yêu cầu ma trận chuyển vị
+                R=R.transpose(), # 3DGS requires transposed matrix
                 T=tvec, 
                 FoVx=FovX, 
                 FoVy=FovY, 
-                image=torch.zeros((3, height, width)), # Dummy image
-                gt_alpha_mask=None,
+                depth_params=None,
+                image=Image.new("RGB", (width, height)), # Dummy PIL image
+                invdepthmap=None,
                 image_name=image_name, 
                 uid=idx,
                 data_device="cuda"
             )
             
-            # Sinh ảnh (Rendering)
+            # Rendering
             with torch.no_grad():
                 render_pkg = render(custom_cam, gaussians, args.pipeline, background)
                 rendered_image = render_pkg["render"]
             
-            # Lưu ảnh
+            # Save image
             rendered_image = rendered_image.cpu().permute(1, 2, 0).numpy()
             rendered_image = (np.clip(rendered_image, 0.0, 1.0) * 255.0).astype(np.uint8)
             Image.fromarray(rendered_image).save(os.path.join(args.output_dir, image_name))
             
-            print(f"Đã sinh ảnh: {image_name}")
+            print(f"Generated image: {image_name}")
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Render test poses for BTS Digital Twin")
-    parser.add_argument("--model_path", type=str, required=True, help="Đường dẫn tới thư mục model đã train (chứa point_cloud)")
-    parser.add_argument("--csv_path", type=str, required=True, help="Đường dẫn tới test_poses.csv")
-    parser.add_argument("--output_dir", type=str, required=True, help="Thư mục lưu ảnh đầu ra (vd: submission/scene_001)")
+    parser.add_argument("--model_path", type=str, required=True, help="Model directory path")
+    parser.add_argument("--csv_path", type=str, required=True, help="CSV path")
+    parser.add_argument("--output_dir", type=str, required=True, help="Output directory")
     parser.add_argument("--iteration", type=int, default=30000, help="Iteration number to load (default: 30000)")
-    
-    # 3DGS pipeline params (giữ nguyên mặc định)
-    class PipelineParams:
-        def __init__(self):
-            self.convert_SHs_python = False
-            self.compute_cov3D_python = False
-            self.debug = False
-    
+    from arguments import PipelineParams
+    pipeline = PipelineParams(parser)
     args = parser.parse_args()
-    args.pipeline = PipelineParams()
+    args.pipeline = pipeline.extract(args)
     main(args)

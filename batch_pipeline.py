@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--scenes", nargs="+", type=str, default=None, help="Filter specific scene directory names (e.g. --scenes HCM0181)")
     parser.add_argument("--max_scenes", type=int, default=None, help="Limit number of scenes to process for fast local testing")
     parser.add_argument("--sh_degree", type=int, default=3, help="Spherical Harmonics degree (default: 3, local test: 1 or 2)")
+    parser.add_argument("--resolution", type=int, default=1, help="Downscale resolution factor (-r 2, -r 4, -r 8). Use 4 or 8 for weak GPUs.")
     parser.add_argument("--skip_train", action="store_true", help="Skip training step if model already exists")
     
     args = parser.parse_args()
@@ -56,6 +57,7 @@ def main():
         print(f" - {os.path.basename(sp)}")
     print(f"Iterations per scene: {args.iterations}")
     print(f"SH Degree: {args.sh_degree}")
+    print(f"Resolution downscale: 1/{args.resolution}")
     print(f"=======================================================\n")
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -79,8 +81,9 @@ def main():
         if not args.skip_train:
             train_cmd = [
                 sys.executable, "train.py",
-                "-s", scene_path,
+                "-s", os.path.join(scene_path, "train"),
                 "-m", model_path,
+                "-r", str(args.resolution),
                 "--sh_degree", str(args.sh_degree),
                 "--iterations", str(args.iterations),
                 "--checkpoint_iterations", str(args.iterations)
