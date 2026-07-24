@@ -112,6 +112,8 @@ def main(args):
             
     print(f"Matched {len(target_cameras)} cameras in the scene.")
 
+    class_views = 0  # Views where the target class actually appears
+
 
     # Iterate through the matched cameras and accumulate votes for the target class
     for i, (cam, mask_info) in enumerate(target_cameras):
@@ -146,6 +148,7 @@ def main(args):
         target_mask_view = (semantic_mask == target_id)
         if not target_mask_view.any():
             continue
+        class_views += 1
 
         # Projection of 3D Gaussians into 2D camera space
         projector = GaussianProjector(cam)
@@ -378,6 +381,7 @@ def main(args):
     voting_data = {
         'weights': global_weights,
         'num_cameras': len(target_cameras),
+        'num_class_views': class_views,
         'target_id': target_id
     }
     

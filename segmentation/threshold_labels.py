@@ -9,6 +9,17 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scene import GaussianModel
 
+
+def _load_gaussians(args):
+    print(f"Loading gaussian model from {args.model_path}")
+    start_sh = args.sh_degree if hasattr(args, 'sh_degree') else 3
+    gaussians = GaussianModel(sh_degree=start_sh, use_labels=True)
+    loaded_iter = args.loaded_iter if hasattr(args, 'loaded_iter') else 30000
+    ply_path = os.path.join(args.model_path, "point_cloud", f"iteration_{loaded_iter}", "point_cloud.ply")
+    gaussians.load_ply(ply_path)
+    return gaussians
+
+
 def apply_threshold(args, gaussians=None, voting_data=None):
     """
     Applies the threshold to the voting weights and saves the resulting segmented PLY file
@@ -22,9 +33,18 @@ def apply_threshold(args, gaussians=None, voting_data=None):
     num_cameras = voting_data['num_cameras']
     target_id = voting_data['target_id']
 
+    # M2a: normalize the threshold by views where the class actually appears
+    if getattr(args, 'thresh_mode', 'class_views') == 'class_views':
+        n_views = voting_data.get('num_class_views', num_cameras)
+        if 'num_class_views' not in voting_data:
+            print("WARNING: voting_data has no 'num_class_views'; falling back to num_cameras")
+    else:
+        n_views = num_cameras
+
     # Threshold logic
-    threshold = num_cameras * args.beta
-    print(f"Applying threshold {threshold:.2f} with beta {args.beta} and {num_cameras} cameras")
+    threshold = n_views * args.beta
+    print(f"Applying threshold {threshold:.2f} with beta {args.beta} and {n_views} views "
+          f"(mode={getattr(args, 'thresh_mode', 'class_views')}, total_cameras={num_cameras})")
 
     final_mask = weights > threshold
     count = final_mask.sum().item()
@@ -36,17 +56,7 @@ def apply_threshold(args, gaussians=None, voting_data=None):
 
     # If gaussians not provided, load them
     if gaussians is None:
-        print(f"Loading gaussian model from {args.model_path}")
-        start_sh = 3
-        if hasattr(args, 'sh_degree'):
-            start_sh = args.sh_degree
-        
-        gaussians = GaussianModel(sh_degree=start_sh, use_labels=True)
-        
-        # Construct ply path
-        loaded_iter = args.loaded_iter if hasattr(args, 'loaded_iter') else 30000
-        ply_path = os.path.join(args.model_path, "point_cloud", f"iteration_{loaded_iter}", "point_cloud.ply")
-        gaussians.load_ply(ply_path)
+        gaussians = _load_gaussians(args)
 
     # Save logic, saving the subset of gaussians
     raw_class_name = args.target_class if hasattr(args, 'target_class') else str(target_id)
@@ -80,6 +90,9 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cuda", help="Device (cuda/cpu)")
     parser.add_argument("--loaded_iter", type=int, default=30000, help="Iteration of model to load")
     parser.add_argument("--sh_degree", type=int, default=3, help="SH degree of model")
+    parser.add_argument("--thresh_mode", type=str, default="class_views",
+                        choices=["class_views", "cameras"],
+                        help="M2a: normalize beta threshold by per-class views (default) or total cameras (legacy)")
 
     args = parser.parse_args()
     
