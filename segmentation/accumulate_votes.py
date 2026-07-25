@@ -63,7 +63,16 @@ def main(args):
     
     # Calculate the size of all gaussians
     scales = gaussians.get_scaling # tensor of shape (N, 3) containing the three scaling values for every Gaussian.
-    scalar_sizes = scales.max(dim=1).values # tensor of shape (N,) containing the maximum scaling value for each Gaussian. Will be used to penalize larger Gaussians during voting.
+    # Size measure used by the vote penalty. max punishes flat
+    # panel gaussians, like tv/table surfaces, like isotropic blobs, gmean
+    # ,characteristic length (s1*s2*s3)^(1/3), relieves panels, l2, sqrt of
+    # sum of squares, punishes them even more.
+    if args.size_measure == "gmean":
+        scalar_sizes = torch.exp(scales.log().mean(dim=1))
+    elif args.size_measure == "l2":
+        scalar_sizes = scales.norm(dim=1)
+    else:
+        scalar_sizes = scales.max(dim=1).values
 
     '''
     Analysis of gaussian sizes to select the default size penalty
@@ -402,6 +411,8 @@ if __name__ == "__main__":
     parser.add_argument("--alpha", type=float, default=2.0, help="Exponent for size punishment. Higher alpha penalizes larger Gaussians more.")
     parser.add_argument("--beta", type=float, default=0.05, help="Threshold factor for labeling Gaussians. Higher means more conservative segmentation.")
     parser.add_argument("--size_penalty", type=float, default=100.0, help="Base multiplier for size punishment. Scales the Gaussian size before exponentiation.")
+    parser.add_argument("--size_measure", type=str, default="l2", choices=["max", "gmean", "l2"],
+                        help="M1: per-gaussian size measure for the vote penalty")
     parser.add_argument("--source_path", type=str, default=None, help="Path to the source directory containing images/colmap data")
 
     args = get_combined_args(parser)

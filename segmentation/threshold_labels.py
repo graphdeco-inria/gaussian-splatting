@@ -20,6 +20,29 @@ def _load_gaussians(args):
     return gaussians
 
 
+def _connected_components(xyz, radius):
+    """Union-find connected components over cKDTree radius pairs.
+    Returns int64 component labels per point (0..K-1)."""
+    from scipy.spatial import cKDTree
+    n = len(xyz)
+    parent = np.arange(n, dtype=np.int64)
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    pairs = cKDTree(xyz).query_pairs(radius, output_type="ndarray")
+    for a, b in pairs:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+    roots = np.array([find(i) for i in range(n)], dtype=np.int64)
+    _, labels = np.unique(roots, return_inverse=True)
+    return labels
+
+
 def apply_threshold(args, gaussians=None, voting_data=None):
     """
     Applies the threshold to the voting weights and saves the resulting segmented PLY file
@@ -33,7 +56,7 @@ def apply_threshold(args, gaussians=None, voting_data=None):
     num_cameras = voting_data['num_cameras']
     target_id = voting_data['target_id']
 
-    # M2a: normalize the threshold by views where the class actually appears
+    # Normalize the threshold by views where the class actually appears
     if getattr(args, 'thresh_mode', 'class_views') == 'class_views':
         n_views = voting_data.get('num_class_views', num_cameras)
         if 'num_class_views' not in voting_data:
@@ -47,6 +70,40 @@ def apply_threshold(args, gaussians=None, voting_data=None):
           f"(mode={getattr(args, 'thresh_mode', 'class_views')}, total_cameras={num_cameras})")
 
     final_mask = weights > threshold
+
+    # Hysteresis thresholding, Canny-style, on the gaussian radius graph.
+    # Seeds are gaussians above the beta threshold. Bridge gaussians above
+    # gamma*beta are kept only if connected, <= radius, to a seed: rescues
+    # under-voted interior gaussians between fragments: RQ up, FN down, and
+    # drops isolated halo specks not connected to the core (FP down).
+    gamma = getattr(args, 'hysteresis_gamma', 0.0)
+    if gamma > 0:
+        if gaussians is None:
+            gaussians = _load_gaussians(args)
+        xyz = gaussians.get_xyz
+        if torch.is_tensor(xyz):
+            xyz = xyz.detach().cpu().numpy()
+        w_cpu = weights.detach().cpu()
+        seed = final_mask.detach().cpu()
+        lo = w_cpu > (threshold * gamma)
+        seed_count = int(seed.sum().item())
+        if lo.sum().item() > 0 and seed_count > 0:
+            comp = _connected_components(xyz[lo.numpy()], args.hysteresis_radius)
+            seed_in_lo = seed[lo].numpy()
+            keep_comp = np.zeros(comp.max() + 1, dtype=bool)
+            np.logical_or.at(keep_comp, comp, seed_in_lo)
+            kept = keep_comp[comp]
+            new_mask = torch.zeros_like(seed)
+            new_mask[lo] = torch.from_numpy(kept)
+            n_comps = comp.max() + 1
+            print(f"[hysteresis] gamma={gamma} radius={args.hysteresis_radius} | "
+                  f"seeds={seed_count} lo={int(lo.sum().item())} comps={n_comps} "
+                  f"kept_comps={int(keep_comp.sum())} | "
+                  f"{seed_count} -> {int(new_mask.sum().item())} gaussians")
+            final_mask = new_mask.to(final_mask.device)
+        else:
+            print("[hysteresis] degenerate set; keeping seed mask")
+
     count = final_mask.sum().item()
     print(f"Labeled {count} gaussians as {target_id}")
 
@@ -93,6 +150,10 @@ if __name__ == "__main__":
     parser.add_argument("--thresh_mode", type=str, default="class_views",
                         choices=["class_views", "cameras"],
                         help="M2a: normalize beta threshold by per-class views (default) or total cameras (legacy)")
+    parser.add_argument("--hysteresis_gamma", type=float, default=0.5,
+                        help="M4: low-threshold factor (0 disables hysteresis)")
+    parser.add_argument("--hysteresis_radius", type=float, default=0.05,
+                        help="M4: connectivity radius (m) for the bridge set")
 
     args = parser.parse_args()
     
