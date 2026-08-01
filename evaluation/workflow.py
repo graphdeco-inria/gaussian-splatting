@@ -205,6 +205,15 @@ def run_2d_segmentation(scene_id):
         raise
 
 
+# VOTE_SIZE_MEASURE = "l2"
+VOTE_SIZE_MEASURE = "max"
+# THRESH_MODE = "class_views"
+THRESH_MODE = "cameras"
+# HYSTERESIS_GAMMA = 0.5
+HYSTERESIS_GAMMA = 0.0
+GT_METHOD = "legacy"
+
+
 def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_output_dir, gt_mesh, gt_iou_val):
     """
     Helper to run thresholding and IoU computation for a specific beta
@@ -223,7 +232,9 @@ def compute_iou_for_beta(beta, scene_id, class_name, gt_id, output_base, class_o
         "--model_path", output_base,
         "--output_dir", os.path.dirname(class_output_dir), 
         "--target_class", class_name,
-        "--beta", str(beta)
+        "--beta", str(beta),
+        "--thresh_mode", THRESH_MODE,
+        "--hysteresis_gamma", str(HYSTERESIS_GAMMA)
     ]
     
     subprocess.run(cmd_thresh, check=True, capture_output=True)
@@ -289,7 +300,9 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
             "--target_class", class_name,
             "--beta", "0.03",
             "--alpha", str(alpha),
-            "--size_penalty", str(size_penalty)
+            "--size_penalty", str(size_penalty),
+            "--size_measure", VOTE_SIZE_MEASURE,
+            "--source_path", os.path.join(SCENES_DIR, scene_id, "dslr", "undistorted_colmap")
         ]
         
         subprocess.run(cmd_vote, check=True)
@@ -321,7 +334,8 @@ def evaluate_object(scene_id, class_name, yolo_id, available_labels, reuse_votin
             "--gaussian_ply", gaussian_ply,
             "--gt_mesh", gt_mesh,
             "--output_ply", gt_ply_out,
-            "--class_id", str(gt_id)
+            "--class_id", str(gt_id),
+            "--method", GT_METHOD
         ]
         
         try:
@@ -497,7 +511,17 @@ if __name__ == "__main__":
     parser.add_argument("--alpha", type=float, default=1.0, help="Exponent for size punishment. Higher alpha penalizes larger Gaussians more.")
     parser.add_argument("--size_penalty", type=float, default=100.0, help="Base multiplier for size punishment. Scales the Gaussian size before exponentiation.")
     parser.add_argument("--betas", type=float, nargs='+', default=[0.05, 0.07, 0.1, 0.12, 0.15, 0.35], help="List of extra betas to try for refinement.")
+    parser.add_argument("--size_measure", type=str, default="max", choices=["max", "gmean", "l2"])
+    parser.add_argument("--thresh_mode", type=str, default="class_views", choices=["class_views", "cameras"])
+    parser.add_argument("--hysteresis_gamma", type=float, default=0.5)
+    parser.add_argument("--gt_method", type=str, default="legacy", choices=["legacy", "symmetric"])
     args = parser.parse_args()
+    
+    # Forward the method choices to the module-level constants used by the helpers
+    VOTE_SIZE_MEASURE = args.size_measure
+    THRESH_MODE = args.thresh_mode
+    HYSTERESIS_GAMMA = args.hysteresis_gamma
+    GT_METHOD = args.gt_method
 
     # Set a random seed for reproducibility
     random.seed(args.seed)

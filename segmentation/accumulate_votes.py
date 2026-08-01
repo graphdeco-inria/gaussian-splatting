@@ -89,8 +89,35 @@ def main(args):
 
     cov3D = get_covariance_3d(gaussians) # shape (N, 3, 3), as there is one 3D covariance matrix per Gaussian. This will be used to project the 3D Gaussians into 2D for each camera view.
     # print("Covariance shape:", cov3D.shape)
-
+    # Load the Scene with camera images on CPU: vote accumulation only needs
+    # poses/intrinsics (masks are read from mask_dir), and holding e.g. 385
+    # full-res DSLR images on a shared GPU (~8GB) OOMs at Scene load. Camera
+    # matrices still go to the GPU explicitly (they are small).
+    '''
+    _orig_data_device = getattr(args, "data_device", "cuda")
+    args.data_device = "cpu"
+    '''
     scene = Scene(args, gaussians, load_iteration=args.loaded_iter, shuffle=False)
+    '''
+    args.data_device = _orig_data_device
+
+    # Free whatever image tensors were still materialized, and move the small
+    # pose/projection matrices to the GPU explicitly (they are needed by the
+    # GaussianProjector and were loaded on CPU along with the images)
+    for _cam in scene.getTrainCameras():
+        for _attr in ("original_image", "alpha_mask", "gt_alpha_mask"):
+            if hasattr(_cam, _attr):
+                setattr(_cam, _attr, None)
+        for _attr in ("world_view_transform", "projection_matrix",
+                      "full_proj_transform", "camera_center"):
+            _t = getattr(_cam, _attr, None)
+            if _t is not None and torch.is_tensor(_t) and not _t.is_cuda:
+                setattr(_cam, _attr, _t.cuda())
+        # the GaussianProjector allocates on camera.data_device
+        if getattr(_cam, "data_device", "cuda") != "cuda":
+            _cam.data_device = "cuda"
+    torch.cuda.empty_cache()
+    '''
 
     # Prepare global votes tensor
     total_gaussians = gaussians.get_xyz.shape[0] # gaussians.get_xyz has shape (N, 3), where N is the total number of Gaussians in the model.

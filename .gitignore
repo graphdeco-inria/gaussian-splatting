@@ -33,3 +33,10 @@ verify_gt_strategies.py
 debug_iou_bug.py
 evaluationReplica/
 segmentation_baseline_reference/
+evaluation_baseline_scannet/
+segmentation_baseline_scannet/
+tmp/
+evaluation/extended_metrics.py
+containers/
+evaluation/compute_consistent_iou.py
+evaluation/workflow_consistent.py
