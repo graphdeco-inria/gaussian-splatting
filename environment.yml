@@ -5,6 +5,7 @@ channels:
   - defaults
 dependencies:
   - cudatoolkit=11.6
+  - "mkl<2024.1" # PyTorch 1.12.1 Conda build is incompatible with MKL >= 2024.1
   - plyfile
   - python=3.7.13
   - pip=22.3.1
