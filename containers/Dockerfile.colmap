@@ -1,0 +1,65 @@
+# CPU COLMAP environment for scene preparation and image undistortion
+
+ARG BASE_IMAGE=ubuntu:20.04
+FROM ${BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG COLMAP_VERSION=3.13.0
+ARG COLMAP_BUILD=cpu_h5de0465_1
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    QT_QPA_PLATFORM=offscreen \
+    COLMAP_VERSION=${COLMAP_VERSION}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        bzip2 \
+        ca-certificates \
+        libasound2 \
+        libdbus-1-3 \
+        libfontconfig1 \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libx11-6 \
+        libxext6 \
+        libxkbcommon0 \
+        libxrender1 \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN wget -q \
+        https://repo.anaconda.com/miniconda/Miniconda3-py37_4.12.0-Linux-x86_64.sh \
+        -O /tmp/miniconda.sh \
+    && echo "4dc4214839c60b2f5eb3efbdee1ef5d9b45e74f2c09fcae6c8934a13f36ffc3e  /tmp/miniconda.sh" \
+        | sha256sum -c - \
+    && bash /tmp/miniconda.sh -b -p /opt/conda \
+    && rm -f /tmp/miniconda.sh \
+    && /opt/conda/bin/conda config --system --set always_yes yes \
+    && /opt/conda/bin/conda config --system --set changeps1 no \
+    && /opt/conda/bin/conda install --name base --channel conda-forge \
+        --override-channels mamba=0.27.0 \
+    && /opt/conda/bin/conda clean --all --yes
+
+ENV PATH=/opt/conda/bin:$PATH
+
+RUN mamba create --name colmap_env \
+        --channel conda-forge --override-channels \
+        python=3.14.3 \
+        colmap=${COLMAP_VERSION}=${COLMAP_BUILD} \
+    && conda clean --all --yes \
+    && rm -rf /opt/conda/pkgs
+
+ENV CONDA_DEFAULT_ENV=colmap_env \
+    PATH=/opt/conda/envs/colmap_env/bin:/opt/conda/bin:$PATH
+
+# Fail the image build if the expected CPU COLMAP binary is not available
+RUN colmap -h 2>&1 | grep -F "COLMAP ${COLMAP_VERSION}" \
+    && test "$(colmap -h 2>&1 | grep -F "without CUDA" | wc -l)" -eq 1
+
+WORKDIR /repo
+CMD ["colmap", "help"]
