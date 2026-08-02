@@ -1,7 +1,4 @@
-# CUDA/PyTorch 3DGS training environment.
-# The repository and datasets are mounted at runtime; they are not copied into
-# the image. Build with CUDA_BASE_IMAGE set to the locally tagged CUDA image on
-# the shared server, or leave the default for a portable Dockerfile.
+# CUDA/PyTorch 3DGS training environment
 
 ARG CUDA_BASE_IMAGE=nvidia/cuda:11.6.2-devel-ubuntu20.04
 FROM ${CUDA_BASE_IMAGE}
@@ -30,7 +27,7 @@ RUN apt-get update \
         wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 3.7 is required by the repository's pinned environment.yml.
+# Python 3.7 is required by the repository's environment.yml.
 RUN wget -q \
         https://repo.anaconda.com/miniconda/Miniconda3-py37_4.12.0-Linux-x86_64.sh \
         -O /tmp/miniconda.sh \
@@ -59,9 +56,7 @@ RUN mamba env create --file environment.yml \
 ENV CONDA_DEFAULT_ENV=gaussian_splatting \
     PATH=/opt/conda/envs/gaussian_splatting/bin:/opt/conda/bin:$PATH
 
-# Fail the image build if the pinned Python/Torch environment or CUDA
-# extensions were not installed correctly. This does not require a GPU during
-# docker build; the CUDA runtime is checked when the container is run.
+
 RUN python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)" \
     && python -c "import diff_gaussian_rasterization; import simple_knn._C; import fused_ssim; print('3DGS extensions: OK')"
 

@@ -1,0 +1,87 @@
+# CUDA/PyTorch environment for segmentation, Gaussian voting, IoU evaluation, and GPU ScanNet++ 2D ground-truth rasterization
+
+ARG CUDA_BASE_IMAGE=nvidia/cuda:11.6.2-devel-ubuntu20.04
+FROM ${CUDA_BASE_IMAGE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG TORCH_CUDA_ARCH_LIST=8.6
+ARG NVDIFFRAST_COMMIT=253ac4fcea7de5f396371124af597e6cc957bfae
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    CUDA_HOME=/usr/local/cuda \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST} \
+    MAX_JOBS=2 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    MPLCONFIGDIR=/tmp/matplotlib \
+    YOLO_CONFIG_DIR=/tmp/Ultralytics
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        bzip2 \
+        build-essential \
+        ca-certificates \
+        git \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libx11-6 \
+        libxext6 \
+        libxrender1 \
+        ninja-build \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+
+RUN wget -q \
+        https://repo.anaconda.com/miniconda/Miniconda3-py37_4.12.0-Linux-x86_64.sh \
+        -O /tmp/miniconda.sh \
+    && echo "4dc4214839c60b2f5eb3efbdee1ef5d9b45e74f2c09fcae6c8934a13f36ffc3e  /tmp/miniconda.sh" \
+        | sha256sum -c - \
+    && bash /tmp/miniconda.sh -b -p /opt/conda \
+    && rm -f /tmp/miniconda.sh \
+    && /opt/conda/bin/conda config --system --set always_yes yes \
+    && /opt/conda/bin/conda config --system --set changeps1 no \
+    && /opt/conda/bin/conda install --name base --channel conda-forge \
+        --override-channels mamba=0.27.0 \
+    && /opt/conda/bin/conda clean --all --yes
+
+ENV PATH=/opt/conda/bin:$PATH
+
+RUN mamba create --name gaussian_fusion \
+        --channel defaults --override-channels \
+        python=3.8.20 \
+        pip=24.2 \
+        setuptools=75.1.0 \
+        wheel=0.44.0 \
+    && conda clean --all --yes \
+    && rm -rf /opt/conda/pkgs
+
+ENV CONDA_DEFAULT_ENV=gaussian_fusion \
+    PATH=/opt/conda/envs/gaussian_fusion/bin:/opt/conda/bin:$PATH
+
+
+RUN python -m pip install --no-cache-dir \
+        torch==1.12.1+cu113 \
+        torchvision==0.13.1+cu113 \
+        torchaudio==0.12.1+cu113 \
+        --extra-index-url https://download.pytorch.org/whl/cu113
+
+COPY containers/requirements.gaussian-fusion.txt /tmp/requirements.gaussian-fusion.txt
+
+RUN python -m pip install --no-cache-dir \
+        --requirement /tmp/requirements.gaussian-fusion.txt \
+    && python -m pip install --no-cache-dir --no-build-isolation \
+        "git+https://github.com/NVlabs/nvdiffrast.git@${NVDIFFRAST_COMMIT}" \
+    && rm -f /tmp/requirements.gaussian-fusion.txt \
+    && rm -rf /root/.cache
+
+# nvdiffrast is compiled during pip installation. This catches CUDA/compiler failures during the image build instead of on the first evaluation run.
+RUN python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)" \
+    && python -c "import cv2, open3d, ultralytics; print('vision stack: OK')" \
+    && python -c "import nvdiffrast.torch; print('nvdiffrast: OK')"
+
+WORKDIR /repo
+CMD ["python", "--version"]
