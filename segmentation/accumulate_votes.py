@@ -89,35 +89,17 @@ def main(args):
 
     cov3D = get_covariance_3d(gaussians) # shape (N, 3, 3), as there is one 3D covariance matrix per Gaussian. This will be used to project the 3D Gaussians into 2D for each camera view.
     # print("Covariance shape:", cov3D.shape)
-    # Load the Scene with camera images on CPU: vote accumulation only needs
-    # poses/intrinsics (masks are read from mask_dir), and holding e.g. 385
-    # full-res DSLR images on a shared GPU (~8GB) OOMs at Scene load. Camera
-    # matrices still go to the GPU explicitly (they are small).
-    '''
-    _orig_data_device = getattr(args, "data_device", "cuda")
-    args.data_device = "cpu"
-    '''
+    # Vote accumulation only needs camera geometry and masks. Keep full-resolution
+    # source images on CPU, then release them after Scene has built the cameras.
+    load_images_on_cpu = getattr(args, "data_device", "cuda") == "cpu"
     scene = Scene(args, gaussians, load_iteration=args.loaded_iter, shuffle=False)
-    '''
-    args.data_device = _orig_data_device
-
-    # Free whatever image tensors were still materialized, and move the small
-    # pose/projection matrices to the GPU explicitly (they are needed by the
-    # GaussianProjector and were loaded on CPU along with the images)
-    for _cam in scene.getTrainCameras():
-        for _attr in ("original_image", "alpha_mask", "gt_alpha_mask"):
-            if hasattr(_cam, _attr):
-                setattr(_cam, _attr, None)
-        for _attr in ("world_view_transform", "projection_matrix",
-                      "full_proj_transform", "camera_center"):
-            _t = getattr(_cam, _attr, None)
-            if _t is not None and torch.is_tensor(_t) and not _t.is_cuda:
-                setattr(_cam, _attr, _t.cuda())
-        # the GaussianProjector allocates on camera.data_device
-        if getattr(_cam, "data_device", "cuda") != "cuda":
-            _cam.data_device = "cuda"
-    torch.cuda.empty_cache()
-    '''
+    if load_images_on_cpu:
+        for camera in scene.getTrainCameras():
+            for attribute in ("original_image", "alpha_mask", "gt_alpha_mask"):
+                if hasattr(camera, attribute):
+                    setattr(camera, attribute, None)
+            camera.data_device = torch.device(args.device)
+        torch.cuda.empty_cache()
 
     # Prepare global votes tensor
     total_gaussians = gaussians.get_xyz.shape[0] # gaussians.get_xyz has shape (N, 3), where N is the total number of Gaussians in the model.
@@ -433,6 +415,9 @@ if __name__ == "__main__":
     parser.add_argument("--sh_degree", type=int, default=3)
     parser.add_argument("--target_class", type=str, default="truck", help="Only one object at a time can be segmented. The name must match one of the classes in the YOLO model.")
     parser.add_argument("--device", type=str, default="cuda", help="Device to load tensors on")
+    parser.add_argument("--data_device", type=str, default="cuda",
+                        choices=["cuda", "cpu"],
+                        help="Device for source images; camera matrices remain on the GPU")
     parser.add_argument("--loaded_iter", type=int, default=30000, help="Iteration number to load from the model (e.g. 1000)")
     parser.add_argument("--raster_block_size", type=int, default=16, help="Block size for rasterization. Larger blocks are faster but less precise.")
     parser.add_argument("--alpha", type=float, default=2.0, help="Exponent for size punishment. Higher alpha penalizes larger Gaussians more.")

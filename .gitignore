@@ -40,3 +40,6 @@ evaluation/extended_metrics.py
 containers/README.md
 evaluation/compute_consistent_iou.py
 evaluation/workflow_consistent.py
+evaluationBeforeUnifying/
+evaluation_baseline_replica/
+miouStudy/
