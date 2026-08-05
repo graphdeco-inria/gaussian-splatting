@@ -1,1 +1,1 @@
-"""Metric and geometry helpers for the evaluation prototype."""
+"""Replica scene loading and shared evaluation helpers."""

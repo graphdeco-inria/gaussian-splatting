@@ -1,9 +1,7 @@
-""" Shared records for scene loading and the first metric pass """
+"""Common scene records after adding dataset visibility support."""
 
 
 class TargetClassInfo:
-    """Canonical class name plus the detector spelling and stored label."""
-
     def __init__(self, name, name_by_detector, detector_stored_id):
         self.name = name
         self.name_by_detector = name_by_detector
@@ -11,10 +9,11 @@ class TargetClassInfo:
 
 
 class SceneData:
-    """Arrays in this object all use the same mesh-vertex order."""
+    """Vertex-aligned labels, visibility and the classes evaluated in a scene."""
 
     def __init__(self, dataset, scene, vertices, semantic_labels,
-                 instance_labels, annotated, visible, classes):
+                 instance_labels, annotated, visible,
+                 instances_seen_by_2D_masks, classes):
         self.dataset = dataset
         self.scene = scene
         self.vertices = vertices
@@ -22,6 +21,7 @@ class SceneData:
         self.instance_labels = instance_labels
         self.annotated = annotated
         self.visible = visible
+        self.instances_seen_by_2D_masks = instances_seen_by_2D_masks
         self.classes = classes
 
     @property
