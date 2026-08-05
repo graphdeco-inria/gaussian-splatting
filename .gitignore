@@ -42,3 +42,5 @@ evaluation/workflow_consistent.py
 evaluationBeforeUnifying/
 evaluation_baseline_replica/
 miouStudy/
+evaluationWithBackground/
+segmentationWithBackground/

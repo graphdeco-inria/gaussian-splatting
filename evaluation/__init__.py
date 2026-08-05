@@ -1,1 +1,1 @@
-"""Replica scene loading and shared evaluation helpers."""
+"""Replica evaluation with cached ground-truth transfers."""

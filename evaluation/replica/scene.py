@@ -82,7 +82,8 @@ class ReplicaScene:
 
     def selected_frames(self):
         """ Return the frame indices selected using the configured step """
-        count = sum(1 for _ in open(self.sequence / "traj_w_c.txt")) # traj_w_c.txt contains one line per frame, so counting lines gives the total number of frames.
+        with open(self.sequence / "traj_w_c.txt") as trajectory:
+            count = sum(1 for _ in trajectory)
         return list(range(0, count, self.frame_step)) # Creates a list of frame indices from 0 to count with the given step size.
 
     def _load_mesh(self):
