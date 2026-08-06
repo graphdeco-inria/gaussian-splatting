@@ -32,7 +32,7 @@ def _metadata(scene, gaussian_ply, tau, min_share, background_competes,
     stat = gaussian_ply.stat()
     return {
         # Increase this value when the meaning of the GT cache changes.
-        "evaluation_scope_version": 1,
+        "evaluation_scope_version": 2,
         "dataset": scene.dataset,
         "scene": scene.scene,
         "vertices": int(len(scene.vertices)),
@@ -167,7 +167,7 @@ def build(scene, gaussian_ply, gt_dir, tau, min_share, background_competes,
         # Reuse the cached instance labels when the metadata is still valid.
         gaussian_instances = np.load(gaussian_instances_path)["instances"]
 
-    # Do not mark the cache complete until every array has been written.
+    # Record the metadata only after all required cache components are ready.
     meta_path.write_text(json.dumps(expected, indent=2))
     return GroundTruthCache(
         mesh_to_gaussian=mesh_to_gaussian,

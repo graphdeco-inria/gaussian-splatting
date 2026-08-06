@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    # Keep mask generation on the same frame sampling as scene loading.
+    # Use the same scene thresholds as the unified evaluation driver.
     scene = ReplicaScene(args.data_root, args.scene, args.sequence_name,
                          args.frame_step, seed=3,
                          vertex_label_min_share=0.6, visibility_slop=0.05)

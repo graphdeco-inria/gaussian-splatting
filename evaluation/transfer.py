@@ -44,14 +44,14 @@ def map_subset_indices(full_xyz, subset_xyz):
 
 
 def build_radius_neighbors(query_points, reference_tree, radius,
-                           chunk_size=50000):
+                           chunk_size=100000):
     """Build radius neighborhoods for every query point.
 
     The result contains row offsets, neighbor indices and distances. Rows
     correspond to query points and the indices refer to points in the search
     tree.
     """
-    # Keep chunks bounded because ScanNet++ meshes do not fit comfortably in one query.
+    # Store each chunk separately so large scenes do not require one huge query.
     index_chunks = []
     distance_chunks = []
     count_chunks = []
@@ -183,7 +183,7 @@ def predict_vertex_labels(mesh_xyz, mesh_gaussian_csr, gaussian_labels,
         weights = np.clip(gaussian_opacity, min_opacity, 1.0)
     else:
         weights = np.ones(len(gaussian_labels), dtype=np.float64)
-    # Only valid labels can participate as target classes.
+    # Only labels assigned to a supported class can win a vote.
     classes = np.unique(gaussian_labels[gaussian_labels >= 0])
     return radius_label_vote(
         len(mesh_xyz), mesh_gaussian_csr, gaussian_labels, weights, classes,

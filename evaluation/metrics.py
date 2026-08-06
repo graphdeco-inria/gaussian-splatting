@@ -1,4 +1,4 @@
-"""IoU and panoptic metrics shared by Replica and ScanNet++."""
+"""IoU and panoptic metrics shared by the dataset adapters."""
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -59,12 +59,12 @@ def connected_components(xyz, radius, min_size):
         if root_left != root_right:
             parent[root_left] = root_right
 
-    # Count the final component sizes before assigning compact IDs.
+    # Count the final component sizes and keep only components above the threshold.
     roots = np.asarray([find(index) for index in range(len(xyz))])
     unique, counts = np.unique(roots, return_counts=True)
     accepted = {root for root, count in zip(unique, counts)
                 if count >= min_size}
-    # Remap accepted roots to compact IDs used by later instance matching.
+    # Remap accepted roots to compact component IDs used by the PQ calculation.
     remapped = {}
     next_id = 0
     for index, root in enumerate(roots):

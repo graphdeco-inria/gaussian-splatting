@@ -1,1 +1,1 @@
-"""Replica evaluation with cached ground-truth transfers."""
+"""Dataset adapters and shared evaluation helpers."""
