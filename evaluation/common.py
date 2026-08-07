@@ -87,7 +87,7 @@ class SceneData: # Created when loading data in the scene files
     def visible_instance_count(self):
         """Count valid instances in the primary evaluation set."""
         values = self.instance_labels[self.evaluation_mask]
-        return len(set(int(value) for value in values if value >= 0))
+        return len({int(value) for value in values if value >= 0})
 
 
 def safe_name(name):

@@ -133,6 +133,8 @@ def generate(scene_root, repo_root, metadata_path, output_dir, bands=4, viz=0,
     number of optional overlay images. The generated files include semantic
     masks, confidence masks, class metadata and support data.
     """
+    if bands < 1:
+        raise ValueError("bands must be positive")
     # Reuse the completed output unless the caller explicitly requests a rebuild.
     if ((output_dir / "classes.json").exists() and
             (output_dir / "support.npz").exists() and not force):

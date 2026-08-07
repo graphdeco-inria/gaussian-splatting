@@ -364,7 +364,7 @@ def _run_thresholds(args, runtime, model_dir, segmentation_dir, classes):
     Existing labeled files are reused unless args.force is true.
     """
 
-    betas = list(args.betas)
+    betas = sorted(set(args.betas))
     for spec in classes:
 
         # Thresholding can only start after vote accumulation produced its file

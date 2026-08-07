@@ -43,6 +43,8 @@ class Runtime:
         ``command`` is the sequence of program arguments that runs inside the
         container.
         """
+        if not command:
+            raise ValueError("container command cannot be empty")
         # Start a temporary container that is removed after the command exits.
         result = ["docker", "run", "--rm"]
         if gpu:

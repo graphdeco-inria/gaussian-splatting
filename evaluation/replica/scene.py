@@ -84,7 +84,7 @@ class ReplicaScene:
         """ Return the frame indices selected using the configured step """
         with open(self.sequence / "traj_w_c.txt") as trajectory:
             count = sum(1 for _ in trajectory)
-        return list(range(0, count, self.frame_step)) # Creates a list of frame indices from 0 to count with the given step size.
+        return list(range(0, count, self.frame_step))
 
     def _load_mesh(self):
         """ Load Replica vertex positions, faces and dataset object identifiers """

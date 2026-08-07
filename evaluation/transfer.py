@@ -44,7 +44,7 @@ def map_subset_indices(full_xyz, subset_xyz):
 
 
 def build_radius_neighbors(query_points, reference_tree, radius,
-                           chunk_size=100000):
+                           chunk_size=75000):
     """Build radius neighborhoods for every query point.
 
     The result contains row offsets, neighbor indices and distances. Rows
