@@ -115,7 +115,7 @@ def _load_mesh(scene_root, metadata_path):
         segment_to_instance.get(int(segment), -1)
         for segment in segments["segIndices"]
     ], dtype=np.int64)
-    # Rasterization starts with one semantic and instance label per triangle.
+    # Rasterization uses one semantic and instance label per triangle.
     tri_canonical = canonical[faces[:, 0]]
     tri_stored = np.zeros(len(faces), dtype=np.uint8)
     for index, item in enumerate(CLASSES):
@@ -236,7 +236,7 @@ def generate(scene_root, repo_root, metadata_path, output_dir, bands=4, viz=0,
                 cv2.imwrite(str(output_dir / "viz" / f"{stem}.jpg"), overlay)
             viz_left -= 1
 
-    # Save the detector vocabulary used by run.py and the vote stage.
+    # Save the detector vocabulary consumed by the unified vote stage.
     classes = {str(item.detector_stored_id): item.name_by_detector for item in CLASSES}
     (output_dir / "classes.json").write_text(json.dumps(classes, indent=2))
     # Save visibility and supported-instance information for SceneData.load_data.

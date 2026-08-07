@@ -1,4 +1,4 @@
-"""IoU and panoptic metrics shared by the dataset adapters."""
+"""IoU and panoptic metrics used by the unified driver."""
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment

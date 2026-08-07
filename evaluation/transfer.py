@@ -38,7 +38,7 @@ def map_subset_indices(full_xyz, subset_xyz):
     """Map subset Gaussian centers back to their positions in the full model."""
     # Labeled PLY files contain a subset of the full model in a new order.
     distance, indices = cKDTree(full_xyz).query(subset_xyz, k=1)
-    if float(distance.max()) > 1e-6:
+    if len(distance) and float(distance.max()) > 1e-6:
         raise ValueError("labeled Gaussian PLY does not match the full model")
     return indices
 
@@ -183,7 +183,7 @@ def predict_vertex_labels(mesh_xyz, mesh_gaussian_csr, gaussian_labels,
         weights = np.clip(gaussian_opacity, min_opacity, 1.0)
     else:
         weights = np.ones(len(gaussian_labels), dtype=np.float64)
-    # Only labels assigned to a supported class can win a vote.
+    # Only valid labels can participate as target classes.
     classes = np.unique(gaussian_labels[gaussian_labels >= 0])
     return radius_label_vote(
         len(mesh_xyz), mesh_gaussian_csr, gaussian_labels, weights, classes,

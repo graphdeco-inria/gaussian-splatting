@@ -84,6 +84,12 @@ class SceneData: # Created when loading data in the scene files
         """ Return the local index assigned to a class name """
         return self.class_ids[name]
 
+    def visible_instance_count(self):
+        """Count valid instances in the primary evaluation set."""
+        values = self.instance_labels[self.evaluation_mask]
+        return len(set(int(value) for value in values if value >= 0))
+
+
 def safe_name(name):
     """ Make a detector name safe for use as a file or directory name """
     return name.replace(" ", "_")

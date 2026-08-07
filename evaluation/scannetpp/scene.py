@@ -115,7 +115,7 @@ class ScanNetScene:
         semantic = np.asarray([dataset_ids_to_main_ids.get(int(label), -1)
                                for label in dataset_labels], dtype=np.int64)
         instances = self._load_instances(len(vertices))
-        # The rasterized GT stage records visibility and supported instances separately.
+        # The rendered GT stage records visibility and supported instances separately.
         support_path = self.support_dir / "support.npz"
         if not support_path.exists():
             raise FileNotFoundError(

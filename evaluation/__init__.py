@@ -1,1 +1,1 @@
-"""Dataset adapters and shared evaluation helpers."""
+"""Unified evaluation workflow for the supported scene adapters."""
