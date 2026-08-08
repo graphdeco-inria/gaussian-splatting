@@ -1,5 +1,4 @@
 import torch
-import math
 from scene.cameras import Camera
 from utils.graphics_utils import fov2focal, geom_transform_points
 
@@ -25,23 +24,19 @@ class GaussianProjector:
         
         # Extract R part (top-left 3x3) used in the W matrix for covariance rotation
         self.W = self.view_matrix[:3, :3] 
-        self.camera_center = camera.camera_center
-
     def project(self, means3D: torch.Tensor, cov3D: torch.Tensor):
         """
         Project 3D Gaussians to 2D
         The center of a Gaussian distribution is the mean, that is why the 3D coordinates of the center of the Gaussian are passed as means3D. 
         The covariance matrix of the Gaussian is passed as cov3D.
         """
-        N = means3D.shape[0]
-        
         # Transform points to camera space
         means3D_cam = geom_transform_points(means3D, self.view_matrix)
         
         # Extract x, y, z from those points
         x, y, z = means3D_cam[:, 0], means3D_cam[:, 1], means3D_cam[:, 2]
         
-        # Culling
+        # Remove Gaussians whose centers are behind the camera near plane.
         znear = self.camera.znear
         mask_z = z > znear
         
@@ -50,7 +45,6 @@ class GaussianProjector:
         x = x[indices]
         y = y[indices]
         z = z[indices]
-        means3D_cam = means3D_cam[indices]
         cov3D = cov3D[indices]
         
         '''
@@ -97,5 +91,5 @@ class GaussianProjector:
             'means2D': means2D,
             'cov2D': cov2D,
             'depths': z,
-            'indices': indices # Original IDs of the subset of Gaussians that satisfy z > znear.
+            'indices': indices # Original Gaussian-row IDs for the subset satisfying z > znear.
         }
