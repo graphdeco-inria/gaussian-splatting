@@ -1,4 +1,4 @@
-"""ScanNet++ mesh, taxonomy, instance and prepared-scene handling."""
+# Scannet++ scene loading, taxonomy conversion, COLMAP preparation and GT masks
 
 import json
 import shutil
@@ -11,7 +11,7 @@ from ..common import SceneData, TargetClassInfo
 
 
 CLASSES = [
-    # ``name`` is the canonical ScanNet++ class; detector fields match mask files.
+    # Fields are: main project name, detector name, and stored detector-mask ID. The stored ID is the detector model ID plus one, because 0 is reserved for the background class in the mask images.
     TargetClassInfo("bench", "bench", 14),
     TargetClassInfo("chair", "chair", 57),
     TargetClassInfo("table", "dining table", 61),
@@ -22,7 +22,7 @@ CLASSES = [
 ]
 
 DATASET_LABELS = {
-    # Map the many ScanNet++ taxonomy spellings into the target classes above.
+    # Map each main project name to all Scannet++ datasetcname spellings that represent it.
     "bench": {"bench", "experiment bench", "laboratory bench", "work bench",
                "window bench", "wood bench"},
     "chair": {
@@ -38,15 +38,21 @@ DATASET_LABELS = {
     "clock": {"clock", "wall clock", "table clock", "alarm clock"},
 }
 
-# Keep the renderer and scene loader on the same taxonomy table.
-RAW_LABELS = DATASET_LABELS
+# Increment when the mesh-to-mask conversion or output contract changes
+MASKS_CACHE_VERSION = 2
 
 
-class ScanNetScene:
-    """Load ScanNet++ mesh data and its generated visibility support."""
+class ScannetScene:
+    """ Load Scannet++ data and convert it to the common evaluation format """
 
     def __init__(self, data_root, scene, support_dir):
-        """Store the scene root and the directory containing GT support data."""
+        """
+        Store the scene paths and the directory containing generated GT
+
+        - data_root: the root directory of the Scannet++ dataset
+        - scene: the name of the scene to process
+        - support_dir: the directory containing rasterized masks and visible vertices
+        """
         self.data_root = Path(data_root)
         self.scene = scene
         self.scene_root = self.data_root / "validation_data" / scene
@@ -55,102 +61,109 @@ class ScanNetScene:
 
     @property
     def metadata_path(self):
-        """Return the semantic class metadata file for ScanNet++."""
-        # The metadata file gives the dataset integer label at each line position.
+        """ Return the semantic class metadata file for Scannet++ """
+        # Each line position in this file is the dataset semantic ID used by the mesh labels
         return self.data_root / "metadata" / "semantic_classes.txt"
 
     @property
     def prepared_dir(self):
-        """Return the directory containing the prepared COLMAP model."""
-        # COLMAP output is kept beside the ScanNet++ DSLR images for reuse.
+        """ Return the directory containing the prepared COLMAP model """
         return self.scene_root / "dslr" / "undistorted_colmap"
 
     def _load_mesh(self):
-        """Load vertex positions and semantic labels."""
-        # ScanNet++ stores one semantic label per mesh vertex.
+        """ Load vertex positions and Scannet++ dataset IDs """
+
+        # Scannet++ stores one semantic dataset ID per mesh vertex, unlike Replica which stores labels on faces
         ply = PlyData.read(str(self.scans / "mesh_aligned_0.05_semantic.ply"))
         vertex = ply["vertex"]
+
+        # Load vertex coordinates
         vertices = np.vstack([vertex["x"], vertex["y"], vertex["z"]]).T.astype(np.float64)
+
+        # Load the Scannet++ dataset ID assigned to each vertex
         labels = np.asarray(vertex["label"], dtype=np.int64)
         return vertices, labels
 
-    def _dataset_ids_to_main_ids(self):
-        """Map ScanNet++ dataset class IDs to the target class indices."""
-        # Convert dataset label names into the compact class ordering used by metrics.
-        names = [line.strip().lower() for line in self.metadata_path.read_text().splitlines()]
+    def _dataset_ids_to_local_ids(self, names):
+        """ Map Scannet++ dataset IDs to SceneData local IDs """
+
+        # Convert Scannet++ dataset names into the local class ordering used by metrics
         mapping = {}
-        for canonical_id, item in enumerate(CLASSES):
+        for local_id, item in enumerate(CLASSES):
+
+            # A main class can correspond to several Scannet++ names
             for name in DATASET_LABELS[item.name]:
                 if name in names:
-                    mapping[names.index(name)] = canonical_id
+                    mapping[names.index(name)] = local_id
         return mapping
 
-    def _load_instances(self, count):
-        """Map mesh segment indices to ScanNet++ object identifiers."""
-        # Segment annotations group mesh segments into object instances.
-        segments = json.loads((self.scans / "segments.json").read_text())
-        annotations = json.loads((self.scans / "segments_anno.json").read_text())
-        segment_to_instance = {}
-        for group in annotations.get("segGroups", []):
-            object_id = int(group["objectId"])
-            for segment in group.get("segments", []):
-                segment_to_instance[int(segment)] = object_id
-        # Expand the segment-to-instance mapping into one ID per mesh vertex.
-        output = np.asarray([
-            segment_to_instance.get(int(segment), -1)
-            for segment in segments["segIndices"]
-        ], dtype=np.int64)
-        if len(output) != count:
-            raise ValueError("ScanNet++ segment index count does not match mesh vertices")
-        return output
-
     def load_data(self):
-        """Load the common scene representation and generated support data."""
-        # Load dataset mesh labels before converting them to the common taxonomy.
+        """ Load mesh labels and generated visibility as common scene data """
+
+        # Load Scannet++ dataset IDs before converting them to local IDs
         vertices, dataset_labels = self._load_mesh()
-        dataset_names = [line.strip().lower()
-                         for line in self.metadata_path.read_text().splitlines()]
-        dataset_ids_to_main_ids = self._dataset_ids_to_main_ids()
-        # Unknown dataset labels remain -1 and are treated as non-target labels.
-        semantic = np.asarray([dataset_ids_to_main_ids.get(int(label), -1)
-                               for label in dataset_labels], dtype=np.int64)
-        instances = self._load_instances(len(vertices))
-        # The rendered GT stage records visibility and supported instances separately.
+
+        # The metadata order defines which integer ID corresponds to each Scannet++ class name
+        dataset_names = [line.strip().lower() for line in self.metadata_path.read_text().splitlines()]
+        dataset_ids_to_local_ids = self._dataset_ids_to_local_ids(dataset_names)
+
+        # Unknown Scannet++ dataset IDs remain -1
+        semantic = np.asarray([dataset_ids_to_local_ids.get(int(label), -1) for label in dataset_labels], dtype=np.int64)
+
+        # The GT mask stage records the vertices observed by the rendered camera views
         support_path = self.support_dir / "support.npz"
+        cache_info_path = self.support_dir / "render_metadata.json"
+
         if not support_path.exists():
             raise FileNotFoundError(
-                f"ScanNet++ GT support is missing: {support_path}. "
+                f"Scannet++ GT support is missing: {support_path}. "
                 "Generate the GT 2D masks before loading the scene."
             )
+        
+        if not cache_info_path.exists():
+            raise FileNotFoundError(
+                f"Scannet++ GT support metadata is missing: {cache_info_path}. "
+                "Regenerate the GT 2D masks with the current pipeline."
+            )
+
+        cache_info = json.loads(cache_info_path.read_text())
+        if cache_info.get("version") != MASKS_CACHE_VERSION:
+            raise ValueError("Scannet++ GT support was generated by an incompatible pipeline version")
+
+        # Load the visibility support data, which indicates which vertices are visible in the rendered views
         support = np.load(support_path)
+
+        # Visibility is computed by nvdiffrast from the rendered triangle IDs and stored per mesh vertex
         visible = support["visible_vertices"].astype(bool)
-        instances_seen_by_2D_masks = set(
-            int(value) for value in support["instances_seen_by_2D_masks"]
-        )
+        if visible.shape != (len(vertices),):
+            raise ValueError("Scannet++ GT support and semantic mesh use different vertex counts")
+        
         return SceneData(
             dataset="scannetpp",
             scene=self.scene,
             vertices=vertices,
             semantic_labels=semantic,
-            instance_labels=instances,
-            annotated=((dataset_labels >= 0) & (dataset_labels < len(dataset_names))),
-            visible=visible,
-            instances_seen_by_2D_masks=instances_seen_by_2D_masks,
+            annotated=((dataset_labels >= 0) & (dataset_labels < len(dataset_names))), # A vertex is annotated when its dataset label points to a valid metadata entry, even if it is not an evaluated class
+            visible=visible, # Answers which vertices are visible in the selected rendered views
             classes=CLASSES,
         )
 
     def prepare_dataset(self, runtime, max_image_size=1600):
-        """Prepare the ScanNet++ DSLR images with COLMAP in Docker."""
-        # Reuse a prepared model when COLMAP already produced either file format.
+        """
+        Prepare Scannet++ DSLR (which have distortion, and we want undistorted ones) images and reuse or create a COLMAP model
+        """
+
+        # Reuse a prepared model when COLMAP already produced either binary or text files
         output = self.prepared_dir
-        if ((output / "sparse" / "0" / "cameras.bin").exists() or
-                (output / "sparse" / "0" / "cameras.txt").exists()):
+        if ((output / "sparse" / "0" / "cameras.bin").exists() or (output / "sparse" / "0" / "cameras.txt").exists()):
             return output
-        # Prefer the dataset's resized images and fall back to the original images.
+        
+        # Prefer the dataset resized images, but if not available, use the original images
         images = self.scene_root / "dslr" / "resized_images"
         if not images.exists():
             images = self.scene_root / "dslr" / "images"
-        # Undistort the images and write a COLMAP-compatible output directory.
+
+        # Undistort the images and write an output directory ready for COLMAP using the existing COLMAP reconstruction
         runtime.run_colmap([
             "image_undistorter",
             "--image_path", str(images),
@@ -159,29 +172,41 @@ class ScanNetScene:
             "--output_type", "COLMAP",
             "--max_image_size", str(max_image_size),
         ])
-        # Normalize COLMAP's sparse output so later code always uses ``sparse/0``.
+
+        # Normalize COLMAP sparse output so we can always use sparse/0
         sparse = output / "sparse"
         sparse_zero = sparse / "0"
         if sparse.exists() and not sparse_zero.exists():
+
+            # COLMAP can place its files directly in sparse, but the rest of the project expects sparse/0
             sparse_zero.mkdir(parents=True, exist_ok=True)
             for item in sparse.iterdir():
                 if item.is_file() and item.suffix in {".bin", ".txt"}:
-                    shutil.move(str(item), str(sparse_zero / item.name))
+                    shutil.move(str(item), str(sparse_zero / item.name)) # shutil.move can move across filesystems
         return output
 
     def generate_gt_masks(self, runtime, output_dir, bands=4, viz=0,
                           force=False):
-        """Generate or reuse rasterized ScanNet++ GT masks.
-
-        ``force`` is a boolean flag that regenerates masks and support data.
-        ``bands`` controls the vertical rasterization split, while ``viz``
-        controls how many visualizations are written.
         """
-        # Reuse masks and support data when both completion markers exist.
-        if ((output_dir / "classes.json").exists() and
-                (output_dir / "support.npz").exists() and not force):
+        Generate or reuse rasterized Scannet++ GT masks and visibility support
+
+        - bands: number of horizontal image bands used to reduce GPU memory
+        - viz: number of optional visualizations to write, to see what the rasterization looks like
+        - force: regenerate masks and support data even when completion files exist
+        """
+
+        # Reuse masks and support data when both completion markers exist
+        cache_info_path = output_dir / "render_metadata.json"
+        cache_info = None
+
+        if cache_info_path.exists():
+            cache_info = json.loads(cache_info_path.read_text())
+
+        if ((output_dir / "classes.json").exists() and (output_dir / "support.npz").exists() and cache_info is not None and
+                cache_info.get("version") == MASKS_CACHE_VERSION and not force):
             return output_dir
-        # Rasterize the mesh inside the fusion container because nvdiffrast needs CUDA.
+        
+        # Rasterize the mesh inside the fusion container because nvdiffrast requires CUDA
         runtime.run_fusion_module(
             "evaluation.scannetpp.gt_masks",
             [
