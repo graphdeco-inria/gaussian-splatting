@@ -623,7 +623,7 @@ def main():
 
     # Load the common scene data and train only when there is no model.
     scene = scene_instance.load_data()
-    evaluation_classes = scene.classes
+    evaluation_classes = _classes_with_gt2d_views(masks_gt, scene.classes)
     model_ply = model_dir / "point_cloud" / f"iteration_{args.iterations}" / "point_cloud.ply"
     if not model_ply.exists():
         runtime.run_train(dataset_dir, model_dir, args.iterations,

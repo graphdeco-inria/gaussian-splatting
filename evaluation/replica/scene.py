@@ -206,6 +206,7 @@ class ReplicaScene:
 
         # Visibility is derived from the RGB-D semantic frames
         visible = self._visibility(vertices)
+        selected_frames = self.selected_frames()
         return SceneData(
             dataset="replica",
             scene=self.scene,
@@ -214,6 +215,12 @@ class ReplicaScene:
             annotated=(vertex_dataset >= 0),
             visible=visible, # Answers which vertices are visible in the selected frames
             classes=CLASSES,
+            num_images=len(selected_frames),
+            camera_intrinsics=[
+                {"width": 640, "height": 480, "fx": 320.0, "fy": 320.0,
+                 "cx": 320.0, "cy": 240.0}
+                for _ in selected_frames
+            ],
         )
 
     def _load_trajectory(self):

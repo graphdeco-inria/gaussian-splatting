@@ -27,7 +27,8 @@ class SceneData: # Created when loading data in the scene files
     """
 
     def __init__(self, dataset, scene, vertices, semantic_labels,
-                 annotated, visible, classes):
+                 annotated, visible, classes, num_images=0,
+                 camera_intrinsics=None):
         """ 
         Store the scene names, vertex arrays and target classes 
         
@@ -46,6 +47,8 @@ class SceneData: # Created when loading data in the scene files
         self.annotated = annotated
         self.visible = visible
         self.classes = classes
+        self.num_images = int(num_images)
+        self.camera_intrinsics = list(camera_intrinsics or [])
 
     @property # Property: the method can be called as an attribute
     def class_ids(self):

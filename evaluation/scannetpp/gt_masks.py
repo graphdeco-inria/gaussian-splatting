@@ -394,6 +394,21 @@ def generate(scene_root, repo_root, metadata_path, output_dir, bands=4, viz=0,
     classes = {str(item.detector_stored_id): item.name_by_detector for item in CLASSES}
     (output_dir / "classes.json").write_text(json.dumps(classes, indent=2))
 
+    # Preserve the actual COLMAP intrinsics used to render the masks. This also
+    # gives analytics a reproducible camera summary for each validation scene.
+    (output_dir / "camera_intrinsics.json").write_text(json.dumps([
+        {
+            "name": camera["name"],
+            "width": camera["width"],
+            "height": camera["height"],
+            "fx": float(camera["K"][0, 0]),
+            "fy": float(camera["K"][1, 1]),
+            "cx": float(camera["K"][0, 2]),
+            "cy": float(camera["K"][1, 2]),
+        }
+        for camera in cameras
+    ], indent=2))
+
     # Save visibility information for ScannetScene.load_data. This is indexed in the same vertex order as the mesh loaded by scene.py.
     np.savez_compressed(
         output_dir / "support.npz",

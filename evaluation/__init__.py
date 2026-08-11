@@ -1,1 +1,1 @@
-"""Unified evaluation workflow for the supported scene adapters."""
+# Unified evaluation workflow for Replica and Scannet++ scenes

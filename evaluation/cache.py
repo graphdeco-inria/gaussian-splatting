@@ -69,6 +69,7 @@ def run_parameters(args, data_root):
         "evaluation_scope_version": 3, # Increase this value when you don't want to reuse cached results from previous runs
         "dataset": args.dataset,
         "scene": args.scene,
+        "split": args.split,
         "data_root": str(data_root),
         "sequence_name": args.sequence_name,
         "frame_step": args.frame_step,

@@ -41,7 +41,8 @@ class GaussianProjector:
         mask_z = z > znear
         
         # Applying the mask
-        indices = torch.nonzero(mask_z).squeeze()
+        # Keep a one-dimensional index tensor for zero, one, or many visible Gaussians.
+        indices = torch.nonzero(mask_z, as_tuple=True)[0]
         x = x[indices]
         y = y[indices]
         z = z[indices]
@@ -79,8 +80,10 @@ class GaussianProjector:
         
         # Compute projected means to 2D:
         # Perspective projection used to center the 2D splat: https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html
-        cx = self.width / 2.0
-        cy = self.height / 2.0
+        # Replica falls back to centered intrinsics
+        # COLMAP cameras can provide a principal point different from the image centre
+        cx = getattr(self.camera, "cx", self.width / 2.0)
+        cy = getattr(self.camera, "cy", self.height / 2.0)
         
         means2D = torch.stack([
             (x * self.focal_x * inv_z) + cx,
