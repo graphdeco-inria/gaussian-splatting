@@ -80,6 +80,14 @@ def write_result(results_dir, result):
             f"macro recall: {format_metric(beta_metrics['macro_recall'])}",
             f"global precision: {format_metric(beta_metrics['global_precision'])}",
             f"global recall: {format_metric(beta_metrics['global_recall'])}",
+            f"ground-truth transfer macro precision: "
+            f"{format_metric(beta_metrics['ground_truth_transfer_macro_precision'])}",
+            f"ground-truth transfer macro recall: "
+            f"{format_metric(beta_metrics['ground_truth_transfer_macro_recall'])}",
+            f"ground-truth transfer global precision: "
+            f"{format_metric(beta_metrics['ground_truth_transfer_global_precision'])}",
+            f"ground-truth transfer global recall: "
+            f"{format_metric(beta_metrics['ground_truth_transfer_global_recall'])}",
         ]
 
     lines += ["", "## Per class and beta"]

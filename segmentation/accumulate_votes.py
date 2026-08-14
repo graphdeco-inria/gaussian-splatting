@@ -481,10 +481,29 @@ def main(args):
 
         def stats(values):
             values = values.detach().float().cpu()
+            quantile_levels = torch.tensor(
+                [0.05, 0.25, 0.50, 0.75, 0.90, 0.925, 0.95, 0.975, 0.99, 0.999],
+                dtype=values.dtype,
+            )
+            quantiles = (
+                torch.quantile(values, quantile_levels)
+                if values.numel()
+                else torch.empty(10)
+            )
             return {
                 'min': float(values.min().item()) if values.numel() else None,
                 'mean': float(values.mean().item()) if values.numel() else None,
                 'std': float(values.std(unbiased=False).item()) if values.numel() else None,
+                'p05': float(quantiles[0].item()) if values.numel() else None,
+                'p25': float(quantiles[1].item()) if values.numel() else None,
+                'median': float(quantiles[2].item()) if values.numel() else None,
+                'p75': float(quantiles[3].item()) if values.numel() else None,
+                'p90': float(quantiles[4].item()) if values.numel() else None,
+                'p92_5': float(quantiles[5].item()) if values.numel() else None,
+                'p95': float(quantiles[6].item()) if values.numel() else None,
+                'p97_5': float(quantiles[7].item()) if values.numel() else None,
+                'p99': float(quantiles[8].item()) if values.numel() else None,
+                'p99_9': float(quantiles[9].item()) if values.numel() else None,
                 'max': float(values.max().item()) if values.numel() else None,
             }
 
@@ -500,6 +519,17 @@ def main(args):
             'target_score_mean': score_stats['mean'],
             'target_score_std': score_stats['std'],
             'target_score_max': score_stats['max'],
+            'target_score_p05': score_stats['p05'],
+            'target_score_p25': score_stats['p25'],
+            'target_score_median': score_stats['median'],
+            'target_score_p75': score_stats['p75'],
+            'target_score_p90': score_stats['p90'],
+            'target_score_p92_5': score_stats['p92_5'],
+            'target_score_p95': score_stats['p95'],
+            'target_score_p97_5': score_stats['p97_5'],
+            'target_score_p99': score_stats['p99'],
+            'target_score_p99_9': score_stats['p99_9'],
+            'supported_fraction': float(supported.float().mean().item()),
         }
         os.makedirs(os.path.dirname(args.statistics_path), exist_ok=True)
         with open(args.statistics_path, 'w') as handle:

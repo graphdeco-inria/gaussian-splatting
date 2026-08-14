@@ -17,9 +17,12 @@ SCHEMA = {
     ],
 
     "run_parameters": [
-        "run_id", "iterations", "resolution", "sequence_name", "frame_step",
-        "yolo_conf", "size_measure", "hysteresis_gamma", "hysteresis_radius",
+        "run_id", "evaluation_scope_version", "dataset", "scene", "split",
+        "data_root", "iterations", "resolution", "train_data_device",
+        "vote_data_device", "sequence_name", "frame_step", "yolo_conf",
+        "size_measure", "hysteresis_gamma", "hysteresis_radius",
         "background_mode", "background_confidence", "background_view_policy",
+        "betas",
         "tau", "min_share", "mesh_to_gaussian_transfer",
         "gaussian_to_mesh_transfer", "min_opacity",
         "gaussian_to_mesh_background_competes", "mesh_to_gaussian_background_competes",
@@ -32,7 +35,15 @@ SCHEMA = {
         "num_vertices", "num_images",
     ],
 
-    "classes": ["class_id", "dataset", "class_name", "detector_name", "dataset_label_id"],
+    "camera_statistics": [
+        "scene_id", "dataset", "num_images",
+        "width_min", "width_mean", "width_max",
+        "height_min", "height_mean", "height_max",
+        "fx_min", "fx_mean", "fx_max", "fy_min", "fy_mean", "fy_max",
+        "cx_min", "cx_mean", "cx_max", "cy_min", "cy_mean", "cy_max",
+    ],
+
+    "classes": ["class_id", "dataset", "class_name", "detector_name", "detector_stored_id"],
 
     "run_sources": ["run_id", "source", "mask_directory", "segmentation_directory"],
 
@@ -46,7 +57,11 @@ SCHEMA = {
         "run_id", "source", "class_id", "num_cameras", "num_class_views",
         "num_gaussians", "target_weight_sum", "background_weight_sum",
         "supported_gaussians", "target_score_mean", "target_score_std",
-        "target_score_min", "target_score_max",
+        "target_score_min", "target_score_p05", "target_score_p25",
+        "target_score_median", "target_score_p75", "target_score_p90",
+        "target_score_p92_5", "target_score_p95", "target_score_p97_5",
+        "target_score_p99", "target_score_p99_9",
+        "target_score_max", "supported_fraction",
     ],
 
     "gaussian_statistics": [
@@ -58,6 +73,9 @@ SCHEMA = {
     "class_beta_metrics": [
         "run_id", "source", "class_id", "beta_id", "beta", "tp", "fp", "fn",
         "gt_count", "pred_count", "precision", "recall", "iou",
+        "ground_truth_transfer_tp", "ground_truth_transfer_fp",
+        "ground_truth_transfer_fn", "ground_truth_transfer_gt_count",
+        "ground_truth_transfer_pred_count",
         "ground_truth_transfer_precision", "ground_truth_transfer_recall",
         "ground_truth_transfer_iou", "relative_iou",
     ],
@@ -69,7 +87,7 @@ SCHEMA = {
         "ground_truth_transfer_macro_recall",
         "ground_truth_transfer_global_precision",
         "ground_truth_transfer_global_recall", "relative_mIoU",
-        "evaluated_classes",
+        "evaluated_classes", "relative_classes",
     ],
 
 }
@@ -78,6 +96,18 @@ SCHEMA = {
 def utc_now():
     """ Return a UTC timestamp for CSV records """
     return datetime.now(timezone.utc).isoformat()
+
+
+def _summary(values):
+    """Return compact descriptive statistics for a numeric camera field."""
+    values = [float(value) for value in values]
+    if not values:
+        return {"min": None, "mean": None, "max": None}
+    return {
+        "min": min(values),
+        "mean": sum(values) / len(values),
+        "max": max(values),
+    }
 
 
 class AnalyticsStore:
@@ -127,8 +157,30 @@ def record_scene_analytics(store, args, scene, scene_id):
         "split": args.split,
         "scene_path": str(getattr(scene, "scene_root", "")),
         "num_vertices": len(scene.vertices),
-        "num_images": None,
+        "num_images": scene.num_images,
     }, ["scene_id"])
+
+    camera_fields = {
+        "width": [row["width"] for row in scene.camera_intrinsics],
+        "height": [row["height"] for row in scene.camera_intrinsics],
+        "fx": [row["fx"] for row in scene.camera_intrinsics],
+        "fy": [row["fy"] for row in scene.camera_intrinsics],
+        "cx": [row["cx"] for row in scene.camera_intrinsics],
+        "cy": [row["cy"] for row in scene.camera_intrinsics],
+    }
+    camera_row = {
+        "scene_id": scene_id,
+        "dataset": scene.dataset,
+        "num_images": scene.num_images,
+    }
+    for field, values in camera_fields.items():
+        summary = _summary(values)
+        camera_row.update({
+            f"{field}_min": summary["min"],
+            f"{field}_mean": summary["mean"],
+            f"{field}_max": summary["max"],
+        })
+    store.append_unique("camera_statistics", camera_row, ["scene_id"])
     # ``class_id`` is the SceneData local main ID, not a detector mask ID or
     # a source dataset ID.
     for class_id, spec in enumerate(scene.classes):
@@ -138,9 +190,7 @@ def record_scene_analytics(store, args, scene, scene_id):
             "dataset": scene.dataset,
             "class_name": spec.name,
             "detector_name": spec.name_by_detector,
-            # This legacy column name contains the stored detector mask ID.
-            # It is not an ID from Replica or Scannet++.
-            "dataset_label_id": spec.detector_stored_id,
+            "detector_stored_id": spec.detector_stored_id,
         }, ["class_id"])
         store.append_unique("scene_classes", {
             "scene_id": scene_id,
@@ -228,6 +278,11 @@ def record_source_analytics(store, run_id, source, scene, classes, betas,
                 "precision": prediction["precision"],
                 "recall": prediction["recall"],
                 "iou": prediction["iou"],
+                "ground_truth_transfer_tp": ground_truth_transfer_metrics["tp"],
+                "ground_truth_transfer_fp": ground_truth_transfer_metrics["fp"],
+                "ground_truth_transfer_fn": ground_truth_transfer_metrics["fn"],
+                "ground_truth_transfer_gt_count": ground_truth_transfer_metrics["gt_count"],
+                "ground_truth_transfer_pred_count": ground_truth_transfer_metrics["pred_count"],
                 "ground_truth_transfer_precision": ground_truth_transfer_metrics["precision"],
                 "ground_truth_transfer_recall": ground_truth_transfer_metrics["recall"],
                 "ground_truth_transfer_iou": ground_truth_transfer_metrics["iou"],
