@@ -46,7 +46,7 @@ def _parser():
     parser.add_argument("--mask-source", choices=["yolo", "gt2d", "both"], default="yolo")
     parser.add_argument("--split", choices=["train", "validation", "test"], default="validation")
     parser.add_argument("--train-image", default="tfgivanverdugo/semantic-fusion-gs-train:cuda11.6")
-    parser.add_argument("--fusion-image", default="tfgivanverdugo/semantic-fusion-fusion:cuda11.6")
+    parser.add_argument("--lifting-image", default="tfgivanverdugo/semantic-fusion-fusion:cuda11.6")
     parser.add_argument("--colmap-image", default="tfgivanverdugo/semantic-fusion-colmap:3.13.0-cpu")
 
     # Configure dataset preparation and Gaussian training
@@ -238,7 +238,7 @@ def _generate_gt_masks(args, scene, runtime, output_dir):
 
     # Replica can generate its actual GT masks directly from the semantic image sequence
     if args.dataset == "replica":
-        runtime.run_fusion_module(
+        runtime.run_lifting_module(
             "evaluation.replica.gt_masks",
             [
                 "--data_root", str(scene.data_root),
@@ -251,7 +251,7 @@ def _generate_gt_masks(args, scene, runtime, output_dir):
             ] + (["--force"] if args.force else []),
         )
 
-            # Scannet++ renders its masks from the mesh through the fusion container, they will be considered our "GT"
+            # Scannet++ renders its masks from the mesh through the lifting container, they will be considered our "GT"
     elif args.dataset == "scannetpp":
         scene.generate_gt_masks(runtime, output_dir, bands=4, force=args.force)
 
@@ -262,8 +262,8 @@ def _generate_yolo_masks(args, runtime, dataset_dir, output_dir):
     if (output_dir / "classes.json").exists() and not args.force:
         return
 
-    # Run the detector inside the fusion container.
-    runtime.run_fusion(
+    # Run the detector inside the lifting container.
+    runtime.run_lifting(
             "segmentation/generate_mask.py",
         [
             "--images_dir", str(dataset_dir / "images"),
@@ -283,7 +283,7 @@ def _export_gt_gaussians(args, runtime, model_dir, gt_dir,
     ]
     if not class_specs:
         return
-    runtime.run_fusion(
+    runtime.run_lifting(
         "segmentation/export_gt_gaussians.py",
         [
             "--model_path", str(model_dir),
@@ -333,7 +333,7 @@ def _run_votes(args, runtime, dataset_dir, model_dir, mask_dir,
                 "--statistics_path",
                 str(statistics_path),
             ]
-        runtime.run_fusion(
+        runtime.run_lifting(
             "segmentation/accumulate_votes.py", command + [
                 "--background_mode", str(args.background_mode),
                 "--background_confidence", str(args.background_confidence),
@@ -374,7 +374,7 @@ def _run_thresholds(args, runtime, model_dir, segmentation_dir, classes):
                 "--hysteresis_gamma", str(args.hysteresis_gamma),
                 "--hysteresis_radius", str(args.hysteresis_radius),
             ]
-            runtime.run_fusion("segmentation/threshold_labels.py", command)
+            runtime.run_lifting("segmentation/threshold_labels.py", command)
     return betas
 
 
@@ -601,7 +601,7 @@ def main():
     # Initialize the Docker runtime with the provided arguments.
     runtime = Runtime(
         args.repo_root, data_root, args.train_image,
-        args.fusion_image, args.colmap_image,
+        args.lifting_image, args.colmap_image,
     )
 
     # Create a scene instance for the selected dataset.

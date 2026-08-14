@@ -6,17 +6,17 @@ from pathlib import Path
 
 
 class Runtime:
-    """ Run training, fusion scripts and COLMAP through Docker """
+    """ Run training, lifting scripts and COLMAP through Docker """
 
     def __init__(self, repo_root, data_root, train_image="tfgivanverdugo/semantic-fusion-gs-train:cuda11.6",
-                 fusion_image="tfgivanverdugo/semantic-fusion-fusion:cuda11.6",
+                 lifting_image="tfgivanverdugo/semantic-fusion-fusion:cuda11.6",
                  colmap_image="tfgivanverdugo/semantic-fusion-colmap:3.13.0-cpu"):
 
         """ Store host roots and the three container image names """
         self.repo_root = Path(repo_root).resolve()
         self.data_root = Path(data_root).resolve()
         self.train_image = train_image
-        self.fusion_image = fusion_image
+        self.lifting_image = lifting_image
         self.colmap_image = colmap_image
 
     def _container_path(self, value):
@@ -76,20 +76,20 @@ class Runtime:
         print("Docker command: ", " ".join(str(item) for item in command))
         subprocess.run(command, check=True, text=True, cwd=str(self.repo_root))
 
-    def run_fusion(self, script, arguments):
-        """ Run a repository Python script in the fusion container """
+    def run_lifting(self, script, arguments):
+        """ Run a repository Python script in the lifting container """
 
         # Convert all mounted host paths before passing the arguments to Docker
         args = [self._container_path(str(item)) for item in arguments]
-        command = self._docker_command(self.fusion_image, True, ["python", script] + args)
+        command = self._docker_command(self.lifting_image, True, ["python", script] + args)
         self._run(command)
 
-    def run_fusion_module(self, module, arguments):
-        """ Run a Python module in the fusion container """
+    def run_lifting_module(self, module, arguments):
+        """ Run a Python module in the lifting container """
 
         # Module execution keeps relative imports working inside the repository
         args = [self._container_path(str(item)) for item in arguments]
-        command = self._docker_command(self.fusion_image, True, ["python", "-m", module] + args)
+        command = self._docker_command(self.lifting_image, True, ["python", "-m", module] + args)
         self._run(command)
 
     def run_train(self, dataset_dir, model_dir, iterations, resolution, data_device="cuda"):

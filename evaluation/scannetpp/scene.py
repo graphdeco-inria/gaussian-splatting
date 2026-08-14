@@ -217,8 +217,8 @@ class ScannetScene:
                 cache_info.get("version") == MASKS_CACHE_VERSION and not force):
             return output_dir
         
-        # Rasterize the mesh inside the fusion container because nvdiffrast requires CUDA
-        runtime.run_fusion_module(
+        # Rasterize the mesh inside the lifting container because nvdiffrast requires CUDA
+        runtime.run_lifting_module(
             "evaluation.scannetpp.gt_masks",
             [
                 "--scene_root", str(self.scene_root),

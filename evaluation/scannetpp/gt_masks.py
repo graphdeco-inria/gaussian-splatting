@@ -1,4 +1,4 @@
-# CLI entry point for Scannet++ GT masks and visible-vertex support to be used inside the fusion container
+# CLI entry point for Scannet++ GT masks and visible-vertex support to be used inside the lifting container
 
 import argparse
 import importlib.util
@@ -429,7 +429,7 @@ def main():
     """
     Generate Scannet++ GT masks from the command-line arguments
 
-    The CLI is called by run.py inside the fusion container, which can use CUDA
+    The CLI is called by run.py inside the lifting container, which can use CUDA
     The metadata path is retained as an explicit input because it validates that
     segment annotation labels belong to the released Scannet++ taxonomy.
     """

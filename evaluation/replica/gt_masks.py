@@ -1,4 +1,4 @@
-# CLI entry point for Replica GT masks to be used inside the fusion container
+# CLI entry point for Replica GT masks to be used inside the lifting container
 
 import argparse
 from pathlib import Path
