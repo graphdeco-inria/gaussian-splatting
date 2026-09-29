@@ -12,6 +12,7 @@
 from errno import EEXIST
 from os import makedirs, path
 import os
+import re
 
 def mkdir_p(folder_path):
     # Creates a directory. equivalent to using mkdir -p on the command line
@@ -24,5 +25,11 @@ def mkdir_p(folder_path):
             raise
 
 def searchForMaxIteration(folder):
-    saved_iters = [int(fname.split("_")[-1]) for fname in os.listdir(folder)]
+    saved_iters = []
+    for fname in os.listdir(folder):
+        match = re.fullmatch(r"iteration_([0-9]+)", fname)
+        if match and path.isdir(path.join(folder, fname)):
+            saved_iters.append(int(match.group(1)))
+    if not saved_iters:
+        raise ValueError(f"No iteration directories found in {folder}")
     return max(saved_iters)
