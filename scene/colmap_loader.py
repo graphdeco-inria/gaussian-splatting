@@ -193,11 +193,12 @@ def read_extrinsics_binary(path_to_model_file):
             qvec = np.array(binary_image_properties[1:5])
             tvec = np.array(binary_image_properties[5:8])
             camera_id = binary_image_properties[8]
-            image_name = ""
+            image_name_bytes = bytearray()
             current_char = read_next_bytes(fid, 1, "c")[0]
             while current_char != b"\x00":   # look for the ASCII 0 entry
-                image_name += current_char.decode("utf-8")
+                image_name_bytes.extend(current_char)
                 current_char = read_next_bytes(fid, 1, "c")[0]
+            image_name = image_name_bytes.decode("utf-8")
             num_points2D = read_next_bytes(fid, num_bytes=8,
                                            format_char_sequence="Q")[0]
             x_y_id_s = read_next_bytes(fid, num_bytes=24*num_points2D,
