@@ -9,7 +9,7 @@ def get_scales(key, cameras, images, points3d_ordered, args):
     image_meta = images[key]
     cam_intrinsic = cameras[image_meta.camera_id]
 
-    pts_idx = images_metas[key].point3D_ids
+    pts_idx = image_meta.point3D_ids
 
     mask = pts_idx >= 0
     mask *= pts_idx < len(points3d_ordered)
@@ -20,12 +20,15 @@ def get_scales(key, cameras, images, points3d_ordered, args):
     if len(pts_idx) > 0:
         pts = points3d_ordered[pts_idx]
     else:
-        pts = np.array([0, 0, 0])
+        pts = np.empty((0, 3))
 
     R = qvec2rotmat(image_meta.qvec)
     pts = np.dot(pts, R.T) + image_meta.tvec
 
-    invcolmapdepth = 1. / pts[..., 2] 
+    z = pts[..., 2]
+    invcolmapdepth = np.divide(
+        1., z, out=np.full(z.shape, np.nan), where=np.isfinite(z) & (z > 0)
+    )
     n_remove = len(image_meta.name.split('.')[-1]) + 1
     invmonodepthmap = cv2.imread(f"{args.depths_dir}/{image_meta.name[:-n_remove]}.png", cv2.IMREAD_UNCHANGED)
     
@@ -36,16 +39,21 @@ def get_scales(key, cameras, images, points3d_ordered, args):
         invmonodepthmap = invmonodepthmap[..., 0]
 
     invmonodepthmap = invmonodepthmap.astype(np.float32) / (2**16)
-    s = invmonodepthmap.shape[0] / cam_intrinsic.height
+    scale_xy = np.array([
+        invmonodepthmap.shape[1] / cam_intrinsic.width,
+        invmonodepthmap.shape[0] / cam_intrinsic.height,
+    ])
 
-    maps = (valid_xys * s).astype(np.float32)
+    maps = (valid_xys * scale_xy).astype(np.float32)
     valid = (
         (maps[..., 0] >= 0) * 
         (maps[..., 1] >= 0) * 
-        (maps[..., 0] < cam_intrinsic.width * s) * 
-        (maps[..., 1] < cam_intrinsic.height * s) * (invcolmapdepth > 0))
+        (maps[..., 0] < invmonodepthmap.shape[1]) * 
+        (maps[..., 1] < invmonodepthmap.shape[0]) * np.isfinite(invcolmapdepth))
     
-    if valid.sum() > 10 and (invcolmapdepth.max() - invcolmapdepth.min()) > 1e-3:
+    scale = 0
+    offset = 0
+    if valid.sum() > 10 and np.ptp(invcolmapdepth[valid]) > 1e-3:
         maps = maps[valid, :]
         invcolmapdepth = invcolmapdepth[valid]
         invmonodepth = cv2.remap(invmonodepthmap, maps[..., 0], maps[..., 1], interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)[..., 0]
@@ -56,11 +64,9 @@ def get_scales(key, cameras, images, points3d_ordered, args):
 
         t_mono = np.median(invmonodepth)
         s_mono = np.mean(np.abs(invmonodepth - t_mono))
-        scale = s_colmap / s_mono
-        offset = t_colmap - t_mono * scale
-    else:
-        scale = 0
-        offset = 0
+        if np.isfinite(s_mono) and s_mono > 0:
+            scale = s_colmap / s_mono
+            offset = t_colmap - t_mono * scale
     return {"image_name": image_meta.name[:-n_remove], "scale": scale, "offset": offset}
 
 if __name__ == '__main__':
