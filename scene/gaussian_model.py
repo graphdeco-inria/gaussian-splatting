@@ -79,6 +79,10 @@ class GaussianModel:
             self.denom,
             self.optimizer.state_dict(),
             self.spatial_lr_scale,
+            self._exposure,
+            self.exposure_mapping,
+            self.exposure_optimizer.state_dict(),
+            self.pretrained_exposures,
         )
     
     def restore(self, model_args, training_args):
@@ -93,11 +97,19 @@ class GaussianModel:
         xyz_gradient_accum, 
         denom,
         opt_dict, 
-        self.spatial_lr_scale) = model_args
+        self.spatial_lr_scale) = model_args[:12]
+        exposure_opt_dict = None
+        if len(model_args) > 12:
+            (self._exposure,
+             self.exposure_mapping,
+             exposure_opt_dict,
+             self.pretrained_exposures) = model_args[12:]
         self.training_setup(training_args)
         self.xyz_gradient_accum = xyz_gradient_accum
         self.denom = denom
         self.optimizer.load_state_dict(opt_dict)
+        if exposure_opt_dict is not None:
+            self.exposure_optimizer.load_state_dict(exposure_opt_dict)
 
     @property
     def get_scaling(self):
