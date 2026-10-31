@@ -33,4 +33,4 @@ class LPIPS(nn.Module):
         diff = [(fx - fy) ** 2 for fx, fy in zip(feat_x, feat_y)]
         res = [l(d).mean((2, 3), True) for d, l in zip(diff, self.lin)]
 
-        return torch.sum(torch.cat(res, 0), 0, True)
+        return torch.stack(res, dim=0).sum(dim=0)
