@@ -1,0 +1,37 @@
+{
+  "completed": true,
+  "config": {
+    "seed": 0,
+    "threads": 1,
+    "baseline": "54c035f7834b564019656c3e3fcc3646292f727d",
+    "views": 4,
+    "height": 64,
+    "width": 64,
+    "samples": 5,
+    "device": "mps",
+    "hypothesis": "Reusing the identical pretrained VGG LPIPS criterion preserves every saved metric while avoiding per-view network construction."
+  },
+  "revision": "7653e2272f3147bdf6a8e62770e013de7af37560",
+  "device": "mps",
+  "node": "MacBuku-Pro-2160.local",
+  "torch_version": "2.14.1",
+  "exact": true,
+  "all_saved_aggregate_and_per_view_scores_exact": true,
+  "before_seconds": [
+    1.7048975829966366,
+    1.7315260828472674,
+    1.7201583329588175,
+    1.7475097919814289,
+    1.6899012501817197
+  ],
+  "after_seconds": [
+    0.48929816600866616,
+    0.48851749999448657,
+    0.48171770898625255,
+    0.5024278329219669,
+    0.49500033305957913
+  ],
+  "before_median_seconds": 1.7201583329588175,
+  "after_median_seconds": 0.48929816600866616,
+  "speedup": 3.5155626005930114
+}
