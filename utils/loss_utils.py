@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
+from functools import lru_cache
 try:
     from diff_gaussian_rasterization._C import fusedssim, fusedssim_backward
 except:
@@ -53,13 +54,15 @@ def create_window(window_size, channel):
     window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
     return window
 
+@lru_cache(maxsize=16)
+def _cached_window(window_size, channel, device, dtype):
+    # The convolution never mutates the window. Bound the cache across devices/types.
+    with torch.inference_mode(False), torch.no_grad():
+        return create_window(window_size, channel).to(device=device, dtype=dtype)
+
 def ssim(img1, img2, window_size=11, size_average=True):
     channel = img1.size(-3)
-    window = create_window(window_size, channel)
-
-    if img1.is_cuda:
-        window = window.cuda(img1.get_device())
-    window = window.type_as(img1)
+    window = _cached_window(window_size, channel, img1.device, img1.dtype)
 
     return _ssim(img1, img2, window, window_size, channel, size_average)
 
