@@ -21,6 +21,7 @@ def load(revision, path):
 
 def sync():
     if device.type == "cuda": torch.cuda.synchronize()
+    elif device.type == "mps": torch.mps.synchronize()
 
 def measure(fn):
     sync(); started = time.perf_counter()
@@ -36,7 +37,7 @@ torch.set_num_threads(c["threads"])
 torch.manual_seed(c["seed"])
 old, new = load(c["baseline"], c["source"]), load(None, c["source"])
 
-for dtype in (torch.float32, torch.float64):
+for dtype in ((torch.float32,) if device.type == "mps" else (torch.float32, torch.float64)):
     for channels in (1,3):
         a0=torch.rand(1,channels,21,19,device=device,dtype=dtype)
         b0=torch.rand_like(a0)

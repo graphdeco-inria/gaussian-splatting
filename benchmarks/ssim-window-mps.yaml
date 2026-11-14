@@ -1,0 +1,13 @@
+{
+  "seed": 0,
+  "device": "mps",
+  "threads": 1,
+  "samples": 7,
+  "warmups": 3,
+  "inner_repeats": 5,
+  "baseline": "54c035f7834b564019656c3e3fcc3646292f727d",
+  "source": "utils/loss_utils.py",
+  "height": 64,
+  "width": 64,
+  "hypothesis": "Removing repeated allocation or synchronization preserves exact results and lowers time for this isolated component."
+}
