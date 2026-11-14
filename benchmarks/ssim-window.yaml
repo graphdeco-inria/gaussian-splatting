@@ -1,0 +1,12 @@
+{
+  "seed": 0,
+  "device": "cpu",
+  "threads": 1,
+  "samples": 7,
+  "warmups": 2,
+  "inner_repeats": 3,
+  "baseline": "54c035f7834b564019656c3e3fcc3646292f727d",
+  "source": "utils/loss_utils.py",
+  "height": 64,
+  "width": 64
+}
