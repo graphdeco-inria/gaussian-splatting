@@ -55,14 +55,14 @@ def create_window(window_size, channel):
     return window
 
 @lru_cache(maxsize=16)
-def _cached_window(window_size, channel, device, dtype):
+def _cached_window(window_size, channel, device, dtype, default_dtype):
     # The convolution never mutates the window. Bound the cache across devices/types.
     with torch.inference_mode(False), torch.no_grad():
         return create_window(window_size, channel).to(device=device, dtype=dtype)
 
 def ssim(img1, img2, window_size=11, size_average=True):
     channel = img1.size(-3)
-    window = _cached_window(window_size, channel, img1.device, img1.dtype)
+    window = _cached_window(window_size, channel, img1.device, img1.dtype, torch.get_default_dtype())
 
     return _ssim(img1, img2, window, window_size, channel, size_average)
 

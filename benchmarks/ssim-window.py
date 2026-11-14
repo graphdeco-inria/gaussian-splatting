@@ -48,6 +48,14 @@ for dtype in ((torch.float32,) if device.type == "mps" else (torch.float32, torc
                 torch.testing.assert_close(ox,oy,rtol=0,atol=0)
                 ox.sum().backward(); oy.sum().backward()
                 torch.testing.assert_close(x.grad,y.grad,rtol=0,atol=0)
+# A changed global construction dtype must not reuse a differently rounded window.
+initial_dtype=torch.get_default_dtype()
+try:
+    for default in (torch.float64, torch.float32):
+        torch.set_default_dtype(default)
+        if device.type != "mps":
+            torch.testing.assert_close(old.ssim(a0,b0),new.ssim(a0,b0),rtol=0,atol=0)
+finally: torch.set_default_dtype(initial_dtype)
 # First cache population in inference_mode must still allow a later backward.
 new._cached_window.cache_clear()
 with torch.inference_mode(): new.ssim(a0,b0)
