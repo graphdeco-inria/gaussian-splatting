@@ -64,7 +64,7 @@ for i in range(c["samples"]):
     if i % 2: right.append(measure(after)); left.append(measure(before))
     else: left.append(measure(before)); right.append(measure(after))
 result = dict(completed=True, config=c, revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-              device=torch.cuda.get_device_name(device) if device.type == "cuda" else platform.processor() or platform.machine(),
+              device=torch.cuda.get_device_name(device) if device.type == "cuda" else ("Apple MPS" if device.type == "mps" else platform.processor() or platform.machine()),
               node=platform.node(), torch_version=torch.__version__, exact=True,
               before_seconds=left, after_seconds=right, before_median_seconds=statistics.median(left),
               after_median_seconds=statistics.median(right), speedup=statistics.median(left)/statistics.median(right))

@@ -1,0 +1,42 @@
+{
+  "completed": true,
+  "config": {
+    "seed": 0,
+    "device": "mps",
+    "threads": 1,
+    "samples": 7,
+    "warmups": 3,
+    "inner_repeats": 5,
+    "baseline": "54c035f7834b564019656c3e3fcc3646292f727d",
+    "source": "utils/loss_utils.py",
+    "height": 64,
+    "width": 64,
+    "hypothesis": "Removing repeated allocation or synchronization preserves exact results and lowers time for this isolated component."
+  },
+  "revision": "b62285aa9b96350c2eb1cf9d7b1eeecf900eb90e",
+  "device": "arm",
+  "node": "MacBuku-Pro-2160.local",
+  "torch_version": "2.14.1",
+  "exact": true,
+  "before_seconds": [
+    0.0009783084038645028,
+    0.000901375012472272,
+    0.0010036250110715627,
+    0.0005965750198811293,
+    0.0010635916143655777,
+    0.0005509833805263043,
+    0.0004501831717789173
+  ],
+  "after_seconds": [
+    0.0005481583997607231,
+    0.0005321416072547435,
+    0.0005081084091216326,
+    0.0005002418067306281,
+    0.000438850000500679,
+    0.00045785000547766687,
+    0.00025222497060894966
+  ],
+  "before_median_seconds": 0.000901375012472272,
+  "after_median_seconds": 0.0005002418067306281,
+  "speedup": 1.8018786121921384
+}
