@@ -56,6 +56,13 @@ try:
         if device.type != "mps":
             torch.testing.assert_close(old.ssim(a0,b0),new.ssim(a0,b0),rtol=0,atol=0)
 finally: torch.set_default_dtype(initial_dtype)
+if device.type == "cpu":
+    x0=torch.rand(1,3,17,19,device=device,requires_grad=True)
+    y0=x0.detach().clone().requires_grad_(); gt=torch.rand_like(x0)
+    with torch.autocast("cpu",dtype=torch.bfloat16):
+        a1=old.ssim(x0,gt);b1=new.ssim(y0,gt)
+    torch.testing.assert_close(a1,b1,rtol=0,atol=0)
+    a1.backward();b1.backward();torch.testing.assert_close(x0.grad,y0.grad,rtol=0,atol=0)
 # First cache population in inference_mode must still allow a later backward.
 new._cached_window.cache_clear()
 with torch.inference_mode(): new.ssim(a0,b0)

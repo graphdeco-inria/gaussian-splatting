@@ -62,7 +62,15 @@ def _cached_window(window_size, channel, device, dtype, default_dtype):
 
 def ssim(img1, img2, window_size=11, size_average=True):
     channel = img1.size(-3)
-    window = _cached_window(window_size, channel, img1.device, img1.dtype, torch.get_default_dtype())
+    # Autocast can change the CPU outer product used to build the window.
+    # Retain the original construction path in either autocast context.
+    if torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled():
+        window = create_window(window_size, channel)
+        if img1.is_cuda:
+            window = window.cuda(img1.get_device())
+        window = window.type_as(img1)
+    else:
+        window = _cached_window(window_size, channel, img1.device, img1.dtype, torch.get_default_dtype())
 
     return _ssim(img1, img2, window, window_size, channel, size_average)
 
