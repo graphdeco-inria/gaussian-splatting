@@ -25,5 +25,3 @@ Run from this branch with PyTorch available plus torchvision, Pillow and tqdm; M
 ```sh
 python benchmarks/lpips-reuse.py --config benchmarks/lpips-reuse.yaml --output /tmp/lpips-reuse-result.json
 ```
-
-
