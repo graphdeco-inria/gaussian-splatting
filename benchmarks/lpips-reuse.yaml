@@ -1,1 +1,11 @@
-{"seed":0,"threads":1,"baseline":"54c035f7834b564019656c3e3fcc3646292f727d","views":4,"height":64,"width":64,"samples":5}
+{
+  "seed": 0,
+  "threads": 1,
+  "baseline": "54c035f7834b564019656c3e3fcc3646292f727d",
+  "views": 4,
+  "height": 64,
+  "width": 64,
+  "samples": 5,
+  "device": "mps",
+  "hypothesis": "Reusing the identical pretrained VGG LPIPS criterion preserves every saved metric while avoiding per-view network construction."
+}
