@@ -25,5 +25,3 @@ Run from this branch with PyTorch available; MPS requires an Apple GPU:
 ```sh
 python benchmarks/ssim-window.py --config benchmarks/ssim-window-mps.yaml --output /tmp/ssim-window-result.json
 ```
-
-
